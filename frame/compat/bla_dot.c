@@ -90,6 +90,55 @@ ftype PASTEF772(ch,blasname,chc) \
 }
 
 #ifdef BLIS_ENABLE_BLAS
+#ifdef AOCL_F2C
+dcomplex zdotc_
+     (
+       dcomplex *ret_val,
+       const f77_int* n,
+       const dcomplex*   x, const f77_int* incx,
+       const dcomplex*   y, const f77_int* incy
+     )
+{
+    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
+    AOCL_DTL_LOG_DOTV_INPUTS(AOCL_DTL_LEVEL_TRACE_1,'Z', 'C', *n, *incx, *incy);
+    dim_t  n0;
+    dcomplex* x0;
+    dcomplex* y0;
+    inc_t  incx0;
+    inc_t  incy0;
+    dcomplex  rho;
+
+    /* Initialize BLIS. */
+    bli_init_auto();
+
+    /* Convert/typecast negative values of n to zero. */
+    bli_convert_blas_dim1( *n, n0 );
+
+    /* If the input increments are negative, adjust the pointers so we can
+       use positive increments instead. */
+    bli_convert_blas_incv( n0, (dcomplex*)x, *incx, x0, incx0 );
+    bli_convert_blas_incv( n0, (dcomplex*)y, *incy, y0, incy0 );
+
+    /* Call BLIS interface. */
+    PASTEMAC2(z,dotv,_ex)
+    (
+      BLIS_CONJUGATE,
+      BLIS_NO_CONJUGATE,
+      n0,
+      x0, incx0,
+      y0, incy0,
+      &rho,
+      NULL,
+      NULL
+    );
+
+    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
+    /* Finalize BLIS. */
+    bli_finalize_auto();
+    *ret_val = rho;
+    return rho;
+}
+#endif
 #ifdef BLIS_CONFIG_EPYC
 float sdot_
      (
@@ -507,6 +556,7 @@ scomplex cdotc_
 
     return rho;
 }
+#ifndef AOCL_F2C
 dcomplex zdotc_
      (
        const f77_int* n,
@@ -589,6 +639,7 @@ dcomplex zdotc_
 
     return rho;
 }
+#endif
 #else
 INSERT_GENTFUNCDOTC_BLAS( dot, dotv )
 #endif
