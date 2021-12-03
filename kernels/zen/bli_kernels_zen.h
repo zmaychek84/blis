@@ -79,8 +79,8 @@ SCALV_KER_PROT( float,    s, scalv_zen_int10 )
 SCALV_KER_PROT( double,   d, scalv_zen_int10 )
 
 // swapv (intrinsics)
-SWAPV_KER_PROT(float, 	s, swapv_zen_int8 )
-SWAPV_KER_PROT(double,	d, swapv_zen_int8 )
+SWAPV_KER_PROT(float,   s, swapv_zen_int8 )
+SWAPV_KER_PROT(double,  d, swapv_zen_int8 )
 
 // copyv (intrinsics)
 COPYV_KER_PROT( float,    s, copyv_zen_int )
@@ -113,6 +113,8 @@ DOTXF_KER_PROT( double,   d, dotxf_zen_int_8 )
 
 //gemv(scalar code)
 GEMV_KER_PROT( double,   d,  gemv_zen_ref_c )
+GEMV_KER_PROT( scomplex, c,  gemv_zen_int_4x4 )
+GEMV_KER_PROT( dcomplex, z,  gemv_zen_int_4x4 )
 
 // -- level-3 sup --------------------------------------------------------------
 // semmsup_rv
@@ -273,3 +275,29 @@ void bli_dgemm_ref_k1_nn
        cntl_t* cntl
      );
 
+// threshold functions
+bool bli_cntx_gemmtsup_thresh_is_met_zen
+     (
+       obj_t* a,
+       obj_t* b,
+       obj_t* c,
+       cntx_t* cntx
+     );
+
+bool bli_cntx_syrksup_thresh_is_met_zen
+     (
+       obj_t* a,
+       obj_t* b,
+       obj_t* c,
+       cntx_t* cntx
+     );
+
+#ifdef BLIS_ENABLE_FAST_MATH
+void bli_dnorm2fv_unb_var1
+     (
+       dim_t    n,
+       double*   x, inc_t incx,
+       double* norm,
+       cntx_t*  cntx
+     );
+#endif

@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2019, Advanced Micro Devices, Inc.
+   Copyright (C) 2018 - 2021, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -122,17 +122,28 @@ void bli_pool_finalize
 	// Query the total number of blocks currently allocated.
 	const siz_t num_blocks = bli_pool_num_blocks( pool );
 
+#if 0 // Removing dead code
 	// Query the top_index of the pool.
 	const siz_t top_index = bli_pool_top_index( pool );
 
 	// Sanity check: The top_index should be zero.
 	if ( top_index != 0 )
 	{
+		#ifdef BLIS_ENABLE_MEM_TRACING
 		printf( "bli_pool_finalize(): final top_index == %d (expected 0); block_size: %d.\n",
 		        ( int )top_index, ( int )bli_pool_block_size( pool ) );
 		printf( "bli_pool_finalize(): Implication: not all blocks were checked back in!\n" );
-		bli_abort();
+		fflush( stdout );
+		#endif
+
+		// We will not abort if there are checked out buffers as
+		// they will be freed when returned to the pool. This allows us to have
+		// buffers of different sizes in the pool.
+		
+		//bli_abort();
 	}
+
+#endif
 
 	// Query the free() function pointer for the pool.
 	free_ft free_fp = bli_pool_free_fp( pool );

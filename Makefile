@@ -1,10 +1,11 @@
 #
 #
-#  BLIS    
+#  BLIS
 #  An object-based framework for developing high-performance BLAS-like
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
+#  Copyright (C) 2021, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -36,7 +37,7 @@
 # Makefile
 #
 # Field G. Van Zee
-# 
+#
 # Top-level makefile for libflame linear algebra library.
 #
 #
@@ -257,16 +258,9 @@ ifeq ($(MK_ENABLE_CBLAS),yes)
 HEADERS_TO_INSTALL += $(CBLAS_H_FLAT)
 endif
 
-# Install BLIS CPP Template header files
-HEADERS_TO_INSTALL += $(CPP_HEADER_DIR)/*.hh
-
-# If requested, include AMD's C++ template header files in the list of headers
+# Include AMD's C++ template header files in the list of headers
 # to install.
-ifeq ($(INSTALL_HH),yes)
 HEADERS_TO_INSTALL += $(wildcard $(VEND_CPP_PATH)/*.hh)
-endif
-
-
 
 #
 # --- public makefile fragment definitions -------------------------------------
@@ -720,7 +714,7 @@ endif
 
 # --- BLAS test suite rules ---
 
-testblas: blastest-run 
+testblas: blastest-run
 
 blastest-f2c: check-env $(BLASTEST_F2C_LIB)
 
@@ -903,7 +897,7 @@ endif
 
 # Check results of BLIS CPP Template tests
 checkbliscpp:
-	$(MAKE) -C $(CPP_TEST_DIR) 
+	$(MAKE) -C $(VEND_TESTCPP_DIR)
 
 # Check the results of the BLIS testsuite.
 checkblis: testsuite-run
@@ -1091,24 +1085,29 @@ endif # ifeq ($(IS_WIN),no)
 # --- Query current configuration ---
 
 showconfig: check-env
-	@echo "configuration family:    $(CONFIG_NAME)"
-	@echo "sub-configurations:      $(CONFIG_LIST)"
-	@echo "requisite kernels sets:  $(KERNEL_LIST)"
-	@echo "kernel-to-config map:    $(KCONFIG_MAP)"
+	@echo "configuration family:        $(CONFIG_NAME)"
+	@echo "sub-configurations:          $(CONFIG_LIST)"
+	@echo "requisite kernels sets:      $(KERNEL_LIST)"
+	@echo "kernel-to-config map:        $(KCONFIG_MAP)"
 	@echo "-------------------------"
-	@echo "BLIS version string:     $(VERSION)"
-	@echo ".so major version:       $(SO_MAJOR)"
-	@echo ".so minor.build vers:    $(SO_MINORB)"
-	@echo "install libdir:          $(INSTALL_LIBDIR)"
-	@echo "install includedir:      $(INSTALL_INCDIR)"
-	@echo "install sharedir:        $(INSTALL_SHAREDIR)"
-	@echo "debugging status:        $(DEBUG_TYPE)"
-	@echo "multithreading status:   $(THREADING_MODEL)"
-	@echo "enable BLAS API?         $(MK_ENABLE_BLAS)"
-	@echo "enable CBLAS API?        $(MK_ENABLE_CBLAS)"
-	@echo "build static library?    $(MK_ENABLE_STATIC)"
-	@echo "build shared library?    $(MK_ENABLE_SHARED)"
-	@echo "ARG_MAX hack enabled?    $(ARG_MAX_HACK)"
+	@echo "BLIS version string:         $(VERSION)"
+	@echo ".so major version:           $(SO_MAJOR)"
+	@echo ".so minor.build vers:        $(SO_MINORB)"
+	@echo "install libdir:              $(INSTALL_LIBDIR)"
+	@echo "install includedir:          $(INSTALL_INCDIR)"
+	@echo "install sharedir:            $(INSTALL_SHAREDIR)"
+	@echo "debugging status:            $(DEBUG_TYPE)"
+	@echo "multithreading status:       $(THREADING_MODEL)"
+	@echo "enable BLAS API?             $(MK_ENABLE_BLAS)"
+	@echo "enable CBLAS API?            $(MK_ENABLE_CBLAS)"
+	@echo "build static library?        $(MK_ENABLE_STATIC)"
+	@echo "build shared library?        $(MK_ENABLE_SHARED)"
+	@echo "ARG_MAX hack enabled?        $(ARG_MAX_HACK)"
+	@echo "complex return scheme:       $(MK_COMPLEX_RETURN_SCHEME)"
+	@echo "enable trsm preinversion:    $(MK_ENABLE_TRSM_PREINVERSION)"
+	@echo "enable AOCL dynamic threads: $(MK_ENABLE_AOCL_DYNAMIC)"
+	@echo "BLAS Integer size(LP/ILP):   $(MK_BLAS_INT_TYPE_SIZE)"
+
 
 
 # --- Clean rules ---
@@ -1242,13 +1241,13 @@ ifeq ($(IS_CONFIGURED),yes)
 ifeq ($(ENABLE_VERBOSE),yes)
 	- $(FIND) $(TESTSUITE_DIR)/$(OBJ_DIR) -name "*.o" | $(XARGS) $(RM_F)
 	- $(RM_F) $(TESTSUITE_DIR)/$(TESTSUITE_BIN)
-	- $(MAKE) -C $(CPP_TEST_DIR) clean
+	- $(MAKE) -C $(VEND_TESTCPP_DIR) clean
 else
 	@echo "Removing object files from $(TESTSUITE_DIR)/$(OBJ_DIR)"
 	@- $(FIND) $(TESTSUITE_DIR)/$(OBJ_DIR) -name "*.o" | $(XARGS) $(RM_F)
 	@echo "Removing binary $(TESTSUITE_DIR)/$(TESTSUITE_BIN)"
 	@- $(RM_F) $(TESTSUITE_DIR)/$(TESTSUITE_BIN)
-	@$(MAKE) -C $(CPP_TEST_DIR) clean
+	@$(MAKE) -C $(VEND_TESTCPP_DIR) clean
 endif # ENABLE_VERBOSE
 endif # IS_CONFIGURED
 
@@ -1282,7 +1281,7 @@ endif
 
 changelog:
 	@echo "Updating '$(DIST_PATH)/$(CHANGELOG)' via '$(GIT_LOG)'"
-	@$(GIT_LOG) > $(DIST_PATH)/$(CHANGELOG) 
+	@$(GIT_LOG) > $(DIST_PATH)/$(CHANGELOG)
 
 
 # --- Uninstall rules ---

@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2018-2021, Advanced Micro Devices, Inc. All rights reserved.
-   
+
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
@@ -156,7 +156,7 @@
 #define STRINGIFY_INT( s )         MKSTR( s )
 
 #define PASTEMACT(ch1, ch2, ch3, ch4)   bli_ ## ch1 ## ch2 ## _ ## ch3 ## _ ## ch4
-// Fortran-77 name-mangling macros.
+// name-mangling macros.
 #ifdef BLIS_ENABLE_NO_UNDERSCORE_API
 #define PASTEF770(name)                                      name
 #define PASTEF77(ch1,name)                     ch1        ## name
@@ -193,19 +193,19 @@
 #define idamax_ idamax
 #define icamax_ icamax
 #define izamax_ izamax
-#define sasum_  sasum 
-#define dasum_  dasum 
+#define sasum_  sasum
+#define dasum_  dasum
 #define scasum_ scasum
 #define dzasum_ dzasum
-#define saxpy_  saxpy 
-#define daxpy_  daxpy 
-#define caxpy_  caxpy 
-#define zaxpy_  zaxpy 
-#define scopy_  scopy 
-#define dcopy_  dcopy 
-#define ccopy_  ccopy 
-#define zcopy_  zcopy 
-#define sdot_   sdot 
+#define saxpy_  saxpy
+#define daxpy_  daxpy
+#define caxpy_  caxpy
+#define zaxpy_  zaxpy
+#define scopy_  scopy
+#define dcopy_  dcopy
+#define ccopy_  ccopy
+#define zcopy_  zcopy
+#define sdot_   sdot
 #define ddot_   ddot
 #define cdotc_  cdotc
 #define zdotc_  zdotc
@@ -215,69 +215,77 @@
 #define dnrm2_  dnrm2
 #define scnrm2_ scnrm2
 #define dznrm2_ dznrm2
-#define sscal_  sscal 
-#define dscal_  dscal 
-#define cscal_  cscal 
+#define sscal_  sscal
+#define dscal_  dscal
+#define cscal_  cscal
 #define csscal_ csscal
-#define zscal_  zscal 
+#define zscal_  zscal
 #define zdscal_ zdscal
-#define sswap_  sswap 
-#define dswap_  dswap 
-#define cswap_  cswap 
-#define zswap_  zswap 
-#define sgemv_  sgemv 
-#define dgemv_  dgemv 
-#define cgemv_  cgemv 
-#define zgemv_  zgemv 
-#define sger_   sger 
-#define dger_   dger 
-#define cgerc_  cgerc 
-#define cgeru_  cgeru 
-#define zgerc_  zgerc 
-#define zgeru_  zgeru 
-#define chemv_  chemv 
-#define zhemv_  zhemv 
-#define cher_   cher  
-#define zher_   zher  
-#define cher2_  cher2 
-#define zher2_  zher2 
-#define ssymv_  ssymv 
-#define dsymv_  dsymv 
-#define csymm_  csymm 
-#define zsymm_  zsymm 
-#define ssyr_   ssyr 
-#define dsyr_   dsyr 
+#define sswap_  sswap
+#define dswap_  dswap
+#define cswap_  cswap
+#define zswap_  zswap
+#define sgemv_  sgemv
+#define dgemv_  dgemv
+#define cgemv_  cgemv
+#define zgemv_  zgemv
+#define sger_   sger
+#define dger_   dger
+#define cgerc_  cgerc
+#define cgeru_  cgeru
+#define zgerc_  zgerc
+#define zgeru_  zgeru
+#define chemv_  chemv
+#define zhemv_  zhemv
+#define cher_   cher
+#define zher_   zher
+#define cher2_  cher2
+#define zher2_  zher2
+#define ssymv_  ssymv
+#define dsymv_  dsymv
+#define csymm_  csymm
+#define zsymm_  zsymm
+#define ssyr_   ssyr
+#define dsyr_   dsyr
 #define csyrk_  csyrk
 #define csyrk_  csyrk
 #define zsyrk_  zsyrk
-#define ssyr2_  ssyr2 
-#define dsyr2_  dsyr2 
+#define ssyr2_  ssyr2
+#define dsyr2_  dsyr2
 #define csyr2k_ csyr2k
 #define zsyr2k_ zsyr2k
-#define strmv_  strmv 
-#define dtrmv_  dtrmv 
-#define ctrmv_  ctrmv 
-#define ztrmv_  ztrmv 
-#define strsv_  strsv 
-#define dtrsv_  dtrsv 
-#define ctrsv_  ctrsv 
-#define ztrsv_  ztrsv 
-#define sgemm_  sgemm 
-#define dgemm_  dgemm 
-#define cgemm_  cgemm 
-#define zgemm_  zgemm 
-#define chemm_  chemm 
+#define strmv_  strmv
+#define dtrmv_  dtrmv
+#define ctrmv_  ctrmv
+#define ztrmv_  ztrmv
+#define strsv_  strsv
+#define dtrsv_  dtrsv
+#define ctrsv_  ctrsv
+#define ztrsv_  ztrsv
+#define sgemm_  sgemm
+#define dgemm_  dgemm
+#define cgemm_  cgemm
+#define zgemm_  zgemm
+#define chemm_  chemm
 #define zhemm_  zhemm
 #define dgemmt_ dgemmt
 #define sgemmt_ sgemmt
 #define zgemmt_ zgemmt
 #define cgemmt_ cgemmt
+#define sgemm_batch_ sgemm_batch
+#define dgemm_batch_ dgemm_batch
+#define cgemm_batch_ cgemm_batch
+#define zgemm_batch_ zgemm_batch
+#define saxpby_ saxpby
+#define daxpby_ daxpby
+#define caxpby_ caxpby
+#define zaxpby_ zaxpby
 #define cher2k_ cher2k
 #define zher2k_ zher2k
 #define cherk_  cherk
-#define zherk_  zherk 
-#define ssymm_  ssymm 
-#define dsymm_  dsymm 
+#define zherk_  zherk
+#define ssymm_  ssymm
+#define dsymm_  dsymm
 #define ssyr2k_ ssyr2k
 #define dsyr2k_ dsyr2k
 #define ssyrk_  ssyrk
@@ -291,27 +299,27 @@
 #define ctrsm_  ctrsm
 #define ztrsm_  ztrsm
 #define lsame_  lsame
-#define cimatcopy_    cimatcopy             
-#define comatadd_     comatadd              
-#define comatcopy2_   comatcopy2            
+#define cimatcopy_    cimatcopy
+#define comatadd_     comatadd
+#define comatcopy2_   comatcopy2
 #define comatcopy_    comatcopy
-#define dimatcopy_    dimatcopy 
-#define domatadd_     domatadd  
+#define dimatcopy_    dimatcopy
+#define domatadd_     domatadd
 #define domatcopy2_   domatcopy2
 #define domatcopy_    domatcopy
-#define simatcopy_    simatcopy 
-#define somatadd_     somatadd  
+#define simatcopy_    simatcopy
+#define somatadd_     somatadd
 #define somatcopy2_   somatcopy2
-#define somatcopy_    somatcopy 
-#define zimatcopy_    zimatcopy 
-#define zomatadd_     zomatadd  
+#define somatcopy_    somatcopy
+#define zimatcopy_    zimatcopy
+#define zomatadd_     zomatadd
 #define zomatcopy2_   zomatcopy2
-#define zomatcopy_    zomatcopy 
+#define zomatcopy_    zomatcopy
 #endif
 
-#ifdef BLIS_ENABLE_UPPERCASE
+#ifdef BLIS_ENABLE_UPPERCASE_API
 #define caxpby                    CAXPBY
-#define caxpy                     CAXPY 
+#define caxpy                     CAXPY
 #define ccopy                     CCOPY
 #define cdotc                     CDOTC
 #define cdotcsub                  CDOTCSUB
@@ -521,3 +529,4 @@
 #endif
 
 #endif
+

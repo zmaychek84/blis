@@ -1,11 +1,11 @@
 #
 #
-#  BLIS    
+#  BLIS
 #  An object-based framework for developing high-performance BLAS-like
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2019, Advanced Micro Devices, Inc.
+#  Copyright (C) 2021, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -49,7 +49,16 @@ THIS_CONFIG    := zen2
 # NOTE: The build system will append these variables with various
 # general-purpose/configuration-agnostic flags in common.mk. You
 # may specify additional flags here as needed.
-CPPROCFLAGS    :=
+
+# Since we removed BLIS_CONFIG_EPYC from header file, we need to
+# add it here at two places,
+#     CPPROCFLAGS = This will enable it for framework code
+#                   This flag is used when configure is invoked with specific architecture
+#     CKOPTFLAGS  = This will enable it for architecture specific kernels
+#                   This flag is used for kernels assocaited with this architecture
+#                   irrespective of the configuration it is built for.
+
+CPPROCFLAGS    := -DBLIS_CONFIG_EPYC
 CMISCFLAGS     :=
 CPICFLAGS      :=
 CWARNFLAGS     :=
@@ -69,7 +78,7 @@ endif
 # they make explicit use of the rbp register.
 CKOPTFLAGS     := $(COPTFLAGS) -fomit-frame-pointer
 ifeq ($(CC_VENDOR),gcc)
-GCC_VERSION := $(strip $(shell gcc -dumpversion | cut -d. -f1))
+GCC_VERSION := $(strip $(shell $(CC) -dumpversion | cut -d. -f1))
 #gcc or clang version must be atleast 4.0
 # gcc 9.0 or later:
 ifeq ($(shell test $(GCC_VERSION) -ge 9; echo $$?),0)
@@ -82,7 +91,7 @@ CKVECFLAGS += -march=znver1 -mno-avx256-split-unaligned-store
 endif
 else
 ifeq ($(CC_VENDOR),clang)
-ifeq ($(strip $(shell clang -v |&head -1 |grep -c 'AOCC.LLVM.2\|AOCC_2')),1)
+ifeq ($(strip $(shell $(CC) -v |&head -1 |grep -c 'AOCC.LLVM.2\|AOCC_2')),1)
 CKVECFLAGS += -march=znver2
 else
 #if compiling with clang
@@ -101,6 +110,10 @@ endif
 # Flags specific to reference kernels.
 CROPTFLAGS     := $(CKOPTFLAGS)
 CRVECFLAGS     := $(CKVECFLAGS)
+
+# Add this after updating variables for reference kernels
+# we don't want this defined for them
+CKOPTFLAGS += -DBLIS_CONFIG_EPYC
 
 # Store all of the variables here to new variables containing the
 # configuration name.

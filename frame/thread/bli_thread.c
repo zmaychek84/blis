@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2020, Advanced Micro Devices, Inc.
+   Copyright (C) 2018 - 21, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -1556,6 +1556,33 @@ dim_t bli_thread_get_num_threads( void )
 	return bli_rntm_num_threads( &global_rntm );
 }
 
+bool bli_thread_get_is_parallel( void ) // VK
+{
+  //  THis function return true if parallelism is enabled
+  // either by OMP_NUM_THREADS or BLIS_NUM_THREADS or BLIS_?C_NT parameters
+  // When parallelism is enabled using BLIS_IC_NT or BLIS_JC_NT
+  // rntm->num_threads = -1, because num_threads is still not derived
+  // at the BLAS interface, as a result we end up running BLIS sequentially.
+  // In dgemm_ we called bli_thread_get_num_threads() which returns num_threads from
+  // global_rntm.
+  // Therefore this function is added to check whether manual thread factorization
+  // is enabled
+
+  // We must ensure that global_rntm has been initialized.
+	bli_init_once();
+
+  dim_t jc = bli_rntm_jc_ways( &global_rntm );
+  dim_t pc = bli_rntm_pc_ways( &global_rntm );
+  dim_t ic = bli_rntm_ic_ways( &global_rntm );
+  dim_t jr = bli_rntm_jr_ways( &global_rntm );
+  dim_t ir = bli_rntm_ir_ways( &global_rntm );
+
+  dim_t nt = bli_rntm_num_threads( &global_rntm );
+
+  if ( nt > 1 || (jc * pc * ic * jr * ir) > 1 ) return 1;
+  return 0; // else
+}
+
 // ----------------------------------------------------------------------------
 
 void bli_thread_set_ways( dim_t jc, dim_t pc, dim_t ic, dim_t jr, dim_t ir )
@@ -1610,6 +1637,17 @@ void bli_thread_init_rntm_from_env
 	if ( nt == -1 )
 		nt = bli_env_get_var( "OMP_NUM_THREADS", -1 );
 
+#ifdef BLIS_ENABLE_OPENMP
+	// If both environment variables are not set -
+	// number of threads can also be set by the application by calling omp_set_num_threads(nt)
+	// The next parallel region when encountered will run with number of threads set by the above API.
+	// We can know about the number of threads by using the API "omp_get_max_threads()"
+	if (nt == -1) nt = omp_get_max_threads();
+	// If application is multithreaded and number of threads is set using omp_set_num_threads(nt)
+	// BLIS will rntm->num_threads will also get initialized with the same value.
+	// However if omp_set_nested is false - BLIS APIs called from parallel threads will run in sequential.
+	// But if nested parallelism is enabled - Then each application will launch MT BLIS.
+#endif
 	// Read the environment variables for the number of threads (ways
 	// of parallelism) for each individual loop.
 	jc = bli_env_get_var( "BLIS_JC_NT", -1 );

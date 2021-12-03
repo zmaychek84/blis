@@ -10,12 +10,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 
 
 SET(AOCL_BLIS_FAMILY "zen" CACHE STRING "AOCL BLIS family name")
+SET(OPENMP_PATH "C:\\Program Files\\LLVM\\lib" CACHE STRING "openmp library
+path")
 set(TARGET_ARCH ${AOCL_BLIS_FAMILY})
 set(AOCL_BLIS_ZEN TRUE)
 set (PYTHON_EXE "python")
 
 if ("${AOCL_BLIS_FAMILY}" STREQUAL "")
-  message(FATAL_ERROR "Machine configuration missing! Select one of zen, zen2, zen3 or amd64")
+  message(FATAL_ERROR "Machine configuration missing! Select one of zen, zen2, zen3 or amdzen")
 endif ()
 
 if (${AOCL_BLIS_FAMILY} STREQUAL "auto")
@@ -48,9 +50,9 @@ elseif (${AOCL_BLIS_FAMILY} STREQUAL "zen3")
   add_definitions(-DBLIS_KERNELS_ZEN2)
   add_definitions(-DBLIS_KERNELS_ZEN)
   add_definitions(-DBLIS_KERNELS_HASWELL)
-elseif (${AOCL_BLIS_FAMILY} STREQUAL "amd64")
+elseif (${AOCL_BLIS_FAMILY} STREQUAL "amdzen")
   set(AOCL_BLIS_ZEN FALSE)
-  add_definitions(-DBLIS_FAMILY_AMD64)
+  add_definitions(-DBLIS_FAMILY_AMDZEN)
   add_definitions(-DBLIS_CONFIG_ZEN3)
   add_definitions(-DBLIS_CONFIG_ZEN2)
   add_definitions(-DBLIS_CONFIG_ZEN)
@@ -61,7 +63,7 @@ elseif (${AOCL_BLIS_FAMILY} STREQUAL "amd64")
   add_definitions(-DBLIS_KERNELS_ZEN)
   add_definitions(-DBLIS_KERNELS_GENERIC)
 else ()
-  message(FATAL_ERROR "Wrong machine configuration. Select one of zen, zen2, zen3 or amd64")
+  message(FATAL_ERROR "Wrong machine configuration. Select one of zen, zen2, zen3 or amdzen")
 endif ()
 
 set(TARGET_ARCH ${AOCL_BLIS_FAMILY})
@@ -89,11 +91,23 @@ option(ENABLE_INT_TYPE_SIZE " Internal BLIS integers ,used in native BLIS interf
 option(ENABLE_BLASTEST "Enable the blastest" OFF)
 option(ENABLE_TESTCPP_TESTING "Enabling testcpp" OFF)
 option (ENABLE_NO_UNDERSCORE_API "export APIs without underscore" ON)
-option (ENABLE_UPPERCASE "export APIs with uppercase" OFF)
+option (ENABLE_UPPERCASE_API "export APIs with uppercase" OFF)
+option (ENABLE_API_WRAPPER "Enable wrapper code" OFF)
 option (ENABLE_COMPLEX_RETURN_INTEL "Enable complex_return_intel" OFF)
 option (ENABLE_TRSM_PREINVERSION "Enable TRSM preinversion" ON)
 option (ENABLE_AOCL_DYNAMIC "Enable Dynamic Multi-threading" OFF)
 
+if (${AOCL_BLIS_FAMILY} STREQUAL "amdzen")
+  set(REF_KERNEL_MIRRORING_PY "${CMAKE_SOURCE_DIR}/build/blis_ref_kernel_mirror.py")
+  message("ref_kernel mirroring for fat binary")
+  # Run python script to find the architecture family name
+  execute_process(
+        COMMAND ${PYTHON_EXE} ${REF_KERNEL_MIRRORING_PY} ${CMAKE_BINARY_DIR}
+        RESULT_VARIABLE CMD_RESULT
+        OUTPUT_VARIABLE CMD_OUTPUT
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+  message( STATUS "Ref Kernel Mirroring :" ${CMD_OUTPUT})
+endif()
 if(ENABLE_NO_UNDERSCORE_API)
     add_definitions(-DBLIS_ENABLE_NO_UNDERSCORE_API)
 endif()
@@ -104,8 +118,12 @@ else()
     set(BLIS_DISABLE_COMPLEX_RETURN_INTEL TRUE)
 endif()
 
-if(ENABLE_UPPERCASE)
-     add_definitions(-DBLIS_ENABLE_UPPERCASE)
+if(ENABLE_UPPERCASE_API)
+     add_definitions(-DBLIS_ENABLE_UPPERCASE_API)
+endif()
+
+if(ENABLE_API_WRAPPER)
+     add_definitions(-DBLIS_ENABLE_API_WRAPPER)
 endif()
 
 if(ENABLE_AOCL_DYNAMIC)
@@ -132,7 +150,7 @@ endif ()
 if (ENABLE_TRSM_PREINVERSION)
   set(BLIS_ENABLE_TRSM_PREINVERSION TRUE)
 else()
-  set(BLIS_DISABLE_TRSM_PREINVERSION TRUE)
+  add_definitions(-DBLIS_DISABLE_TRSM_PREINVERSION)
 endif()
 
 if (ENABLE_INT_TYPE_SIZE)
@@ -242,6 +260,7 @@ if(ENABLE_MULTITHREADING)
     find_package(OpenMP)
     if (OPENMP_FOUND)
       set(BLIS_ENABLE_OPENMP TRUE)
+      add_compile_options(-Xclang -fopenmp)
     else()
       message (FATAL_ERROR "Openmp Not Found")
     endif()
@@ -291,14 +310,16 @@ endif()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W0 ")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Oi")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP")
-set(INTR_GENERAL_LINK_FLAGS "${INTR_GENERAL_LINK_FLAGS} /RELEGE") 
+set(INTR_GENERAL_LINK_FLAGS "${INTR_GENERAL_LINK_FLAGS} /RELEGE")
 
 add_definitions(-D_CRT_SECURE_NO_DEPRECATE)
 
 #add_definitions(-DBLIS_OS_WINDOWS)
 add_definitions(-D_MSC_VER)
+if (${AOCL_BLIS_FAMILY} STREQUAL "amdzen")
+else()
 add_definitions(-DBLIS_CNAME=${TARGET_ARCH})
-
+endif()
 # Generate the bli_config.h header file
 configure_file (build/bli_win_config.h.in ${CMAKE_SOURCE_DIR}/bli_config.h @ONLY)
 
@@ -372,6 +393,12 @@ include_directories(${CMAKE_SOURCE_DIR}/config/generic)
 include_directories(${CMAKE_SOURCE_DIR}/config/zen)
 include_directories(${CMAKE_SOURCE_DIR}/config/zen2)
 include_directories(${CMAKE_SOURCE_DIR}/config/zen3)
+if(${AOCL_BLIS_FAMILY} STREQUAL "amdzen")
+    include_directories(${CMAKE_BINARY_DIR}/ref_kernels/generic)
+    include_directories(${CMAKE_BINARY_DIR}/ref_kernels/zen)
+    include_directories(${CMAKE_BINARY_DIR}/ref_kernels/zen2)
+    include_directories(${CMAKE_BINARY_DIR}/ref_kernels/zen3)
+endif()
 include_directories(${CMAKE_SOURCE_DIR}/ref_kernels)
 include_directories(${CMAKE_SOURCE_DIR}/kernels)
 include_directories(${CMAKE_SOURCE_DIR}/kernels/haswell)
@@ -394,22 +421,20 @@ find_package(PythonLibs 3 REQUIRED)
 
 string(APPEND HEADER_PATH
 if(${AOCL_BLIS_FAMILY} STREQUAL "zen")
-    " ${CMAKE_CURRENT_SOURCE_DIR}/config/zen/"  
-    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/zen/" 
-    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/haswell/" 
+    " ${CMAKE_CURRENT_SOURCE_DIR}/config/zen/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/zen/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/haswell/"
 elseif (${AOCL_BLIS_FAMILY} STREQUAL "zen2")
-    " ${CMAKE_CURRENT_SOURCE_DIR}/config/zen2/" 
-    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/zen/" 
-    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/haswell/" 
-elseif (${AOCL_BLIS_FAMILY} STREQUAL "amd64")
-    " ${CMAKE_CURRENT_SOURCE_DIR}/config/amd64/"
-    " ${CMAKE_CURRENT_SOURCE_DIR}/config/bulldozer/"
-    " ${CMAKE_CURRENT_SOURCE_DIR}/config/excavator/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/config/zen2/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/zen/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/haswell/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/config/amdzen/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/config/zen/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/config/zen2/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/config/zen3/"
     " ${CMAKE_CURRENT_SOURCE_DIR}/config/generic/"
-    " ${CMAKE_CURRENT_SOURCE_DIR}/config/piledriver/"
-    " ${CMAKE_CURRENT_SOURCE_DIR}/config/steamroller/"
-    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/piledriver/"
-    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/bulldozer/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/zen/"
+    " ${CMAKE_CURRENT_SOURCE_DIR}/kernels/haswell/"
 endif ()
     " ${CMAKE_CURRENT_SOURCE_DIR}/frame/0/"
     " ${CMAKE_CURRENT_SOURCE_DIR}/frame/0/copysc/"
@@ -502,12 +527,18 @@ message( STATUS "Generating monolithic header file :" ${CMD_OUTPUT})
 # setting the blis version string
 file (STRINGS "version" BLIS_VERSION)
 set(BLIS_VERSION_STRING ${BLIS_VERSION})
-add_definitions(-DBLIS_VERSION_STRING="${BLIS_VERSION_STRING}")
+add_definitions(-DBLIS_VERSION_STRING="AOCL BLIS ${BLIS_VERSION_STRING}")
+
+message( STATUS "OPENMP PATH:" ${OPENMP_PATH})
+link_directories("${OPENMP_PATH}")
 
 if(BUILD_SHARED_LIBS)
     add_library("${PROJECT_NAME}" SHARED ${CMAKE_SOURCE_DIR}/bli_config.h
                          ${CMAKE_SOURCE_DIR}/include/${TARGET_ARCH}/blis.h
                          ${headers})
+    if(ENABLE_OPENMP)
+        target_link_libraries("${PROJECT_NAME}" PUBLIC "${OPENMP_PATH}/libomp.lib")
+    endif()
     target_compile_definitions("${PROJECT_NAME}" PUBLIC -DBLIS_IS_BUILDING_LIBRARY)
     set_target_properties("${PROJECT_NAME}" PROPERTIES LINKER_LANGUAGE C OUTPUT_NAME "${LIB_NAME}")
 endif()
@@ -515,6 +546,9 @@ if(NOT BUILD_SHARED_LIBS)
     add_library("${PROJECT_NAME}" STATIC ${CMAKE_SOURCE_DIR}/bli_config.h
                          ${CMAKE_SOURCE_DIR}/include/${TARGET_ARCH}/blis.h
                          ${headers})
+    if(ENABLE_OPENMP)
+        target_link_libraries("${PROJECT_NAME}" PUBLIC "${OPENMP_PATH}/libomp.lib")
+    endif()
     set_target_properties("${PROJECT_NAME}" PROPERTIES LINKER_LANGUAGE C OUTPUT_NAME "${LIB_NAME}")
 endif()
 
@@ -529,7 +563,7 @@ add_subdirectory(aocl_dtl)
 add_subdirectory(test)
 add_subdirectory(testsuite)
 if(ENABLE_TESTCPP_TESTING)
-    add_subdirectory(testcpp)
+    add_subdirectory(vendor/testcpp)
 endif()
 if (ENABLE_BLASTEST)
     add_subdirectory(blastest)

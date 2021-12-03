@@ -113,7 +113,19 @@ err_t bli_gemm_small
 #ifdef BLIS_ENABLE_MULTITHREADING
 	AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_7);
     return BLIS_NOT_YET_IMPLEMENTED;
+#else
+	// When dynamic dispatch is enabled i.e. library is built for 'amdzen' configuration.
+	// Invoke architecture specific kernels only if we are sure that we are running on zen,
+	// zen2 or zen3 otherwise fall back to reference kernels (via framework and context).
+	arch_t id = bli_arch_query_id();
+	bool bamdzen = (id == BLIS_ARCH_ZEN3) || (id == BLIS_ARCH_ZEN2) || (id == BLIS_ARCH_ZEN);
+
+	if (0 == bamdzen)
+	{
+		return BLIS_NOT_YET_IMPLEMENTED;
+	}
 #endif
+
     // If alpha is zero, scale by beta and return.
     if (bli_obj_equals(alpha, &BLIS_ZERO))
     {
@@ -1744,43 +1756,23 @@ static err_t bli_sgemm_small
        cntl_t* cntl
      )
 {
-
-	AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO);
+  AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO);
 	
     gint_t M = bli_obj_length( c ); // number of rows of Matrix C
     gint_t N = bli_obj_width( c );  // number of columns of Matrix C
     gint_t K = bli_obj_width( a );  // number of columns of OP(A), will be updated if OP(A) is Transpose(A) .
     gint_t L = M * N;
 
-    // when N is equal to 1 call GEMV instead of GEMM
-    if (N == 1)
-    {
-        bli_gemv
-        (
-            alpha,
-            a,
-            b,
-            beta,
-            c
-        );
-		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
-        return BLIS_SUCCESS;
-    }
+    /* if (N<3) //Implemenation assumes that N is atleast 3. VK */
+    /* 	{ */
+    /* 		AOCL_DTL_TRACE_EXIT_ERR( */
+    /* 			AOCL_DTL_LEVEL_INFO, */
+    /*                 "N < 3 cannot be processed by small_gemm"     */
+    /* 			); */
+    /*     return BLIS_NOT_YET_IMPLEMENTED; VK */
+    /* 	} */
+    
 
-    if (N<3) //Implemenation assumes that N is atleast 3.
-	{
-		AOCL_DTL_TRACE_EXIT_ERR(
-			AOCL_DTL_LEVEL_INFO,
-                    "N < 3 cannot be processed by small_gemm"    
-			);
-        return BLIS_NOT_YET_IMPLEMENTED;
-	}
-/* #ifdef BLIS_ENABLE_SMALL_MATRIX_ROME */
-/*     if( (L && K) && ((K < D_BLIS_SMALL_MATRIX_K_THRES_ROME) || ((N < BLIS_SMALL_MATRIX_THRES_ROME) && (K < BLIS_SMALL_MATRIX_THRES_ROME)))) */
-/* #else */
-/*     if ((((L) < (D_BLIS_SMALL_MATRIX_THRES * D_BLIS_SMALL_MATRIX_THRES)) */
-/*         || ((M  < D_BLIS_SMALL_M_RECT_MATRIX_THRES) && (K < D_BLIS_SMALL_K_RECT_MATRIX_THRES))) && ((L!=0) && (K!=0))) */
-/* #endif    */
   if(L && K ) // Non-zero dimensions will be handled by either sup or native kernels
     {
         guint_t lda = bli_obj_col_stride( a ); // column stride of matrix OP(A), where OP(A) is Transpose(A) if transA enabled.
@@ -1868,7 +1860,8 @@ static err_t bli_sgemm_small
         // reported in CPUPL-587.
         //
 
-        if ((N <= 3) || ((D_MR * K) << 3) > buffer_size)
+	// if ((N <= 3) || ((D_MR * K) << 3) > buffer_size)
+	if ((N < 3) || ((D_MR * K) << 3) > buffer_size)
         {
             required_packing_A = 0;
         }
@@ -1895,7 +1888,6 @@ static err_t bli_sgemm_small
         // Process D_MR rows of C matrix at a time.
         for (row_idx = 0; (row_idx + (D_MR - 1)) < M; row_idx += D_MR)
         {
-
             col_idx_start = 0;
             tA_packed = A;
             row_idx_packed = row_idx;

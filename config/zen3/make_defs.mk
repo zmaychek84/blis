@@ -1,11 +1,11 @@
 #
 #
-#  BLIS    
+#  BLIS
 #  An object-based framework for developing high-performance BLAS-like
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2020, Advanced Micro Devices, Inc.
+#  Copyright (C) 2021, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -39,7 +39,7 @@
 
 # Declare the name of the current configuration and add it to the
 # running list of configurations included by common.mk.
-THIS_CONFIG    := zen3 
+THIS_CONFIG    := zen3
 #CONFIGS_INCL   += $(THIS_CONFIG)
 
 #
@@ -49,7 +49,16 @@ THIS_CONFIG    := zen3
 # NOTE: The build system will append these variables with various
 # general-purpose/configuration-agnostic flags in common.mk. You
 # may specify additional flags here as needed.
-CPPROCFLAGS    :=
+
+# Since we removed BLIS_CONFIG_EPYC from header file, we need to
+# add it here at two places,
+#     CPPROCFLAGS = This will enable it for framework code
+#                   This flag is used when configure is invoked with specific architecture
+#     CKOPTFLAGS  = This will enable it for architecture specific kernels
+#                   This flag is used for kernels assocaited with this architecture
+#                   irrespective of the configuration it is built for.
+
+CPPROCFLAGS    := -DBLIS_CONFIG_EPYC
 CMISCFLAGS     :=
 CPICFLAGS      :=
 CWARNFLAGS     :=
@@ -69,9 +78,12 @@ endif
 # they make explicit use of the rbp register.
 CKOPTFLAGS     := $(COPTFLAGS) -fomit-frame-pointer
 ifeq ($(CC_VENDOR),gcc)
-GCC_VERSION := $(strip $(shell gcc -dumpversion | cut -d. -f1))
-#gcc or clang version must be atleast 4.0
+GCC_VERSION := $(strip $(shell $(CC) -dumpversion | cut -d. -f1))
+# gcc or clang version must be atleast 4.0
 # gcc 9.0 or later:
+ifeq ($(shell test $(GCC_VERSION) -ge 11; echo $$?),0)
+CKVECFLAGS     += -march=znver3
+else
 ifeq ($(shell test $(GCC_VERSION) -ge 9; echo $$?),0)
 CKVECFLAGS     += -march=znver2
 else
@@ -79,7 +91,8 @@ else
 # as the fallback option.
 CRVECFLAGS += -march=znver1 -mno-avx256-split-unaligned-store
 CKVECFLAGS += -march=znver1 -mno-avx256-split-unaligned-store
-endif
+endif # GCC 9
+endif # GCC 11
 else
 ifeq ($(CC_VENDOR),clang)
 
@@ -94,11 +107,11 @@ ifeq ($(CC_VENDOR),clang)
 # For our prupose we just want to know if it version 2x or 3x
 
 # for version 3x we will enable znver3
-ifeq ($(strip $(shell clang -v |&head -1 |grep -c 'AOCC_3')),1)
+ifeq ($(strip $(shell $(CC) -v |&head -1 |grep -c 'AOCC_3')),1)
 CKVECFLAGS += -march=znver3
 else
 # for version 2x we will enable znver2
-ifeq ($(strip $(shell clang -v |&head -1 |grep -c 'AOCC.LLVM.2\|AOCC_2')),1)
+ifeq ($(strip $(shell $(CC) -v |&head -1 |grep -c 'AOCC.LLVM.2\|AOCC_2')),1)
 CKVECFLAGS += -march=znver2
 else
 #if compiling with clang
@@ -118,6 +131,10 @@ endif # gcc
 # Flags specific to reference kernels.
 CROPTFLAGS     := $(CKOPTFLAGS)
 CRVECFLAGS     := $(CKVECFLAGS)
+
+# Add this after updating variables for reference kernels
+# we don't want this defined for them
+CKOPTFLAGS += -DBLIS_CONFIG_EPYC
 
 # Store all of the variables here to new variables containing the
 # configuration name.

@@ -44,96 +44,17 @@
 #define BLIS_THREAD_MAX_IR      1
 #define BLIS_THREAD_MAX_JR      1
 
-//To enable framework optimizations for EPYC family processors.
-//With this macro defined, we can call kernels directly from BLAS interfaces
-//for levels 1 & 2.
-//This macro needs to be defined for all EPYC configurations.
-#define BLIS_CONFIG_EPYC
-
-// To enable framework optimizations for zen3 platform
-// All zen3 specific code should be included in this macro
-#define BLIS_CONFIG_ZEN3
-
 #define BLIS_ENABLE_SMALL_MATRIX
 #define BLIS_ENABLE_SMALL_MATRIX_TRSM
-
 
 // This will select the threshold below which small matrix code will be called.
 #define BLIS_SMALL_MATRIX_THRES        700
 #define BLIS_SMALL_M_RECT_MATRIX_THRES 160
 #define BLIS_SMALL_K_RECT_MATRIX_THRES 128
 
-#define BLIS_SMALL_MATRIX_THRES_TRSM   32768 //128(128+128) => m*(m+n)
-#define BLIS_SMALL_MATRIX_A_THRES_TRSM  128
 #define BLIS_SMALL_MATRIX_A_THRES_M_SYRK    96
 #define BLIS_SMALL_MATRIX_A_THRES_N_SYRK    128
 
-#define BLIS_ENABLE_SMALL_MATRIX_ROME
-#define BLIS_SMALL_MATRIX_THRES_ROME       400
-
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_ALXB_ROME 80
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_ALXB_ROME_ROW_PANEL_M 40
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_ALXB_ROME_COLUMN_PANEL_M 1000
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_ALXB_ROME_COLUMN_PANEL_N 10
-
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XAUB_ROME 150
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XAUB_ROME_ROW_PANEL_M 5
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XAUB_ROME_COLUMN_PANEL_N 130
-
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XALTB_ROME 120
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XALTB_ROME_ROW_PANEL_M 10
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XALTB_ROME_ROW_PANEL_N 1200
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XALTB_ROME_SQUARE_M 30
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XALTB_ROME_SQUARE_N 280
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XALTB_ROME_COLUMN_PANEL_N 100
-
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XALB_ROME 110
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XALB_ROME_COL_PANEL_N 30
-
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XAUTB_ROME 120
-#define D_BLIS_SMALL_MATRIX_THRES_TRSM_XAUTB_ROME_COL_PANEL_N 50
-
-// For zen3 architecture we dynamically change block sizes
-// based on number of threads. These values were determined
-// by running benchmarks on zen3 platform.
-
-#ifdef BLIS_ENABLE_MULTITHREADING
-
-#define BLIS_GEMM_DYNAMIC_BLOCK_SIZE_UPDATE(cntx, rntm,  c) {           \
-                                                                        \
-    if (bli_is_double(bli_obj_dt(&c))) {                                \
-        const dim_t nt = rntm->num_threads;                             \
-        const dim_t m = bli_obj_length(&c);                             \
-        const dim_t n = bli_obj_width(&c);                              \
-                                                                        \
-        blksz_t blkszs[BLIS_NUM_BLKSZS];                                \
-        if (nt >= 32 && (m > 7800 || n > 7800)) {                       \
-            bli_blksz_init_easy(&blkszs[BLIS_MC],   144,    72,   144,    72 ); \
-            bli_blksz_init_easy(&blkszs[BLIS_KC],   256,   512,   256,   256 ); \
-            bli_blksz_init_easy(&blkszs[BLIS_NC],  4080,  4080,  4080,  4080 ); \
-                                                                        \
-            bli_cntx_set_blkszs(                                        \
-                BLIS_NAT, 3,                                            \
-                BLIS_NC, &blkszs[BLIS_NC], BLIS_NR,                     \
-                BLIS_KC, &blkszs[BLIS_KC], BLIS_KR,                     \
-                BLIS_MC, &blkszs[BLIS_MC], BLIS_MR,                     \
-                cntx);                                                  \
-        } else {                                                        \
-            bli_blksz_init_easy(&blkszs[BLIS_MC],   144,    72,   144,    72 ); \
-            bli_blksz_init_easy(&blkszs[BLIS_KC],   256,   256,   256,   256 ); \
-            bli_blksz_init_easy(&blkszs[BLIS_NC],  4080,  4080,  4080,  4080 ); \
-                                                                        \
-            bli_cntx_set_blkszs(                                        \
-                BLIS_NAT, 3,                                            \
-                BLIS_NC, &blkszs[BLIS_NC], BLIS_NR,                     \
-                BLIS_KC, &blkszs[BLIS_KC], BLIS_KR,                     \
-                BLIS_MC, &blkszs[BLIS_MC], BLIS_MR,                     \
-                cntx);                                                  \
-        }                                                               \
-    }                                                                   \
-}
-#else
-#define BLIS_GEMM_DYNAMIC_BLOCK_SIZE_UPDATE(cntx, rntm, c) {}
-#endif
+//#define BLIS_ENABLE_FAST_MATH
 
 #endif

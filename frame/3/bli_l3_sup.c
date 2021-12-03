@@ -46,7 +46,6 @@ err_t bli_gemmsup
      )
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_2);
-//  AOCL_DTL_LOG_GEMM_INPUTS(AOCL_DTL_LEVEL_TRACE_2, alpha, a, b, beta, c);
 
     // Return early if small matrix handling is disabled at configure-time.
     #ifdef BLIS_DISABLE_SUP_HANDLING
@@ -56,10 +55,10 @@ err_t bli_gemmsup
 
     // Return early if this is a mixed-datatype computation.
     if ( bli_obj_dt( c ) != bli_obj_dt( a ) ||
-         bli_obj_dt( c ) != bli_obj_dt( b ) ||
-         bli_obj_comp_prec( c ) != bli_obj_prec( c ) ) {
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support Mixed datatypes.");
-        return BLIS_FAILURE;
+	 bli_obj_dt( c ) != bli_obj_dt( b ) ||
+	 bli_obj_comp_prec( c ) != bli_obj_prec( c ) ) {
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support Mixed datatypes.");
+	return BLIS_FAILURE;
     }
 
 
@@ -67,12 +66,10 @@ err_t bli_gemmsup
 
     /*General stride is not yet supported in sup*/
     if(BLIS_XXX==stor_id) {
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support general stride.");
-        return BLIS_FAILURE;
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support general stride.");
+	return BLIS_FAILURE;
     }
 
-    const dim_t m  = bli_obj_length( c );
-    const dim_t n  = bli_obj_width( c );
     trans_t transa = bli_obj_conjtrans_status( a );
     trans_t transb = bli_obj_conjtrans_status( b );
 
@@ -82,9 +79,9 @@ err_t bli_gemmsup
     || ((transa == BLIS_CONJ_NO_TRANSPOSE) || (transa == BLIS_CONJ_TRANSPOSE))
     || ((transb == BLIS_CONJ_NO_TRANSPOSE) || (transb == BLIS_CONJ_TRANSPOSE))
     )){
-        //printf(" gemmsup: Returning with for un-supported storage types and conjugate property in cgemmsup \n");
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for cgemm");
-        return BLIS_FAILURE;
+	//printf(" gemmsup: Returning with for un-supported storage types and conjugate property in cgemmsup \n");
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for cgemm");
+	return BLIS_FAILURE;
     }
 
     //Don't use sup for currently unsupported storage types  in zgemmsup
@@ -93,9 +90,9 @@ err_t bli_gemmsup
     || ((transa == BLIS_CONJ_NO_TRANSPOSE) || (transa == BLIS_CONJ_TRANSPOSE))
     || ((transb == BLIS_CONJ_NO_TRANSPOSE) || (transb == BLIS_CONJ_TRANSPOSE))
     )){
-        //printf(" gemmsup: Returning with for un-supported storage types and conjugate property in zgemmsup \n");
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for zgemm.");
-        return BLIS_FAILURE;
+	//printf(" gemmsup: Returning with for un-supported storage types and conjugate property in zgemmsup \n");
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for zgemm.");
+	return BLIS_FAILURE;
     }
 
 
@@ -104,30 +101,14 @@ err_t bli_gemmsup
     // that function assumes the context pointer is valid.
     if ( cntx == NULL ) cntx = bli_gks_query_cntx();
 
-    // Return early if a microkernel preference-induced transposition would
-    // have been performed and shifted the dimensions outside of the space
-    // of sup-handled problems.
-    if ( bli_cntx_l3_vir_ukr_dislikes_storage_of( c, BLIS_GEMM_UKR, cntx ) )
-    {
-        const num_t dt = bli_obj_dt( c );
-        const dim_t k  = bli_obj_width_after_trans( a );
+    thresh_func_ft func_fp;
 
-        // Pass in m and n reversed, which simulates a transposition of the
-        // entire operation pursuant to the microkernel storage preference.
-        if ( !bli_cntx_l3_sup_thresh_is_met( dt, n, m, k, cntx ) ) {
-            AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Trasposition results in sizes beyond SUP thresholds.");
-            return BLIS_FAILURE;
-    }
-    }
-    else // ukr_prefers_storage_of( c, ... )
-    {
-        const num_t dt = bli_obj_dt( c );
-        const dim_t k  = bli_obj_width_after_trans( a );
+    func_fp = bli_cntx_get_l3_thresh_func(BLIS_GEMM, cntx);
 
-        if ( !bli_cntx_l3_sup_thresh_is_met( dt, m, n, k, cntx ) ) {
+    // Return early if the sizes are beyond SUP thresholds
+        if ( !func_fp( a, b, c, cntx ) ) {
             AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Sizes are beyond SUP thresholds.");
             return BLIS_FAILURE;
-    }
     }
 
     // Initialize a local runtime with global settings if necessary. Note
@@ -146,7 +127,7 @@ const dim_t tn = bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_NT, cntx );
 const dim_t tk = bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_KT, cntx );
 
 printf( "dims: %d %d %d (threshs: %d %d %d)\n",
-        (int)m, (int)n, (int)k, (int)tm, (int)tn, (int)tk );
+	(int)m, (int)n, (int)k, (int)tm, (int)tn, (int)tk );
 #endif
 
     // We've now ruled out the following two possibilities:
@@ -177,7 +158,6 @@ printf( "dims: %d %d %d (threshs: %d %d %d)\n",
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_2);
 }
 
-
 err_t bli_gemmtsup
      (
        obj_t*  alpha,
@@ -200,10 +180,10 @@ err_t bli_gemmtsup
 
     // Return early if this is a mixed-datatype computation.
     if ( bli_obj_dt( c ) != bli_obj_dt( a ) ||
-         bli_obj_dt( c ) != bli_obj_dt( b ) ||
-         bli_obj_comp_prec( c ) != bli_obj_prec( c ) ) {
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support Mixed datatypes.");
-        return BLIS_FAILURE;
+	 bli_obj_dt( c ) != bli_obj_dt( b ) ||
+	 bli_obj_comp_prec( c ) != bli_obj_prec( c ) ) {
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support Mixed datatypes.");
+	return BLIS_FAILURE;
     }
 
 
@@ -211,11 +191,10 @@ err_t bli_gemmtsup
 
     /*General stride is not yet supported in sup*/
     if(BLIS_XXX==stor_id) {
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support general stride.");
-        return BLIS_FAILURE;
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support general stride.");
+	return BLIS_FAILURE;
     }
 
-    const dim_t n  = bli_obj_width( c );
     trans_t transa = bli_obj_conjtrans_status( a );
     trans_t transb = bli_obj_conjtrans_status( b );
 
@@ -225,9 +204,9 @@ err_t bli_gemmtsup
     || ((transa == BLIS_CONJ_NO_TRANSPOSE) || (transa == BLIS_CONJ_TRANSPOSE))
     || ((transb == BLIS_CONJ_NO_TRANSPOSE) || (transb == BLIS_CONJ_TRANSPOSE))
     )){
-        //printf(" gemmtsup: Returning with for un-supported storage types and conjugate property in cgemmtsup \n");
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for cgemmt");
-        return BLIS_FAILURE;
+	//printf(" gemmtsup: Returning with for un-supported storage types and conjugate property in cgemmtsup \n");
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for cgemmt");
+	return BLIS_FAILURE;
     }
 
     //Don't use sup for currently unsupported storage types  in zgemmsup
@@ -236,9 +215,9 @@ err_t bli_gemmtsup
     || ((transa == BLIS_CONJ_NO_TRANSPOSE) || (transa == BLIS_CONJ_TRANSPOSE))
     || ((transb == BLIS_CONJ_NO_TRANSPOSE) || (transb == BLIS_CONJ_TRANSPOSE))
     )){
-        //printf(" gemmtsup: Returning with for un-supported storage types and conjugate property in zgemmtsup \n");
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for zgemmt.");
-        return BLIS_FAILURE;
+	//printf(" gemmtsup: Returning with for un-supported storage types and conjugate property in zgemmtsup \n");
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for zgemmt.");
+	return BLIS_FAILURE;
     }
 
 
@@ -247,13 +226,14 @@ err_t bli_gemmtsup
     // that function assumes the context pointer is valid.
     if ( cntx == NULL ) cntx = bli_gks_query_cntx();
 
-    num_t dt = bli_obj_dt(c);
-    dim_t k = bli_obj_width_after_trans( a );
+    thresh_func_ft func_fp;
 
-    if ( !bli_cntx_gemmtsup_thresh_is_met( dt, n, k, cntx ) )
+    func_fp = bli_cntx_get_l3_thresh_func(BLIS_GEMMT, cntx);
+
+    if ( !func_fp( a, b, c, cntx ) )
     {
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Sizes beyond SUP thresholds.");
-        return BLIS_FAILURE;
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Sizes beyond SUP thresholds.");
+	return BLIS_FAILURE;
     }
 
     // Initialize a local runtime with global settings if necessary. Note
@@ -261,6 +241,14 @@ err_t bli_gemmtsup
     rntm_t rntm_l;
     if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); rntm = &rntm_l; }
     else                { rntm_l = *rntm;                       rntm = &rntm_l; }
+
+#ifdef AOCL_DYNAMIC
+	// If dynamic-threading is enabled, calculate optimum number
+	// of threads and update in rntm
+
+    // Limit the number of thread for smaller sizes.
+    bli_nthreads_optimum( a, b, c, BLIS_GEMMT, rntm );
+#endif
 
 #if 0
 const num_t dt = bli_obj_dt( c );
@@ -272,7 +260,7 @@ const dim_t tn = bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_NT, cntx );
 const dim_t tk = bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_KT, cntx );
 
 printf( "dims: %d %d %d (threshs: %d %d %d)\n",
-        (int)m, (int)n, (int)k, (int)tm, (int)tn, (int)tk );
+	(int)m, (int)n, (int)k, (int)tm, (int)tn, (int)tk );
 #endif
 
     // We've now ruled out the following two possibilities:
@@ -323,10 +311,10 @@ err_t bli_syrksup
 
     // Return early if this is a mixed-datatype computation.
     if ( bli_obj_dt( c ) != bli_obj_dt( a ) ||
-         bli_obj_comp_prec( c ) != bli_obj_prec( c ) )
+	 bli_obj_comp_prec( c ) != bli_obj_prec( c ) )
     {
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support Mixed datatypes.");
-        return BLIS_FAILURE;
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support Mixed datatypes.");
+	return BLIS_FAILURE;
     }
 
     obj_t at_local;
@@ -339,11 +327,10 @@ err_t bli_syrksup
 
     /*General stride is not yet supported in sup*/
     if(BLIS_XXX==stor_id) {
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support general stride.");
-        return BLIS_FAILURE;
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP doesn't support general stride.");
+	return BLIS_FAILURE;
     }
 
-    const dim_t n  = bli_obj_width( c );
     trans_t transa = bli_obj_conjtrans_status( a );
 
     //Don't use sup for currently unsupported storage types in cgemmsup
@@ -351,9 +338,9 @@ err_t bli_syrksup
     (((stor_id == BLIS_RRC)||(stor_id == BLIS_CRC))
     || ((transa == BLIS_CONJ_NO_TRANSPOSE) || (transa == BLIS_CONJ_TRANSPOSE))
     )){
-        //printf(" syrksup: Returning with for un-supported storage types and conjugate property in csyrksup \n");
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for csyrk");
-        return BLIS_FAILURE;
+	//printf(" syrksup: Returning with for un-supported storage types and conjugate property in csyrksup \n");
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for csyrk");
+	return BLIS_FAILURE;
     }
 
     //Don't use sup for currently unsupported storage types  in zgemmsup
@@ -361,9 +348,9 @@ err_t bli_syrksup
     (((stor_id == BLIS_RRC)||(stor_id == BLIS_CRC))
     || ((transa == BLIS_CONJ_NO_TRANSPOSE) || (transa == BLIS_CONJ_TRANSPOSE))
     )){
-        //printf(" syrksup: Returning with for un-supported storage types and conjugate property in zsyrksup \n");
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for zsyrk.");
-        return BLIS_FAILURE;
+	//printf(" syrksup: Returning with for un-supported storage types and conjugate property in zsyrksup \n");
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for zsyrk.");
+	return BLIS_FAILURE;
     }
 
 
@@ -372,13 +359,11 @@ err_t bli_syrksup
     // that function assumes the context pointer is valid.
     if ( cntx == NULL ) cntx = bli_gks_query_cntx();
 
-    num_t dt = bli_obj_dt( c );
-    dim_t k = bli_obj_width_after_trans( a );
-
-    if( !bli_cntx_syrksup_thresh_is_met( dt, n, k, stor_id, cntx))
+    thresh_func_ft func_fp = bli_cntx_get_l3_thresh_func(BLIS_SYRK, cntx);
+    if( !func_fp( a, &at_local, c, cntx))
     {
-        AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - sizes beyond SUP thresholds.");
-        return BLIS_FAILURE;
+	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - sizes beyond SUP thresholds.");
+	return BLIS_FAILURE;
     }
 
     // Initialize a local runtime with global settings if necessary. Note
@@ -386,6 +371,13 @@ err_t bli_syrksup
     rntm_t rntm_l;
     if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); rntm = &rntm_l; }
     else                { rntm_l = *rntm;                       rntm = &rntm_l; }
+
+#ifdef AOCL_DYNAMIC // Will change this name later to BLIS_SMART_THREAD
+  // If dynamic-threading is enabled, calculate optimum
+  // number of threads.
+  // rntm will be updated with optimum number of threads.
+  bli_nthreads_optimum( a, &at_local, c, BLIS_SYRK, rntm );
+#endif
 
 #if 0
 const num_t dt = bli_obj_dt( c );
@@ -397,7 +389,7 @@ const dim_t tn = bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_NT, cntx );
 const dim_t tk = bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_KT, cntx );
 
 printf( "dims: %d %d %d (threshs: %d %d %d)\n",
-        (int)m, (int)n, (int)k, (int)tm, (int)tn, (int)tk );
+	(int)m, (int)n, (int)k, (int)tm, (int)tn, (int)tk );
 #endif
 
     // We've now ruled out the following two possibilities:
@@ -427,5 +419,3 @@ printf( "dims: %d %d %d (threshs: %d %d %d)\n",
 
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_2);
 }
-
-

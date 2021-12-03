@@ -7,12 +7,13 @@
  *
  * (Heavily hacked down from the original)
  *
- * Copyright (C) 2020, Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2020 - 2021, Advanced Micro Devices, Inc. All rights reserved.
  *
  */
 
 #ifndef CBLAS_F77_H
 #define CBLAS_F77_H
+
 #if defined(BLIS_ENABLE_NO_UNDERSCORE_API)
  /*
   * Level 1 BLAS
@@ -199,6 +200,8 @@
 #define F77_dgemm_batch  dgemm_batch
 #define F77_cgemm_batch  cgemm_batch
 #define F77_zgemm_batch  zgemm_batch
+
+// (BLIS_ENABLE_NO_UNDERSCORE_API) ends
 #else
 /*
  * Level 1 BLAS
