@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019 - 21, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 22, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -804,9 +804,7 @@ INSERT_GENTFUNC_BLAS_SC( gemm, gemm )
 INSERT_GENTFUNC_BLAS( gemm,gemm )
 #endif
 
-// Observed a regression in dgemm with this function addition.
-// Disabling temporarily.
-#if 0
+#if 1
 void dzgemm_
      (
        const f77_char* transa,
@@ -883,7 +881,7 @@ void dzgemm_
 	bli_obj_init_finish_1x1( dt, (dcomplex*)alpha, &alphao );
 	bli_obj_init_finish_1x1( dt, (dcomplex*)beta,  &betao  );
 
-	bli_obj_init_finish( dt_a, m0_a, n0_a, (dcomplex*)a, rs_a, cs_a, &ao );
+	bli_obj_init_finish( dt_a, m0_a, n0_a, (double*)a, rs_a, cs_a, &ao );
 	bli_obj_init_finish( dt, m0_b, n0_b, (dcomplex*)b, rs_b, cs_b, &bo );
 	bli_obj_init_finish( dt, m0,   n0,   (dcomplex*)c, rs_c, cs_c, &co );
 
