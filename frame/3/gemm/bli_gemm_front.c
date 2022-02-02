@@ -174,10 +174,6 @@ void bli_gemm_front
 		bli_obj_swap_pack_schemas( &a_local, &b_local );
 	}
 	
-	dim_t m_dim_local = bli_obj_length( &c_local );
-	dim_t n_dim_local = bli_obj_width( &c_local );
-	dim_t k_dim_local = bli_obj_width( &a_local );
-	
 	// Parse and interpret the contents of the rntm_t object to properly
 	// set the ways of parallelism for each loop, and then make any
 	// additional modifications necessary for the current operation.
@@ -185,9 +181,9 @@ void bli_gemm_front
 	(
 	  BLIS_GEMM,
 	  BLIS_LEFT, // ignored for gemm/hemm/symm
-	  m_dim_local,
-	  n_dim_local,
-	  k_dim_local,
+	  bli_obj_length( &c_local ),
+	  bli_obj_width( &c_local ),
+	  bli_obj_width_after_trans( &a_local ),
 	  rntm
 	);
 
