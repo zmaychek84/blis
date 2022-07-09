@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2021, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021 - 2022, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -49,8 +49,22 @@ void bli_rntm_init_from_global( rntm_t* rntm )
 	// We must ensure that global_rntm has been initialized.
 	bli_init_once();
 
+	// Fetch the number of threads based on the order of precedence,
+	// or the latest value of number of threads,
+	// if set by the Application using omp_set_num_threads(nt) API.
+#ifdef BLIS_ENABLE_OPENMP
+	dim_t n_threads = omp_get_max_threads();
+#endif
+
 	// Acquire the mutex protecting global_rntm.
 	bli_pthread_mutex_lock( &global_rntm_mutex );
+
+	// Update the latest value of number of threads into global rntm structure,
+	// before copying into local rntm structure. This updated value will be
+	// used in the subsequent parallel regions.
+#ifdef BLIS_ENABLE_OPENMP
+	global_rntm.num_threads = n_threads;
+#endif
 
 	*rntm = global_rntm;
 
@@ -61,14 +75,14 @@ void bli_rntm_init_from_global( rntm_t* rntm )
 // -----------------------------------------------------------------------------
 
 void bli_rntm_set_ways_for_op
-     (
-       opid_t  l3_op,
-       side_t  side,
-       dim_t   m,
-       dim_t   n,
-       dim_t   k,
-       rntm_t* rntm
-     )
+	 (
+	   opid_t  l3_op,
+	   side_t  side,
+	   dim_t   m,
+	   dim_t   n,
+	   dim_t   k,
+	   rntm_t* rntm
+	 )
 {
 	// Set the number of ways for each loop, if needed, depending on what
 	// kind of information is already stored in the rntm_t object.
@@ -81,7 +95,7 @@ bli_rntm_print( rntm );
 
 	// Now modify the number of ways, if necessary, based on the operation.
 	if ( l3_op == BLIS_TRMM ||
-	     l3_op == BLIS_TRSM )
+		 l3_op == BLIS_TRSM )
 	{
 		dim_t jc = bli_rntm_jc_ways( rntm );
 		dim_t pc = bli_rntm_pc_ways( rntm );
@@ -155,12 +169,12 @@ bli_rntm_print( rntm );
 }
 
 void bli_rntm_set_ways_from_rntm
-     (
-       dim_t   m,
-       dim_t   n,
-       dim_t   k,
-       rntm_t* rntm
-     )
+	 (
+	   dim_t   m,
+	   dim_t   n,
+	   dim_t   k,
+	   rntm_t* rntm
+	 )
 {
 	dim_t nt = bli_rntm_num_threads( rntm );
 
@@ -205,6 +219,11 @@ void bli_rntm_set_ways_from_rntm
 		if ( ic < 1 ) ic = 1;
 		if ( jr < 1 ) jr = 1;
 		if ( ir < 1 ) ir = 1;
+
+		// auto factorization is to be disabled if BLIS_IC_NT/BLIS_JC_NT env
+		// variables are set irrespective of whether num_threads is modified
+		// or not. This ensures that preset factorization is prioritized.
+		auto_factor = FALSE;
 	}
 
 	// Now we use the values of nt_set and ways_set to determine how to
@@ -238,7 +257,7 @@ void bli_rntm_set_ways_from_rntm
 		pc = 1;
 
 		bli_thread_partition_2x2( nt, m*BLIS_THREAD_RATIO_M,
-					      n*BLIS_THREAD_RATIO_N, &ic, &jc );
+								  n*BLIS_THREAD_RATIO_N, &ic, &jc );
 
 		for ( ir = BLIS_THREAD_MAX_IR ; ir > 1 ; ir-- )
 		{
@@ -276,12 +295,12 @@ void bli_rntm_set_ways_from_rntm
 }
 
 void bli_rntm_set_ways_from_rntm_sup
-     (
-       dim_t   m,
-       dim_t   n,
-       dim_t   k,
-       rntm_t* rntm
-     )
+	 (
+	   dim_t   m,
+	   dim_t   n,
+	   dim_t   k,
+	   rntm_t* rntm
+	 )
 {
 	dim_t nt = bli_rntm_num_threads( rntm );
 
@@ -326,6 +345,11 @@ void bli_rntm_set_ways_from_rntm_sup
 		if ( ic < 1 ) ic = 1;
 		if ( jr < 1 ) jr = 1;
 		if ( ir < 1 ) ir = 1;
+
+		// auto factorization is to be disabled if BLIS_IC_NT/BLIS_JC_NT env
+		// variables are set irrespective of whether num_threads is modified
+		// or not. This ensures that preset factorization is prioritized.
+		auto_factor = FALSE;
 	}
 
 	// Now we use the values of nt_set and ways_set to determine how to
@@ -359,9 +383,9 @@ void bli_rntm_set_ways_from_rntm_sup
 		pc = 1;
 
 		//bli_thread_partition_2x2( nt, m*BLIS_THREAD_SUP_RATIO_M,
-		//                              n*BLIS_THREAD_SUP_RATIO_N, &ic, &jc );
+		//							  n*BLIS_THREAD_SUP_RATIO_N, &ic, &jc );
 		bli_thread_partition_2x2( nt, m,
-					      n, &ic, &jc );
+								  n, &ic, &jc );
 
 //printf( "bli_rntm_set_ways_from_rntm_sup(): jc = %d  ic = %d\n", (int)jc, (int)ic );
 #if 0
@@ -406,9 +430,9 @@ void bli_rntm_set_ways_from_rntm_sup
 }
 
 void bli_rntm_print
-     (
-       rntm_t* rntm
-     )
+	 (
+	   rntm_t* rntm
+	 )
 {
 	dim_t af = bli_rntm_auto_factor( rntm );
 
@@ -420,35 +444,35 @@ void bli_rntm_print
 	dim_t jr = bli_rntm_jr_ways( rntm );
 	dim_t ir = bli_rntm_ir_ways( rntm );
 
-	printf( "rntm contents    nt  jc  pc  ic  jr  ir\n" );
+	printf( "rntm contents	nt  jc  pc  ic  jr  ir\n" );
 	printf( "autofac? %1d | %4d%4d%4d%4d%4d%4d\n", (int)af,
-						       (int)nt, (int)jc, (int)pc,
-						       (int)ic, (int)jr, (int)ir );
+							   (int)nt, (int)jc, (int)pc,
+							   (int)ic, (int)jr, (int)ir );
 }
 
 // -----------------------------------------------------------------------------
 
 dim_t bli_rntm_calc_num_threads_in
-     (
-       bszid_t* restrict bszid_cur,
-       rntm_t*  restrict rntm
-     )
+	 (
+	   bszid_t* restrict bszid_cur,
+	   rntm_t*  restrict rntm
+	 )
 {
-	/*                                     // bp algorithm:
-	   bszid_t bszids[7] = { BLIS_NC,      // level 0: 5th loop
-				 BLIS_KC,      // level 1: 4th loop
+	/*									 // bp algorithm:
+	   bszid_t bszids[7] = { BLIS_NC,	  // level 0: 5th loop
+				 BLIS_KC,	  // level 1: 4th loop
 				 BLIS_NO_PART, // level 2: pack B
-				 BLIS_MC,      // level 3: 3rd loop
+				 BLIS_MC,	  // level 3: 3rd loop
 				 BLIS_NO_PART, // level 4: pack A
-				 BLIS_NR,      // level 5: 2nd loop
-				 BLIS_MR,      // level 6: 1st loop
-				 BLIS_KR       // level 7: ukr loop
+				 BLIS_NR,	  // level 5: 2nd loop
+				 BLIS_MR,	  // level 6: 1st loop
+				 BLIS_KR	   // level 7: ukr loop
 
-				 ...           // pb algorithm:
-				 BLIS_NR,      // level 5: 2nd loop
-				 BLIS_MR,      // level 6: 1st loop
-				 BLIS_KR       // level 7: ukr loop
-			       }; */
+				 ...		   // pb algorithm:
+				 BLIS_NR,	  // level 5: 2nd loop
+				 BLIS_MR,	  // level 6: 1st loop
+				 BLIS_KR	   // level 7: ukr loop
+				   }; */
 	dim_t n_threads_in = 1;
 
 	// Starting with the current element of the bszids array (pointed
@@ -477,7 +501,7 @@ dim_t bli_rntm_calc_num_threads_in
 	for ( ; *bszid_cur != BLIS_KR; bszid_cur++ )
 	{
 		const bszid_t bszid = *bszid_cur;
-		dim_t         cur_way = 1;
+		dim_t		cur_way = 1;
 
 		// We assume bszid is in {NC,KC,MC,NR,MR,KR} if it is not
 		// BLIS_NO_PART.
@@ -498,12 +522,12 @@ dim_t bli_rntm_calc_num_threads_in
 //application is available in global_rntm data structure.
 
 void bli_nthreads_optimum(
-		           obj_t*  a,
-		           obj_t*  b,
-		           obj_t*  c,
-		           opid_t  family,
-		           rntm_t* rntm
-		         )
+				   obj_t*  a,
+				   obj_t*  b,
+				   obj_t*  c,
+				   opid_t  family,
+				   rntm_t* rntm
+				 )
 {
 #ifndef BLIS_ENABLE_MULTITHREADING
 	return;
@@ -517,100 +541,147 @@ void bli_nthreads_optimum(
 
 	if( family == BLIS_GEMM && bli_obj_is_double(c))
 	{
-
 		dim_t m = bli_obj_length(c);
 		dim_t n = bli_obj_width(c);
 		dim_t k = bli_obj_width_after_trans(a);
 
-
 		if( k >= 128)
 		{
-			if(n <= 15) n_threads_ideal = 8;
-			else	    n_threads_ideal = 16;
+			if(n <= 15)
+			{
+				if(m < 128) 	 n_threads_ideal = 8;
+				else if(m < 256) n_threads_ideal = 16;
+				else if(m < 512) n_threads_ideal = 32;
+				else 			 n_threads_ideal = 64;
+			}else if (n <= 64)
+			{
+				if(m < 128) 	 n_threads_ideal = 16;
+				else if(m < 256) n_threads_ideal = 32;
+				else 			 n_threads_ideal = 64;
+			}else{
+				if(m < 256) n_threads_ideal = 32;
+				else 		n_threads_ideal = 64;
+            }
 		}
 		else
-                  {
-                        if(m > 10000)
-                        {
+		{
+			if(m > 10000)
+			{
+				// current logic is only limiting threads to
+				// less or equal to 64 - limits performance.
+				// To deal with larger matrix sizes we need to use
+				// large number of threads to improve performance
+				// Need to derive this upperTH - and
+				// if matrix -sizes are larger and user wants
+				// to use higher number of threads - that should be allowed.
 
-			  /* if(n >= 96) n_threads_ideal = 16; */
-                          /* else       n_threads_ideal = 8; */
-
-                          // current logic is only limiting threads to
-			  //  less or equal to 64 - limits performance.
-
-			  // To deal with larger matrix sizes we need to use
-			  // large number of threads to improve performance
-
-			  // Need to derive this upperTH - and
-			  // if matrix -sizes are larger and user wants
-			  // to use higher number of threads - that should be allowed.
-
-                          // if (n > UpperTH) n_threads_ideal = n_threads;
-                              if (n > 200 )       n_threads_ideal = 64;
-                              else if ( n > 120 ) n_threads_ideal = 32;
-                              else if ( n > 40  ) n_threads_ideal = 16;
-                              else if ( n > 10  ) n_threads_ideal = 8;
-                              else /* if ( n <= 10) */ n_threads_ideal = 4;
-                        }
-                        else if( m > 1000)
-                          {
-                            if (n <= 10) n_threads_ideal = 4;
-                            else if ( n <= 40  ) n_threads_ideal = 8;
-                            else if ( n <= 120 ) n_threads_ideal = 16;
-                            else if ( n <= 200 ) n_threads_ideal = 32;
-                            else                 n_threads_ideal = 64;
-
-                            /* if(n < 15) n_threads_ideal = 4; */
-                            /* else       n_threads_ideal = 8; */
-                          }
-                    else if(m > 210)
-		      {
-			if(n < 10) n_threads_ideal = 1;
-			else	   n_threads_ideal = 4;
-		      }
-		    else if(m > 150)
-		      {
-			if(n < 15) n_threads_ideal = 1;
-			else	   n_threads_ideal = 4;
-		      }
-		    else
-		      {
-			if(n < 20) n_threads_ideal = 1;
-			else       n_threads_ideal = 4;
-		      }
+				// if (n > UpperTH) n_threads_ideal = n_threads;
+				if (n > 200 )	    n_threads_ideal = 64;
+				else if ( n > 120 ) n_threads_ideal = 32;
+				else if ( n > 40  ) n_threads_ideal = 16;
+				else if ( n > 10  ) n_threads_ideal = 8;
+				else 				n_threads_ideal = 4;
+			}
+			else if( m > 1000)
+			{
+				if (n <= 10) 		  n_threads_ideal = 4;
+				else if ( n <= 512 )  n_threads_ideal = 8;
+				else if ( n <= 1024 ) n_threads_ideal = 16;
+				else if ( n <= 2048 ) n_threads_ideal = 32;
+				else 				  n_threads_ideal = 64;
+			}
+			else if(m > 210)
+			{
+				if(n < 10)  	   n_threads_ideal = 4;
+				else if(n <= 512)  n_threads_ideal = 8;
+				else if(n <= 1024) n_threads_ideal = 16;
+				else if(n <= 2048) n_threads_ideal = 32;
+				else 			   n_threads_ideal = 64;
+			}
+			else if(m > 150)
+			{
+				if(n < 10)  	   n_threads_ideal = 2;
+				else if(n <= 512)  n_threads_ideal = 8;
+				else if(n <= 1024) n_threads_ideal = 16;
+				else if(n <= 2048) n_threads_ideal = 32;
+				else 			   n_threads_ideal = 64;
+			}
+			else if( ( m < 34) && (k < 68) && ( n < 34))
+			{
+				n_threads_ideal = 1;
+			}
+			else
+			{	//(m<150 && k<128)
+				if(n < 20) n_threads_ideal = 1;
+				if(n < 64) n_threads_ideal = 4;
+				else	   n_threads_ideal = 8;
+			}
 		  }
+	}
+	else if( family == BLIS_GEMM && bli_obj_is_dcomplex(c))
+	{
+		dim_t m = bli_obj_length(c);
+		dim_t n = bli_obj_width(c);
+		dim_t k = bli_obj_width_after_trans(a);
 
+		if((m<=128 || n<=128 || k<=128) && ((m+n+k) <= 400) )
+		{
+			n_threads_ideal = 8;
+		}
+		else if((m<=256 || n<=256 || k<=256) && ((m+n+k) <= 800) )
+		{
+			n_threads_ideal = 16;
+		}
 	}
 	else if( family == BLIS_SYRK && bli_obj_is_double(c))
 	{
-	  dim_t n = bli_obj_length(c);
-	  dim_t k = bli_obj_width_after_trans(a);
+		dim_t n = bli_obj_length(c);
+		dim_t k = bli_obj_width_after_trans(a);
 
-	  if( (( n <= 10) && ( k < 700))  ||
-	      (( n <= 20) && ( k <= 190)) ||
-	      (( n <= 40) && ( k <= 80))  ||
-	      (( n <= 50) && ( k <= 40))  ||
-	      (( n <= 60) && ( k <= 20))
-	      )
-	    n_threads_ideal = 1;
-	  else
-	    n_threads_ideal = n_threads;
+		if( (( n <= 10) && ( k < 700))  ||
+			(( n <= 20) && ( k <= 190)) ||
+			(( n <= 40) && ( k <= 80))  ||
+			(( n <= 50) && ( k <= 40))  ||
+			(( n <= 60) && ( k <= 20))
+		)
+			n_threads_ideal = 1;
+		else
+			n_threads_ideal = n_threads;
 	}
-	else if( family == BLIS_TRSM && bli_obj_is_double(c))
+	else if( family == BLIS_TRSM && bli_obj_is_double(c) )
 	{
 	  dim_t m = bli_obj_length(c);
 	  dim_t n = bli_obj_width(c);
 
-	  if(m<=512 && n<=512)
-	    n_threads_ideal = 4;
+#ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
+		if ( (m <= 300) && (n <= 300) )
+			n_threads_ideal = 8;
+		else if ( (m <= 400) && (n <= 400) )
+			n_threads_ideal = 16;
+		  else if ( (m <= 900) && (n <= 900) )
+			n_threads_ideal = 32;
+#else
+		if ( (m <= 512) && (n <= 512) )
+			n_threads_ideal = 4;
+#endif
+	}
+	else if( family == BLIS_TRSM && bli_obj_is_dcomplex(c))
+	{
+		dim_t m = bli_obj_length(c);
+		dim_t n = bli_obj_width(c);
+
+		if((m>=64) && (m<=256) && (n>=64) && (n<=256))
+		{
+			n_threads_ideal = 8;
+		}
 	}
 	else if( family == BLIS_GEMMT && bli_obj_is_double(c)  )
 	{
 		dim_t n = bli_obj_length(c);
 		dim_t k = bli_obj_width_after_trans(a);
 		dim_t product = (n*k)>>4; /* product is derived based on n and k */
-		//    Limit the number thread for smaller sizes:
+
+		//Limit the number thread for smaller sizes:
 		if(product <= 346)
 		{
 			n_threads_ideal = 1;
@@ -621,6 +692,99 @@ void bli_nthreads_optimum(
 			n_threads_ideal = n_threads;
 		}
 	}
+	else if( family == BLIS_TRMM && bli_obj_is_double(c))
+	{
+		dim_t m = bli_obj_length(c);
+		dim_t n = bli_obj_width(c);
+
+		if(( n <= 32) && (m <= 32))
+		{
+			n_threads_ideal=1;
+		/*If Side is Left*/
+		}else
+		{
+			//Left Side
+			if(bli_obj_is_triangular(a))
+			{
+				if((m < 300))
+				{
+					if (n < 1000)
+					{
+						n_threads_ideal=8;
+					}else if (n < 2000)
+					{
+						n_threads_ideal=16;
+					}else if (n < 3000)
+					{
+						n_threads_ideal=32;
+					}else
+					{
+						n_threads_ideal=64;
+					}
+				}else if(m < 600)
+				{
+					if (n < 2000)
+					{
+						n_threads_ideal=16;
+					}else if (n < 3000)
+					{
+						n_threads_ideal=32;
+					}else
+					{
+						n_threads_ideal=64;
+					}
+				}else
+				{
+					if(n < 1000)
+					{
+						n_threads_ideal=32;
+					}else
+					{
+						n_threads_ideal=64;
+					}
+				}
+			}else//Right Side
+			{
+				if((n < 300))
+				{
+					if (m < 1000)
+					{
+						n_threads_ideal=8;
+					}else if (m < 2000)
+					{
+						n_threads_ideal=16;
+					}else if (m < 3000)
+					{
+						n_threads_ideal=32;
+					}else
+					{
+						n_threads_ideal=64;
+					}
+				}else if(n < 600)
+				{
+					if (m < 2000)
+					{
+						n_threads_ideal=16;
+					}else if (m < 3000)
+					{
+						n_threads_ideal=32;
+					}else
+					{
+						n_threads_ideal=64;
+					}
+				}else
+				{
+					if(m < 1000)
+					{
+						n_threads_ideal=32;
+					}else
+					{
+						n_threads_ideal=64;
+					}
+				}
+			}
+		}
+	}
 
 	dim_t n_threads_opt = bli_min(n_threads, n_threads_ideal);
 
@@ -629,5 +793,85 @@ void bli_nthreads_optimum(
 	bli_rntm_set_num_threads_only( n_threads_opt, rntm );
 
 	return;
+}
+
+// Calculates the optimum number of threads along with the factorization
+// (ic, jc) using m, n, k dimensions. This function modifies only the local
+// copy of rntm with optimum threads. Since global rntm remains unchanged the
+// num_threads set by application is available in global_rntm data structure.
+err_t bli_smart_threading_sup
+				(
+				 obj_t*  a,
+				 obj_t*  b,
+				 obj_t*  c,
+				 opid_t  family,
+				 rntm_t* rntm,
+				 cntx_t* cntx
+				)
+{
+	// By default smart threading should be disabled.
+	err_t ret_val = BLIS_FAILURE;
+
+#ifndef BLIS_ENABLE_MULTITHREADING
+	return ret_val;
+#endif
+
+	dim_t n_threads = bli_rntm_num_threads( rntm );
+
+	// For non-openmp based threading, n_threads could be -1.
+	if ( ( n_threads == -1 ) || ( n_threads == 1 ) ) return ret_val;
+
+	dim_t ic_way = bli_rntm_ic_ways( rntm );
+	dim_t jc_way = bli_rntm_jc_ways( rntm );
+
+	// Dont enable smart threading if the user supplied the factorization.
+	if( ( ic_way > 0 ) || ( jc_way > 0 ) ) return ret_val;
+
+	// Only supporting sgemm for now.
+	if ( ( family == BLIS_GEMM ) && bli_obj_is_float( c ) )
+	{
+		dim_t k = bli_obj_width_after_trans(a);
+		dim_t m = 0;
+		dim_t n = 0;
+
+		bool trans_A_for_kernel = FALSE;
+
+		const stor3_t stor_id = bli_obj_stor3_from_strides( c, a, b );
+		const bool is_rrr_rrc_rcr_crr = (
+										  stor_id == BLIS_RRR ||
+										  stor_id == BLIS_RRC ||
+										  stor_id == BLIS_RCR ||
+										  stor_id == BLIS_CRR
+										);
+
+		// The A and B matrices are swapped based on the storage type in
+		// var1n2m. Need to account for this when determining ic and jc
+		// based on m and n dimensions of A and B.
+		if ( is_rrr_rrc_rcr_crr )
+		{
+			m = bli_obj_length( c );
+			n = bli_obj_width( c );
+			trans_A_for_kernel = bli_obj_has_trans( a );
+		}
+		else
+		{
+			m = bli_obj_width( c );
+			n = bli_obj_length( c );
+			trans_A_for_kernel = bli_obj_has_trans( b );
+		}
+
+		// Take default path if transpose is enabled for A matrix.
+		if ( trans_A_for_kernel == FALSE )
+		{
+			// A successfull call to smart threading api implies smart
+			// factorization and possibly native -> SUP path conversion.
+			// Optimal thread selection is not supported yet.
+			ret_val = bli_gemm_smart_threading_sup( bli_obj_dt( c ),
+						bli_obj_elem_size( c ),
+						is_rrr_rrc_rcr_crr, m, n, k, n_threads,
+						cntx, rntm );
+		}
+	}
+	return ret_val;
 }
 #endif // AOCL_DYNAMIC

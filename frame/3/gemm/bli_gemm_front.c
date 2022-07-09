@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2021, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2022, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -73,22 +73,6 @@ void bli_gemm_front
 		bli_scalm( beta, c );
 		return;
 	}
-
-#ifdef BLIS_ENABLE_SMALL_MATRIX
-	// Only handle small problems separately for homogeneous datatypes.
-	if ( bli_obj_dt( a ) == bli_obj_dt( b ) &&
-	     bli_obj_dt( a ) == bli_obj_dt( c ) &&
-	     bli_obj_comp_prec( c ) == bli_obj_prec( c ) )
-	{
-		err_t status = bli_gemm_small( alpha, a, b, beta, c, cntx, cntl );
-
-		if ( status == BLIS_SUCCESS )
-		{
-			AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_3);
-			return;
-		}
-	}
-#endif
 
 	// Alias A, B, and C in case we need to apply transformations.
 	bli_obj_alias_to( a, &a_local );
@@ -174,23 +158,6 @@ void bli_gemm_front
 		bli_obj_swap_pack_schemas( &a_local, &b_local );
 	}
 	
-	dim_t m_dim_local = bli_obj_length( &c_local );
-	dim_t n_dim_local = bli_obj_width( &c_local );
-	dim_t k_dim_local = bli_obj_width( &a_local );
-#ifdef BLIS_CONFIG_EPYC
-	// Regression observed in sgemm native path in cases where m >= 4 * n 
-	// after BLIS_THREAD_RATIO_M updated from 2 to 1 as part of commit 
-	// 11dfc176a3c422729f453f6c23204cf023e9954d. Temporary workaround for
-	// the issue.
-	if( bli_obj_is_float( &c_local ) &&
-	    ( n_dim_local >= 1024 ) &&
-	    ( k_dim_local >= 1024 ) &&
-	    ( m_dim_local >= ( 4 * n_dim_local ) ) )
-	{
-		m_dim_local *= 2;
-	}
-#endif
-	
 	// Parse and interpret the contents of the rntm_t object to properly
 	// set the ways of parallelism for each loop, and then make any
 	// additional modifications necessary for the current operation.
@@ -198,9 +165,9 @@ void bli_gemm_front
 	(
 	  BLIS_GEMM,
 	  BLIS_LEFT, // ignored for gemm/hemm/symm
-	  m_dim_local,
-	  n_dim_local,
-	  k_dim_local,
+	  bli_obj_length( &c_local ),
+	  bli_obj_width( &c_local ),
+	  bli_obj_width_after_trans( &a_local ),
 	  rntm
 	);
 

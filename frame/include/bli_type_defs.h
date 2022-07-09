@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2016, Hewlett Packard Enterprise Development LP
-   Copyright (C) 2021, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021 - 22, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -89,9 +89,13 @@ typedef unsigned long int guint_t;
 // -- Boolean type --
 
 // NOTE: bool_t is no longer used and has been replaced with C99's bool type.
+// Not defining the bool type for C++ code in windows platform to avoid
+// duplicate definition build error.
 #ifdef _WIN32
+#ifndef __cplusplus
 #undef bool
 typedef  gint_t  bool;
+#endif
 #endif
 // BLIS uses TRUE and FALSE macro constants as possible boolean values, but we
 // define these macros in terms of true and false, respectively, which are
@@ -931,10 +935,11 @@ typedef enum
 	BLIS_TRMM,
 	BLIS_TRSM,
 	BLIS_GEMMT,
+	BLIS_GEMM_MD,
 	BLIS_NOID
 } opid_t;
 
-#define BLIS_NUM_LEVEL3_OPS 11
+#define BLIS_NUM_LEVEL3_OPS 12
 
 
 // -- Blocksize ID type --

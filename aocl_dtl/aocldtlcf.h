@@ -5,7 +5,7 @@
  *               libaray, all debug features (except auto trace)
  *               can be enabled/disabled in this file.
  *
- * Copyright (C) 2020, Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2020-2022, Advanced Micro Devices, Inc. All rights reserved.
  *
  *==================================================================*/
 
@@ -20,8 +20,8 @@
    enable this macro by making it to 1 else 0 */
 #define AOCL_DTL_DUMP_ENABLE        0
 
-/* Macro for logging the logs If the user wants to enable loging information he
-   has to enable this macro by making it to 1 else 0 */
+/* Macro for dumping the log If the user wants to enable input logs he has to
+   enable this macro by making it to 1 else 0 */
 #define AOCL_DTL_LOG_ENABLE         0
 
 /* Select the trace level till which you want to log the data */

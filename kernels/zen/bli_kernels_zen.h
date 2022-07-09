@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 21, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2022, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -32,7 +32,6 @@
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 // -- level-1m --
 PACKM_KER_PROT(double, d, packm_8xk_gen_zen)
 PACKM_KER_PROT(double, d, packm_6xk_gen_zen)
@@ -45,6 +44,16 @@ PACKM_KER_PROT(double, d, packm_6xk_nn_zen)
 // amaxv (intrinsics)
 AMAXV_KER_PROT( float,    s, amaxv_zen_int )
 AMAXV_KER_PROT( double,   d, amaxv_zen_int )
+
+// axpbyv (intrinsics)
+AXPBYV_KER_PROT( float,    s, axpbyv_zen_int )
+AXPBYV_KER_PROT( double,   d, axpbyv_zen_int )
+AXPBYV_KER_PROT( scomplex, c, axpbyv_zen_int )
+AXPBYV_KER_PROT( dcomplex, z, axpbyv_zen_int )
+
+// axpbyv (intrinsics, unrolled x10)
+AXPBYV_KER_PROT( float,    s, axpbyv_zen_int10 )
+AXPBYV_KER_PROT( double,   d, axpbyv_zen_int10 )
 
 // axpyv (intrinsics)
 AXPYV_KER_PROT( float,    s, axpyv_zen_int )
@@ -69,6 +78,8 @@ DOTV_KER_PROT( dcomplex,  z, dotv_zen_int5 )
 // dotxv (intrinsics)
 DOTXV_KER_PROT( float,    s, dotxv_zen_int )
 DOTXV_KER_PROT( double,   d, dotxv_zen_int )
+DOTXV_KER_PROT( dcomplex, z, dotxv_zen_int )
+DOTXV_KER_PROT( scomplex, c, dotxv_zen_int )
 
 // scalv (intrinsics)
 SCALV_KER_PROT( float,    s, scalv_zen_int )
@@ -104,10 +115,21 @@ AXPYF_KER_PROT( scomplex, c, axpyf_zen_int_5 )
 AXPYF_KER_PROT( scomplex, c, axpyf_zen_int_4 )
 AXPYF_KER_PROT( dcomplex, z, axpyf_zen_int_5 )
 AXPYF_KER_PROT( dcomplex, z, axpyf_zen_int_4 )
+// axpy2v (intrinsics)
+AXPY2V_KER_PROT(double, d, axpy2v_zen_int )
+AXPY2V_KER_PROT(dcomplex, z, axpy2v_zen_int )
 
 // dotxf (intrinsics)
 DOTXF_KER_PROT( float,    s, dotxf_zen_int_8 )
 DOTXF_KER_PROT( double,   d, dotxf_zen_int_8 )
+DOTXF_KER_PROT( double,   d, dotxf_zen_int_4 )
+DOTXF_KER_PROT( double,   d, dotxf_zen_int_2 )
+DOTXF_KER_PROT( dcomplex,   z, dotxf_zen_int_6 )
+DOTXF_KER_PROT( scomplex,   c, dotxf_zen_int_6 )
+// dotxaxpyf (intrinsics)
+DOTXAXPYF_KER_PROT( double,   d, dotxaxpyf_zen_int_8 )
+DOTXAXPYF_KER_PROT( scomplex, c, dotxaxpyf_zen_int_8 )
+DOTXAXPYF_KER_PROT( dcomplex, z, dotxaxpyf_zen_int_8 )
 
 // -- level-2 ----------------------------------------------------------------
 
@@ -241,6 +263,28 @@ err_t bli_dgemm_small_At
       cntl_t* cntl
     );
 
+err_t bli_zgemm_small
+    (
+      obj_t*  alpha,
+      obj_t*  a,
+      obj_t*  b,
+      obj_t*  beta,
+      obj_t*  c,
+      cntx_t* cntx,
+      cntl_t* cntl
+    );
+
+err_t bli_zgemm_small_At
+    (
+      obj_t*  alpha,
+      obj_t*  a,
+      obj_t*  b,
+      obj_t*  beta,
+      obj_t*  c,
+      cntx_t* cntx,
+      cntl_t* cntl
+    );
+
 // gemm square matrix size friendly implementation
 err_t bli_gemm_sqp
      (
@@ -265,7 +309,7 @@ void bli_dgemm_ref_k1_nn
       double* c, const inc_t ldc
      );
 
- err_t bli_trsm_small
+err_t bli_trsm_small
      (
        side_t  side,
        obj_t*  alpha,
@@ -274,6 +318,34 @@ void bli_dgemm_ref_k1_nn
        cntx_t* cntx,
        cntl_t* cntl
      );
+
+#ifdef BLIS_ENABLE_OPENMP
+err_t bli_trsm_small_mt
+     (
+       side_t  side,
+       obj_t*  alpha,
+       obj_t*  a,
+       obj_t*  b,
+       cntx_t* cntx,
+       cntl_t* cntl
+     );
+
+void bli_multi_sgemv_4x2
+    (
+       conj_t           conjat,
+       conj_t           conjx,
+       dim_t            m,
+       dim_t            b_n,
+       float*  restrict alpha,
+       float*  restrict a, inc_t inca, inc_t lda,
+       float*  restrict x, inc_t incx,
+       float*  restrict beta,
+       float*  restrict y, inc_t incy,
+       cntx_t* restrict cntx,
+       dim_t            n_threads
+     );
+
+#endif
 
 // threshold functions
 bool bli_cntx_gemmtsup_thresh_is_met_zen
@@ -301,3 +373,4 @@ void bli_dnorm2fv_unb_var1
        cntx_t*  cntx
      );
 #endif
+

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2018-2021, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018-2022, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -2847,6 +2847,7 @@ BLIS_INLINE err_t dtrsm_XAltB_ref
 #define BLIS_PRE_STRSM_SMALL_3N_2M(AlphaVal,b11,cs_b)\
     ymm15 = _mm256_broadcast_ss((float const *)&AlphaVal);         /*register to hold alpha*/\
 \
+    xmm5 = _mm_setzero_ps();\
     xmm5 = _mm_loadl_pi(xmm5,(__m64*)(b11));\
     ymm6 = _mm256_insertf128_ps(ymm0, xmm5, 0);\
     ymm3 = _mm256_fmsub_ps(ymm6, ymm15, ymm3);\
@@ -3009,6 +3010,7 @@ BLIS_INLINE err_t dtrsm_XAltB_ref
 #define BLIS_PRE_STRSM_SMALL_2N_2M(AlphaVal,b11,cs_b)\
     ymm15 = _mm256_broadcast_ss((float const *)&AlphaVal);         /*register to hold alpha*/\
 \
+    xmm5 = _mm_setzero_ps();\
     xmm5 = _mm_loadl_pi(xmm5,(__m64*)(b11));\
     ymm6 = _mm256_insertf128_ps(ymm0, xmm5, 0);\
     ymm3 = _mm256_fmsub_ps(ymm6, ymm15, ymm3);\
@@ -3116,6 +3118,7 @@ BLIS_INLINE err_t dtrsm_XAltB_ref
 #define BLIS_PRE_STRSM_SMALL_1N_2M(AlphaVal,b11,cs_b)\
     ymm15 = _mm256_broadcast_ss((float const *)&AlphaVal);         /*register to hold alpha*/\
 \
+    xmm5 = _mm_setzero_ps();\
     xmm5 = _mm_loadl_pi(xmm5,(__m64*)(b11));\
     ymm6 = _mm256_insertf128_ps(ymm0, xmm5, 0);\
     ymm3 = _mm256_fmsub_ps(ymm6, ymm15, ymm3);
@@ -3818,15 +3821,22 @@ err_t bli_trsm_small
    num_t dt = bli_obj_dt(a);
    switch(dt)
    {
-       case BLIS_DOUBLE:
-       case BLIS_FLOAT:
-       case BLIS_SCOMPLEX:
-       {
-           if(m > 1000 || n > 1000) {
+        case BLIS_DOUBLE:
+        {
+            bool nt = bli_thread_get_is_parallel();
+            if((nt == 0) && (m > 1000 || n > 1000)) {
+                return BLIS_NOT_YET_IMPLEMENTED;
+            }
+            break;
+        }
+        case BLIS_FLOAT:
+        case BLIS_SCOMPLEX:
+        {
+            if(m > 1000 || n > 1000) {
                return BLIS_NOT_YET_IMPLEMENTED;
             }
             break;
-       }
+        }
         case BLIS_DCOMPLEX:
         {
             if(m > 500 || n > 500) {
@@ -3883,38 +3893,145 @@ err_t bli_trsm_small
     return err;
 };
 
+#ifdef BLIS_ENABLE_OPENMP
+/*
+ * Parallelized dtrsm_small across m-dimension or n-dimension based on side(Left/Right)
+ */
+
+err_t bli_trsm_small_mt
+(
+    side_t  side,
+    obj_t*  alpha,
+    obj_t*  a,
+    obj_t*  b,
+    cntx_t* cntx,
+    cntl_t* cntl
+)
+{
+    gint_t m = bli_obj_length( b ); // number of rows of matrix b
+    gint_t n = bli_obj_width( b );  // number of columns of Matrix b
+    dim_t d_mr = 8,d_nr = 6;
+
+    num_t dt = bli_obj_dt(a);
+    switch(dt)
+    {
+        case BLIS_DOUBLE:
+        {
+            d_mr = 8,d_nr = 6;
+            break;
+        }
+        default:
+        {
+            return BLIS_NOT_YET_IMPLEMENTED;
+            break;
+        }
+    }
+
+    rntm_t rntm;
+    bli_rntm_init_from_global( &rntm );
+
+    #ifdef AOCL_DYNAMIC
+    // If dynamic-threading is enabled, calculate optimum number
+    //  of threads.
+    //  rntm will be updated with optimum number of threads.
+    if( bli_obj_is_double(b))
+    {
+        bli_nthreads_optimum(a, b, b, BLIS_TRSM, &rntm);
+    }
+    #endif
+
+    // Query the total number of threads from the rntm_t object.
+    dim_t n_threads = bli_rntm_num_threads( &rntm );
+
+    if (n_threads < 0 ) n_threads = 1;
+
+    err_t status = BLIS_SUCCESS;
+    _Pragma( "omp parallel num_threads(n_threads)" )
+    {
+        // Query the thread's id from OpenMP.
+        const dim_t tid = omp_get_thread_num();
+
+        obj_t      b_t;
+        dim_t start; // Each thread start Index
+        dim_t end;   // Each thread end Index
+        thrinfo_t thread;
+
+        thread.n_way    = n_threads;
+        thread.work_id  = tid;
+        thread.ocomm_id = tid;
+
+
+        // Compute start and end indexes of matrix partitioning for each thread
+        if ( bli_is_right( side ) )
+        {
+            bli_thread_range_sub (  &thread,
+                  m,
+                  d_mr,// Need to decide based on type
+                  FALSE,
+                  &start,
+                  &end
+                   );
+            // For each thread acquire matrix block on which they operate
+            // Data-based parallelism
+
+            bli_acquire_mpart_mdim(BLIS_FWD, BLIS_SUBPART1, start, end-start, b, &b_t);
+        }
+        else
+        {
+            bli_thread_range_sub (  &thread,
+                   n,
+                   d_nr,// Need to decide based on type
+                   FALSE,
+                   &start,
+                   &end
+                    );
+            // For each thread acquire matrix block on which they operate
+            // Data-based parallelism
+
+            bli_acquire_mpart_ndim(BLIS_FWD, BLIS_SUBPART1, start, end-start, b, &b_t);
+        }
+
+        // Parallelism is only across m-dimension/n-dimension - therefore matrix a is common to
+        // all threads
+        err_t status_l = BLIS_SUCCESS;
+
+        status_l = bli_trsm_small
+                   (
+		     side,
+                     alpha,
+                     a,
+                     &b_t,
+                     NULL,
+                     NULL
+                   );
+	// To capture the error populated from any of the threads
+        _Pragma( "omp critical" )
+	status = (status != BLIS_NOT_YET_IMPLEMENTED)?status_l:status;
+    }
+
+    return status;
+}// End of function
+#endif
+
 /*
  * ZTRSM utilities and kernel functions
  */
 
 #define DCOMPLEX_INV(a, b) {\
-    a.real = b.real;\
-    a.imag = (b.imag * -1.0);\
-    /*Compute denominator eliminating imaginary component*/\
-    double dnm = (b.real * b.real);\
-    /*multiply two times with -1 for correct  result as
-     * dcomplex number with positive imaginary part will
-     * invert the sign if not multiplied twice with -1*/\
-    dnm += ((-1.0 * (b.imag * b.imag)) * -1.0);\
-    /*Compute the final result by dividing real and imag part by dnm*/\
-    a.real /= dnm;\
-    a.imag /= dnm;\
+/*	dcomplex inva = {1.0, 0.0};*/\
+	a.real = 1.0;\
+	a.imag = 0.0;\
+	bli_zinvscals(b, a);\
 }
 
 #define DCOMPLEX_MUL(a, b, c) {\
-    double real = a.real * b.real;\
-    real += ((a.imag * b.imag) * -1.0);\
-    double imag = (a.real * b.imag);\
-    imag += (a.imag * b.real);\
-    c.real = real;\
-    c.imag = imag;\
+	c.real = b.real;\
+	c.imag = b.imag;\
+	bli_zscals(a,c);\
 }
 
 #define DCOMPLEX_DIV(a, b){\
-    double dnm = b.real * b.real;\
-    dnm += (-1.0 * (b.imag * (b.imag * -1.0) ));\
-    a.real /= dnm;\
-    a.imag /= dnm;\
+    bli_zinvscals(b,a); \
 }
 
 
@@ -3943,11 +4060,8 @@ err_t bli_trsm_small
 #define ZTRSM_DIAG_ELE_EVAL_OPS(a,b,c){\
      if(!is_unitdiag)\
      {\
-         a.real = b.real;\
-         a.imag = (b.imag * -1.0);\
-         DCOMPLEX_MUL(c, a, c)\
-         DCOMPLEX_DIV(c, b)\
-    }\
+	     bli_zinvscals(b, c);\
+     }\
 }
 #endif
 
@@ -4295,6 +4409,213 @@ BLIS_INLINE err_t ztrsm_AuXB_ref
     _mm256_storeu_pd((double *)(b11), ymm8);\
     _mm256_storeu_pd((double *)(b11 + cs_b * 1), ymm9);\
 }
+
+
+#define BLIS_ZTRSM_SMALL_GEMM_3mx3n(a10,b01,cs_b,p_lda,k_iter) {\
+    double *tptr = (double *)b01;\
+    if(conjtransa) {\
+	ymm16 = _mm256_setr_pd(1.0, -1.0, 1.0, -1.0);\
+	for(k = 0; k< k_iter; k++) \
+	{ \
+		ymm0 = _mm256_loadu_pd((double const *)(a10)); \
+		xmm4 = _mm_loadu_pd((double const *)(a10 + 2));\
+		ymm1 = _mm256_insertf128_pd(ymm1, xmm4, 0); \
+		ymm0 = _mm256_mul_pd(ymm0, ymm16);\
+		ymm1 = _mm256_mul_pd(ymm1, ymm16);\
+		\
+		ymm2 = _mm256_broadcast_sd((double const *)(tptr)); \
+		ymm3 = _mm256_broadcast_sd((double const *)(tptr + 1)); \
+		\
+		ymm8 = _mm256_fmadd_pd(ymm0, ymm2, ymm8);\
+		ymm11 = _mm256_fmadd_pd(ymm1, ymm2, ymm11);\
+		ymm4 = _mm256_fmadd_pd(ymm0, ymm3, ymm4);\
+		ymm5 = _mm256_fmadd_pd(ymm1, ymm3, ymm5);\
+		\
+		ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 1 * 2)); \
+		ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 1 * 2 + 1)); \
+		\
+		ymm9 = _mm256_fmadd_pd(ymm0, ymm2, ymm9);\
+		ymm12 = _mm256_fmadd_pd(ymm1, ymm2, ymm12);\
+		ymm6 = _mm256_fmadd_pd(ymm0, ymm3, ymm6);\
+		ymm7 = _mm256_fmadd_pd(ymm1, ymm3, ymm7);\
+		\
+		ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b *2 * 2)); \
+		ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 2 + 1)); \
+		\
+		ymm10 = _mm256_fmadd_pd(ymm0, ymm2, ymm10);\
+		ymm13 = _mm256_fmadd_pd(ymm1, ymm2, ymm13);\
+		\
+		ymm14 = _mm256_fmadd_pd(ymm0, ymm3, ymm14);\
+		ymm15 = _mm256_fmadd_pd(ymm1, ymm3, ymm15);\
+		\
+		tptr += 2;  \
+		a10 += p_lda; \
+	}\
+       }\
+    else {\
+	for(k = 0; k< k_iter; k++) \
+	{ \
+		ymm0 = _mm256_loadu_pd((double const *)(a10)); \
+		xmm4 = _mm_loadu_pd((double const *)(a10 + 2));\
+                ymm1 = _mm256_insertf128_pd(ymm1, xmm4, 0); \
+		ymm2 = _mm256_broadcast_sd((double const *)(tptr)); \
+		ymm3 = _mm256_broadcast_sd((double const *)(tptr + 1)); \
+		\
+		ymm8 = _mm256_fmadd_pd(ymm0, ymm2, ymm8);\
+		ymm11 = _mm256_fmadd_pd(ymm1, ymm2, ymm11);\
+		ymm4 = _mm256_fmadd_pd(ymm0, ymm3, ymm4);\
+		ymm5 = _mm256_fmadd_pd(ymm1, ymm3, ymm5);\
+		\
+		ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 1 * 2)); \
+		ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 1 * 2 + 1)); \
+		\
+		ymm9 = _mm256_fmadd_pd(ymm0, ymm2, ymm9);\
+		ymm12 = _mm256_fmadd_pd(ymm1, ymm2, ymm12);\
+		ymm6 = _mm256_fmadd_pd(ymm0, ymm3, ymm6);\
+		ymm7 = _mm256_fmadd_pd(ymm1, ymm3, ymm7);\
+		\
+		ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b *2 * 2)); \
+		ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 2 + 1)); \
+		\
+		ymm10 = _mm256_fmadd_pd(ymm0, ymm2, ymm10);\
+		ymm13 = _mm256_fmadd_pd(ymm1, ymm2, ymm13);\
+		\
+		ymm14 = _mm256_fmadd_pd(ymm0, ymm3, ymm14);\
+		ymm15 = _mm256_fmadd_pd(ymm1, ymm3, ymm15);\
+		\
+		tptr += 2;  \
+		a10 += p_lda; \
+	}\
+    }\
+    ymm4 = _mm256_permute_pd(ymm4, 0x5);\
+    ymm5 = _mm256_permute_pd(ymm5, 0x5);\
+    ymm6 = _mm256_permute_pd(ymm6, 0x5);\
+    ymm7 = _mm256_permute_pd(ymm7, 0x5);\
+    ymm14 = _mm256_permute_pd(ymm14, 0x5);\
+    ymm15 = _mm256_permute_pd(ymm15, 0x5);\
+    \
+    ymm8 = _mm256_addsub_pd(ymm8, ymm4);\
+    ymm11 = _mm256_addsub_pd(ymm11, ymm5);\
+    ymm9 = _mm256_addsub_pd(ymm9, ymm6);\
+    ymm12 = _mm256_addsub_pd(ymm12, ymm7);\
+    ymm10 = _mm256_addsub_pd(ymm10, ymm14);\
+    ymm13 = _mm256_addsub_pd(ymm13, ymm15);\
+}
+
+
+#define BLIS_ZTRSM_SMALL_GEMM_3mx2n(a10,b01,cs_b,p_lda,k_iter) {\
+    double *tptr = (double * )b01;\
+    if(conjtransa) {\
+        ymm18 = _mm256_setr_pd(1.0, -1.0, 1.0, -1.0);\
+        for(k = 0; k< k_iter; k++)   /*loop for number of GEMM operations*/\
+        {\
+            ymm0 = _mm256_loadu_pd((double const *)(a10));\
+            xmm4 = _mm_loadu_pd((double const *)(a10 + 2));\
+            ymm1 = _mm256_insertf128_pd(ymm1, xmm4, 0); \
+            ymm0 = _mm256_mul_pd(ymm0, ymm18);\
+            ymm1 = _mm256_mul_pd(ymm1, ymm18);\
+            \
+            ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 0));\
+            ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 0 + 1)); \
+            \
+            ymm8 = _mm256_fmadd_pd(ymm0, ymm2, ymm8);\
+            ymm12 = _mm256_fmadd_pd(ymm1, ymm2, ymm12);\
+            ymm4 = _mm256_fmadd_pd(ymm0, ymm3, ymm4);\
+            ymm5 = _mm256_fmadd_pd(ymm1, ymm3, ymm5);\
+            ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 1)); \
+            ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 1 + 1)); \
+            \
+            ymm9 = _mm256_fmadd_pd(ymm0, ymm2, ymm9);\
+            ymm13 = _mm256_fmadd_pd(ymm1, ymm2, ymm13);\
+            ymm6 = _mm256_fmadd_pd(ymm0, ymm3, ymm6);\
+            ymm7 = _mm256_fmadd_pd(ymm1, ymm3, ymm7);\
+            tptr += 2;   /*move to  next row of B*/\
+            a10 += p_lda;/*pointer math to calculate next block of A for GEMM*/\
+        }\
+    }\
+    else {\
+        for(k = 0; k< k_iter; k++)   /*loop for number of GEMM operations*/\
+        {\
+            ymm0 = _mm256_loadu_pd((double const *)(a10));\
+            xmm4 = _mm_loadu_pd((double const *)(a10 + 2));\
+            ymm1 = _mm256_insertf128_pd(ymm1, xmm4, 0); \
+            ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 0));\
+            ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 0 + 1)); \
+            \
+            ymm8 = _mm256_fmadd_pd(ymm0, ymm2, ymm8);\
+            ymm12 = _mm256_fmadd_pd(ymm1, ymm2, ymm12);\
+            ymm4 = _mm256_fmadd_pd(ymm0, ymm3, ymm4);\
+            ymm5 = _mm256_fmadd_pd(ymm1, ymm3, ymm5);\
+            ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 1)); \
+            ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 1 + 1)); \
+            \
+            ymm9 = _mm256_fmadd_pd(ymm0, ymm2, ymm9);\
+            ymm13 = _mm256_fmadd_pd(ymm1, ymm2, ymm13);\
+            ymm6 = _mm256_fmadd_pd(ymm0, ymm3, ymm6);\
+            ymm7 = _mm256_fmadd_pd(ymm1, ymm3, ymm7);\
+            tptr += 2;   /*move to  next row of B*/\
+            a10 += p_lda;/*pointer math to calculate next block of A for GEMM*/\
+        }\
+    }\
+        ymm4 = _mm256_permute_pd(ymm4, 0x5);\
+        ymm5 = _mm256_permute_pd(ymm5, 0x5);\
+        ymm6 = _mm256_permute_pd(ymm6, 0x5);\
+        ymm7 = _mm256_permute_pd(ymm7, 0x5);\
+\
+        ymm8 = _mm256_addsub_pd(ymm8, ymm4);\
+        ymm12 = _mm256_addsub_pd(ymm12, ymm5);\
+        ymm9 = _mm256_addsub_pd(ymm9, ymm6);\
+        ymm13 = _mm256_addsub_pd(ymm13, ymm7);\
+}
+
+#define BLIS_ZTRSM_SMALL_GEMM_3mx1n(a10,b01,cs_b,p_lda,k_iter) {\
+    double *tptr = (double *)b01;\
+    if(conjtransa) {\
+        ymm18 = _mm256_setr_pd(1.0, -1.0, 1.0, -1.0);\
+        for(k = 0; k< k_iter; k++)   /*loop for number of GEMM operations*/\
+        {\
+            ymm0 = _mm256_loadu_pd((double const *)(a10));\
+            xmm4 = _mm_loadu_pd((double const *)(a10 + 2));\
+            ymm1 = _mm256_insertf128_pd(ymm1, xmm4, 0); \
+            ymm0 = _mm256_mul_pd(ymm0, ymm18);\
+            ymm1 = _mm256_mul_pd(ymm1, ymm18);\
+            \
+            ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 0));\
+            ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 0 + 1)); \
+            \
+            ymm8 = _mm256_fmadd_pd(ymm0, ymm2, ymm8);\
+            ymm12 = _mm256_fmadd_pd(ymm1, ymm2, ymm12);\
+            \
+            ymm4 = _mm256_fmadd_pd(ymm0, ymm3, ymm4);\
+            ymm5 = _mm256_fmadd_pd(ymm1, ymm3, ymm5);\
+            tptr += 2;   /*move to  next row of B*/\
+            a10 += p_lda;/*pointer math to calculate next block of A for GEMM*/\
+        }\
+    }\
+    else {\
+        for(k = 0; k< k_iter; k++)   /*loop for number of GEMM operations*/\
+        {\
+            ymm0 = _mm256_loadu_pd((double const *)(a10));\
+            xmm4 = _mm_loadu_pd((double const *)(a10 + 2));\
+            ymm1 = _mm256_insertf128_pd(ymm1, xmm4, 0); \
+            ymm2 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 0));\
+            ymm3 = _mm256_broadcast_sd((double const *)(tptr + cs_b * 2 * 0 + 1)); \
+            \
+            ymm8 = _mm256_fmadd_pd(ymm0, ymm2, ymm8);\
+            ymm12 = _mm256_fmadd_pd(ymm1, ymm2, ymm12);\
+            \
+            ymm4 = _mm256_fmadd_pd(ymm0, ymm3, ymm4);\
+            ymm5 = _mm256_fmadd_pd(ymm1, ymm3, ymm5);\
+            tptr += 2;   /*move to  next row of B*/\
+            a10 += p_lda;/*pointer math to calculate next block of A for GEMM*/\
+        }\
+    }\
+        ymm4 = _mm256_permute_pd(ymm4, 0x5);\
+        ymm5 = _mm256_permute_pd(ymm5, 0x5);\
+        ymm8 = _mm256_addsub_pd(ymm8, ymm4);\
+        ymm12 = _mm256_addsub_pd(ymm12, ymm5);\
+}
+
 
 /**
  * Performs GEMM operation.
@@ -5577,68 +5898,58 @@ BLIS_INLINE err_t ztrsm_AuXB_ref
  * Performs dcomplex division of vec1 and vec2 with ymm1.
  * vec1 and vec2 gets divided by ymm1 which holds
  * diagonal element from buffer.
- * Function gets called while performing TRSM.
+ * Using bli_zinvscals() to avoid overflow and underflow
+ * scenarios. Function gets called while performing TRSM.
  */
 #define BLIS_ZTRSM_TWO_DIV(vec1, vec2) {\
     if(!is_unitdiag) {\
         if(conjtransa){\
             ymm1 = _mm256_mul_pd(ymm1, ymm0);\
         }\
-        ymm12 = _mm256_mul_pd(ymm1, ymm0);\
-        /*perform decomplex multiplication*/\
-        /* Switch the real and imaginary elements of vec2 */\
-        ymm14 = _mm256_permute_pd(ymm12, 0x5);\
-        /* Negate the imaginary elements of vec2 */\
-        ymm14 = _mm256_mul_pd(ymm14, ymm0);\
-        /* Multiply vec1 and vec2 */ \
-        ymm13 = _mm256_mul_pd(vec1, ymm12); /*vec3*/\
-        /* Multiply vec1 and the modified vec2 */\
-        ymm14 = _mm256_mul_pd(vec1, ymm14); /*vec4*/\
-        /* Horizontally subtract the elements in vec3 and vec4 */\
-        vec1 = _mm256_hsub_pd(ymm13, ymm14);\
-        \
-        ymm14 = _mm256_permute_pd(ymm12, 0x5);\
-        /* Negate the imaginary elements of vec2 */\
-        ymm14 = _mm256_mul_pd(ymm14, ymm0);\
-        ymm13 = _mm256_mul_pd(vec2, ymm12);\
-        ymm14 = _mm256_mul_pd(vec2, ymm14);\
-        vec2 = _mm256_hsub_pd(ymm13, ymm14);\
-        /*dcomplex multiplication is done*/\
-        /*Swapping real & imaginary component position for addition with respective
-         * components*/\
-        ymm12 = _mm256_mul_pd(ymm1, ymm1);\
-        ymm13 = _mm256_permute4x64_pd(ymm12, 0xb1);\
-        ymm14 = _mm256_add_pd(ymm12, ymm13);\
-        \
-        /*Finally dividing numerator by denominator*/\
-        vec1 = _mm256_div_pd(vec1, ymm14);\
-        vec2 = _mm256_div_pd(vec2, ymm14);\
+\
+        dcomplex b_data[4];\
+        dcomplex d11_data[2];\
+\
+        _mm256_storeu_pd((double *)(b_data), vec1);\
+        _mm256_storeu_pd((double *)(b_data + 2), vec2);\
+        _mm256_storeu_pd((double *)(d11_data), ymm1);\
+\
+        for(dim_t i = 0; i < 4; i++)\
+        {\
+            bli_zinvscals(d11_data[0],b_data[i]);\
+        }\
+\
+        vec1 = _mm256_loadu_pd((double *)b_data);\
+        vec2 = _mm256_loadu_pd((double *)(b_data+2));\
+\
     }\
 }
 
 /**
  * Performs dcomplex division of vec1 with ymm1.
  * ymm1 holds diagonal element from buffer.
- * Function gets called while performing TRSM.
+ * Using bli_zinvscals() to avoid overflow and underflow
+ * scenarios. Function gets called while performing TRSM.
  */
 #define BLIS_ZTRSM_DIV(vec1) {\
     if(!is_unitdiag){\
         if(conjtransa){\
             ymm1 = _mm256_mul_pd(ymm1, ymm0);\
         }\
-        ymm12 = _mm256_mul_pd(ymm1, ymm0); /*vec2 and ymm8 is vec1*/\
-        ymm14 = _mm256_permute_pd(ymm12, 0x5);\
-        ymm14 = _mm256_mul_pd(ymm14, ymm0);\
-        ymm13 = _mm256_mul_pd(vec1, ymm12); /*vec3*/\
-        ymm14 = _mm256_mul_pd(vec1, ymm14); /*vec4*/\
-        vec1 = _mm256_hsub_pd(ymm13, ymm14);\
-        \
-        ymm12 = _mm256_mul_pd(ymm1, ymm1);\
-        ymm13 = _mm256_permute4x64_pd(ymm12, 0xb1);\
-        ymm14 = _mm256_add_pd(ymm12, ymm13);\
-        \
-        /*Finally dividing numerator by denominator*/\
-        vec1 = _mm256_div_pd(vec1, ymm14);\
+\
+        dcomplex b_data[2];\
+        dcomplex d11_data[2];\
+\
+        _mm256_storeu_pd((double *)(b_data), vec1);\
+        _mm256_storeu_pd((double *)(d11_data), ymm1);\
+\
+        for(dim_t i = 0; i < 2; i++)\
+        {\
+            bli_zinvscals(d11_data[0],b_data[i]);\
+        }\
+\
+        vec1 = _mm256_loadu_pd((double *)b_data);\
+\
     }\
 }
 
@@ -5813,7 +6124,6 @@ BLIS_INLINE void bli_ztrsm_small_pack
 
 }
 
-
 BLIS_INLINE void ztrsm_small_pack_diag_element
 (
     bool is_unitdiag,
@@ -5824,64 +6134,31 @@ BLIS_INLINE void ztrsm_small_pack_diag_element
 )
 {
 #ifdef BLIS_ENABLE_TRSM_PREINVERSION
-    __m256d  ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8;
-    ymm7 = _mm256_setr_pd(1.0, -1.0, 1.0, -1.0);
-#else
-    __m256d ymm1, ymm2, ymm3;
-#endif
-    bool is_four = (size == 4) ? 1 : 0;
-    dcomplex ones = {1.0, 1.0};
-    ymm2 = ymm1 = _mm256_broadcast_pd((__m128d const *)&ones);
-    if(!is_unitdiag)
+    // If Preinversion is enabled, inverse the diaganol
+    // elements from A and pack into diagonal buffer.
+    // In order to avoid the overflow and underflow scenarios,
+    // bli_zinvscals is used
+    for( dim_t i = 0; i < size; i++)
     {
-        //broadcast diagonal elements of A11
-        ymm1 = _mm256_broadcast_pd((__m128d const *)a11);
-        ymm2 = _mm256_broadcast_pd((__m128d const *)a11+ cs_a +1);
-        /*Pick one element frome each column and create 3 element vector
-        and store it*/
-        ymm1 = _mm256_permute2f128_pd(ymm1, ymm2, 0x20);
-        ymm2 = _mm256_broadcast_pd((__m128d const *)a11+ cs_a*2 + 2);
-
-        if(is_four)
-        {
-            ymm3 = _mm256_broadcast_pd((__m128d const *)a11+ cs_a*2 + 2);
-            ymm2 = _mm256_broadcast_pd((__m128d const *)a11+ cs_a*3 + 3);
-            ymm2 = _mm256_permute2f128_pd(ymm3, ymm2, 0x20);
-        }
-
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-        /*Taking denomerator multiplication of real & imaginary components*/
-        ymm4 = _mm256_mul_pd(ymm1, ymm1);
-        ymm5 = _mm256_mul_pd(ymm2,ymm2);
-        /*Swapping real & imaginary component position for addition with
-         * respective components*/
-        ymm6 = _mm256_permute4x64_pd(ymm4, 0xb1);
-        ymm4 = _mm256_add_pd(ymm4, ymm6);
-        ymm8 = _mm256_permute4x64_pd(ymm5, 0xb1);
-
-        ymm5 = _mm256_add_pd(ymm5, ymm8);
-        /*Negating imaginary component of numerator*/
-        ymm1 = _mm256_mul_pd(ymm1, ymm7);
-        ymm2 = _mm256_mul_pd(ymm2, ymm7);
-        /*Dividing numerator by denominator*/
-        ymm1 = _mm256_div_pd(ymm1, ymm4);
-        ymm2 = _mm256_div_pd(ymm2, ymm5);
-#endif
-
+        dim_t d = ((i*cs_a) + i);
+        dcomplex ones = {1.0, 0.0};
+        bli_zinvscals(a11[d], ones)
+        d11_pack[i].real = ones.real;
+        d11_pack[i].imag = ones.imag;
     }
-    _mm256_store_pd((double *)d11_pack, ymm1);
-    if(is_four)
+
+#else //BLIS_ENABLE_TRSM_PREINVERSION
+
+    // If Preinversion is disabled, pack the diaganol
+    // elements from A into diagonal buffer.
+    for( dim_t i = 0; i < size; i++)
     {
-        _mm256_store_pd((double *)(d11_pack + 2), ymm2);
+        dim_t d =  ((i*cs_a) + i);
+        bli_zcopys(a11[d],d11_pack[i]);
     }
-    else
-    {
-        _mm_store_pd((double *)(d11_pack + 2),
-                _mm256_extractf128_pd(ymm2,0));
 
-    }
+#endif //BLIS_ENABLE_TRSM_PREINVERSION
 }
-
 /*implements TRSM for the case XA = alpha * B
  *A is lower triangular, non-unit diagonal/unit diagonal, transpose
  *dimensions: X:mxn     A:nxn       B: mxn
@@ -5955,7 +6232,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
 
     double AlphaVal = *(double *)AlphaObj->buffer;    //value of Alpha
     double* restrict L = a->buffer;      //pointer to matrix A
-    double* restrict B = b->buffer;      //pointer to matrix B
+    double *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     double *a01, *a11, *b10, *b11;   //pointers for GEMM and TRSM blocks
 
@@ -6450,25 +6727,19 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
 
             ymm13 = DTRSM_SMALL_DIV_OR_SCALE(ymm13, ymm0);
 
-            ymm0 = _mm256_loadu_pd((double const *)b11);
-            ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x07);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));      //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x07);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));    //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x07);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*3));    //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x07);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*4));    //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm11 = _mm256_blend_pd(ymm0, ymm11, 0x07);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*5));    //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm13 = _mm256_blend_pd(ymm0, ymm13, 0x07);
+            _mm_storeu_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+            _mm_storeu_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*4), _mm256_extractf128_pd(ymm11,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*5), _mm256_extractf128_pd(ymm13,0));
 
-            _mm256_storeu_pd((double *)b11, ymm3);
-            _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-            _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-            _mm256_storeu_pd((double *)(b11 + cs_b*3), ymm9);
-            _mm256_storeu_pd((double *)(b11 + cs_b*4), ymm11);
-            _mm256_storeu_pd((double *)(b11 + cs_b*5), ymm13);
+            _mm_storel_pd((double *)b11 + 2, _mm256_extractf128_pd(ymm3,1));
+            _mm_storel_pd((double *)(b11 + cs_b + 2), _mm256_extractf128_pd(ymm5,1));
+            _mm_storel_pd((double *)(b11 + cs_b*2 + 2), _mm256_extractf128_pd(ymm7,1));
+            _mm_storel_pd((double *)(b11 + cs_b*3 + 2), _mm256_extractf128_pd(ymm9,1));
+            _mm_storel_pd((double *)(b11 + cs_b*4 + 2), _mm256_extractf128_pd(ymm11,1));
+            _mm_storel_pd((double *)(b11 + cs_b*5 + 2), _mm256_extractf128_pd(ymm13,1));
 
             m_remainder -= 3;
             i += 3;
@@ -6580,25 +6851,12 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
 
             ymm13 = DTRSM_SMALL_DIV_OR_SCALE(ymm13, ymm0);
 
-            ymm0 = _mm256_loadu_pd((double const *)b11);
-            ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x03);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x03);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x03);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*3));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x03);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*4));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm11 = _mm256_blend_pd(ymm0, ymm11, 0x03);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*5));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm13 = _mm256_blend_pd(ymm0, ymm13, 0x03);
-
-            _mm256_storeu_pd((double *)b11, ymm3);
-            _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-            _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-            _mm256_storeu_pd((double *)(b11 + cs_b*3), ymm9);
-            _mm256_storeu_pd((double *)(b11 + cs_b*4), ymm11);
-            _mm256_storeu_pd((double *)(b11 + cs_b*5), ymm13);
+            _mm_storeu_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+            _mm_storeu_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*4), _mm256_extractf128_pd(ymm11,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*5), _mm256_extractf128_pd(ymm13,0));
 
             m_remainder -= 2;
             i += 2;
@@ -6710,25 +6968,12 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
 
             ymm13 = DTRSM_SMALL_DIV_OR_SCALE(ymm13, ymm0);
 
-            ymm0 = _mm256_loadu_pd((double const *)b11);
-            ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x01);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x01);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x01);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*3));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x01);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*4));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm11 = _mm256_blend_pd(ymm0, ymm11, 0x01);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*5));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm13 = _mm256_blend_pd(ymm0, ymm13, 0x01);
-
-            _mm256_storeu_pd((double *)b11, ymm3);
-            _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-            _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-            _mm256_storeu_pd((double *)(b11 + cs_b*3), ymm9);
-            _mm256_storeu_pd((double *)(b11 + cs_b*4), ymm11);
-            _mm256_storeu_pd((double *)(b11 + cs_b*5), ymm13);
+            _mm_storel_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+            _mm_storel_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+            _mm_storel_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+            _mm_storel_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
+            _mm_storel_pd((double *)(b11 + cs_b*4), _mm256_extractf128_pd(ymm11,0));
+            _mm_storel_pd((double *)(b11 + cs_b*5), _mm256_extractf128_pd(ymm13,0));
 
             m_remainder -= 1;
             i += 1;
@@ -7120,23 +7365,15 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
 
             ymm9 = DTRSM_SMALL_DIV_OR_SCALE(ymm9, ymm0);
 
-            ymm0 = _mm256_loadu_pd((double const *)b11);
-            ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x07);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x07);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x07);
-            xmm5 = _mm_loadu_pd((double const*)(b11 + cs_b * 3));
-            ymm0 = _mm256_broadcast_sd((double const *)(b11 + cs_b*3 + 2));
-            ymm0 = _mm256_insertf128_pd(ymm0, xmm5, 0);                      //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x07);
+            _mm_storeu_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+            _mm_storeu_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
 
-            _mm256_storeu_pd((double *)b11, ymm3);
-            _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-            _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-            xmm5 = _mm256_extractf128_pd(ymm9, 0);
-            _mm_storeu_pd((double *)(b11 + cs_b * 3),xmm5);
-            _mm_storel_pd((b11 + cs_b * 3 + 2), _mm256_extractf128_pd(ymm9, 1));
+            _mm_storel_pd((double *)b11 + 2, _mm256_extractf128_pd(ymm3,1));
+            _mm_storel_pd((double *)(b11 + cs_b + 2), _mm256_extractf128_pd(ymm5,1));
+            _mm_storel_pd((double *)(b11 + cs_b*2 + 2), _mm256_extractf128_pd(ymm7,1));
+            _mm_storel_pd((double *)(b11 + cs_b*3 + 2), _mm256_extractf128_pd(ymm9,1));
 
             m_remainder -= 3;
             i += 3;
@@ -7217,21 +7454,10 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
 
             ymm9 = DTRSM_SMALL_DIV_OR_SCALE(ymm9, ymm0);
 
-            ymm0 = _mm256_loadu_pd((double const *)b11);
-            ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x03);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x03);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x03);
-            xmm5 = _mm_loadu_pd((double const*)(b11 + cs_b * 3));
-            ymm0 = _mm256_insertf128_pd(ymm0, xmm5, 0);
-            ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x03);
-
-            _mm256_storeu_pd((double *)b11, ymm3);
-            _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-            _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-            xmm5 = _mm256_extractf128_pd(ymm9, 0);
-            _mm_storeu_pd((double *)(b11 + cs_b * 3),xmm5);
+            _mm_storeu_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+            _mm_storeu_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+            _mm_storeu_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
 
             m_remainder -= 2;
             i += 2;
@@ -7310,15 +7536,6 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
             ymm9 = _mm256_fnmadd_pd(ymm1, ymm7, ymm9);
 
             ymm9 = DTRSM_SMALL_DIV_OR_SCALE(ymm9, ymm0);
-
-            ymm0 = _mm256_loadu_pd((double const *)b11);
-            ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x01);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x01);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x01);
-            ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*3));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-            ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x01);
 
             _mm_storel_pd((b11 + cs_b * 0), _mm256_extractf128_pd(ymm3, 0));
             _mm_storel_pd((b11 + cs_b * 1), _mm256_extractf128_pd(ymm5, 0));
@@ -8415,7 +8632,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
 
     double AlphaVal = *(double *)AlphaObj->buffer;    //value of Alpha
     double* restrict L = a->buffer;      //pointer to matrix A
-    double* restrict B = b->buffer;      //pointer to matrix B
+    double *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     double *a01, *a11, *b10, *b11;   //pointers for GEMM and TRSM blocks
 
@@ -8888,25 +9105,19 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
 
                 ymm3 = DTRSM_SMALL_DIV_OR_SCALE(ymm3, ymm0);
 
-                ymm0 = _mm256_loadu_pd((double const *)b11);
-                ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x07);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x07);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x07);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*3));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x07);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*4));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm11 = _mm256_blend_pd(ymm0, ymm11, 0x07);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*5));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm13 = _mm256_blend_pd(ymm0, ymm13, 0x07);
+                _mm_storeu_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+                _mm_storeu_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*4), _mm256_extractf128_pd(ymm11,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*5), _mm256_extractf128_pd(ymm13,0));
 
-                _mm256_storeu_pd((double *)b11, ymm3);
-                _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-                _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-                _mm256_storeu_pd((double *)(b11 + cs_b*3), ymm9);
-                _mm256_storeu_pd((double *)(b11 + cs_b*4), ymm11);
-                _mm256_storeu_pd((double *)(b11 + cs_b*5), ymm13);
+                _mm_storel_pd((double *)b11 + 2, _mm256_extractf128_pd(ymm3,1));
+                _mm_storel_pd((double *)(b11 + cs_b + 2), _mm256_extractf128_pd(ymm5,1));
+                _mm_storel_pd((double *)(b11 + cs_b*2 + 2), _mm256_extractf128_pd(ymm7,1));
+                _mm_storel_pd((double *)(b11 + cs_b*3 + 2), _mm256_extractf128_pd(ymm9,1));
+                _mm_storel_pd((double *)(b11 + cs_b*4 + 2), _mm256_extractf128_pd(ymm11,1));
+                _mm_storel_pd((double *)(b11 + cs_b*5 + 2), _mm256_extractf128_pd(ymm13,1));
 
                 m_remainder -=3;
             }
@@ -9009,25 +9220,12 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
 
                 ymm3 = DTRSM_SMALL_DIV_OR_SCALE(ymm3, ymm0);
 
-                ymm0 = _mm256_loadu_pd((double const *)b11);
-                ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x03);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x03);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x03);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*3));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x03);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*4));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm11 = _mm256_blend_pd(ymm0, ymm11, 0x03);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*5));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm13 = _mm256_blend_pd(ymm0, ymm13, 0x03);
-
-                _mm256_storeu_pd((double *)b11, ymm3);
-                _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-                _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-                _mm256_storeu_pd((double *)(b11 + cs_b*3), ymm9);
-                _mm256_storeu_pd((double *)(b11 + cs_b*4), ymm11);
-                _mm256_storeu_pd((double *)(b11 + cs_b*5), ymm13);
+                _mm_storeu_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+                _mm_storeu_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*4), _mm256_extractf128_pd(ymm11,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*5), _mm256_extractf128_pd(ymm13,0));
 
                 m_remainder -=2;
             }
@@ -9130,25 +9328,12 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
 
                 ymm3 = DTRSM_SMALL_DIV_OR_SCALE(ymm3, ymm0);
 
-                ymm0 = _mm256_loadu_pd((double const *)b11);
-                ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x01);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x01);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x01);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*3));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x01);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*4));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm11 = _mm256_blend_pd(ymm0, ymm11, 0x01);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*5));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm13 = _mm256_blend_pd(ymm0, ymm13, 0x01);
-
-                _mm256_storeu_pd((double *)b11, ymm3);
-                _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-                _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-                _mm256_storeu_pd((double *)(b11 + cs_b*3), ymm9);
-                _mm256_storeu_pd((double *)(b11 + cs_b*4), ymm11);
-                _mm256_storeu_pd((double *)(b11 + cs_b*5), ymm13);
+                _mm_storel_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+                _mm_storel_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+                _mm_storel_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+                _mm_storel_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
+                _mm_storel_pd((double *)(b11 + cs_b*4), _mm256_extractf128_pd(ymm11,0));
+                _mm_storel_pd((double *)(b11 + cs_b*5), _mm256_extractf128_pd(ymm13,0));
 
                 m_remainder -=1;
             }
@@ -9529,23 +9714,15 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
 
                 ymm3 = DTRSM_SMALL_DIV_OR_SCALE(ymm3, ymm0);
 
-                ymm0 = _mm256_loadu_pd((double const *)b11);
-                ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x07);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x07);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x07);
-                xmm5 = _mm_loadu_pd((double const*)(b11 + cs_b * 3));
-                ymm0 = _mm256_broadcast_sd((double const *)(b11 + cs_b*3 + 2));
-                ymm0 = _mm256_insertf128_pd(ymm0, xmm5, 0);                      //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x07);
+                _mm_storeu_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+                _mm_storeu_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
 
-                _mm256_storeu_pd((double *)b11, ymm3);
-                _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-                _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-                xmm5 = _mm256_extractf128_pd(ymm9, 0);
-                _mm_storeu_pd((double *)(b11 + cs_b * 3),xmm5);
-                _mm_storel_pd((b11 + cs_b * 3 + 2), _mm256_extractf128_pd(ymm9, 1));
+                _mm_storel_pd((double *)b11 + 2, _mm256_extractf128_pd(ymm3,1));
+                _mm_storel_pd((double *)(b11 + cs_b + 2), _mm256_extractf128_pd(ymm5,1));
+                _mm_storel_pd((double *)(b11 + cs_b*2 + 2), _mm256_extractf128_pd(ymm7,1));
+                _mm_storel_pd((double *)(b11 + cs_b*3 + 2), _mm256_extractf128_pd(ymm9,1));
 
                 m_remainder -=3;
             }
@@ -9621,21 +9798,10 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
 
                 ymm3 = DTRSM_SMALL_DIV_OR_SCALE(ymm3, ymm0);
 
-                ymm0 = _mm256_loadu_pd((double const *)b11);
-                ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x03);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x03);
-                ymm0 = _mm256_loadu_pd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x03);
-                xmm5 = _mm_loadu_pd((double const*)(b11 + cs_b * 3));
-                ymm0 = _mm256_insertf128_pd(ymm0, xmm5, 0);
-                ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x03);
-
-                _mm256_storeu_pd((double *)b11, ymm3);
-                _mm256_storeu_pd((double *)(b11 + cs_b), ymm5);
-                _mm256_storeu_pd((double *)(b11 + cs_b*2), ymm7);
-                xmm5 = _mm256_extractf128_pd(ymm9, 0);
-                _mm_storeu_pd((double *)(b11 + cs_b * 3),xmm5);
+                _mm_storeu_pd((double *)b11, _mm256_extractf128_pd(ymm3,0));
+                _mm_storeu_pd((double *)(b11 + cs_b), _mm256_extractf128_pd(ymm5,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*2), _mm256_extractf128_pd(ymm7,0));
+                _mm_storeu_pd((double *)(b11 + cs_b*3), _mm256_extractf128_pd(ymm9,0));
 
                 m_remainder -=2;
             }
@@ -9708,15 +9874,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
                 ymm1 = _mm256_broadcast_sd((double const *)(a11 + cs_a));
                 ymm3 = _mm256_fnmadd_pd(ymm1, ymm5, ymm3);
 
-                ymm3 = DTRSM_SMALL_DIV_OR_SCALE(ymm3, ymm0);
-                ymm0 = _mm256_broadcast_sd((double const *)b11);
-                ymm3 = _mm256_blend_pd(ymm0, ymm3, 0x01);
-                ymm0 = _mm256_broadcast_sd((double const *)(b11 + cs_b));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm5 = _mm256_blend_pd(ymm0, ymm5, 0x01);
-                ymm0 = _mm256_broadcast_sd((double const *)(b11 + cs_b*2));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm7 = _mm256_blend_pd(ymm0, ymm7, 0x01);
-                ymm0 = _mm256_broadcast_sd((double const *)(b11 + cs_b*3));                   //B11[0][1] B11[1][1] B11[2][1] B11[3][1]
-                ymm9 = _mm256_blend_pd(ymm0, ymm9, 0x01);
+		ymm3 = DTRSM_SMALL_DIV_OR_SCALE(ymm3, ymm0);
 
                 _mm_storel_pd((b11 + cs_b * 0), _mm256_extractf128_pd(ymm3, 0));
                 _mm_storel_pd((b11 + cs_b * 1), _mm256_extractf128_pd(ymm5, 0));
@@ -10759,7 +10917,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AltXB_AuXB
 
     double AlphaVal = *(double *)AlphaObj->buffer;    //value of alpha
     double *L =  a->buffer;               //pointer to  matrix A
-    double *B =  b->buffer;               //pointer to matrix B
+    double *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     //pointers that point to blocks for GEMM and TRSM
     double *a10, *a11, *b01, *b11;
@@ -12739,7 +12897,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
 
     double AlphaVal = *(double *)AlphaObj->buffer;    //value of alpha
     double *L =  a->buffer;       //pointer to  matrix A
-    double *B =  b->buffer;       //pointer to matrix B
+    double *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     double *a10, *a11, *b01, *b11;    //pointers that point to blocks for GEMM and TRSM
 
@@ -14754,9 +14912,12 @@ BLIS_INLINE void strsm_small_pack_diag_element
     __m256 ymm0, ymm1, ymm2, ymm3;
     __m256 ymm4, ymm5, ymm6, ymm7;
     __m256 ymm8, ymm9, ymm10,ymm11;
-    __m256 ymm14, ymm15, ymm12,ymm13;
+    __m256 ymm14, ymm15, ymm12;
     float ones = 1.0;
-    ymm13 = ymm14 = ymm15 = _mm256_broadcast_ss((float const *)&ones);
+    ymm14 = ymm15 = _mm256_broadcast_ss((float const *)&ones);
+#ifdef  BLIS_ENABLE_TRSM_PREINVERSION
+    __m256 ymm13 = _mm256_broadcast_ss((float const *)&ones);
+#endif
     if(side=='L'||side=='l')
     {
         if(!is_unitdiag)
@@ -31940,75 +32101,160 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
         if(m_rem == 3)
         {
             dim_t p_lda = 4;
-            if(transa)
-            {
-                for(dim_t x = 0; x < i; x += p_lda)
-                {
-                    ymm0 = _mm256_loadu_pd((double const *)(a10));
-                    ymm10 = _mm256_loadu_pd((double const *)
-                            (a10 + 2));
-                    ymm1 = _mm256_loadu_pd((double const *)
-                            (a10 + cs_a));
-                    ymm11 = _mm256_loadu_pd((double const *)
-                            (a10 + 2 + cs_a));
+	    if(transa)
+	    {
+		    dim_t x = 0;
+		    for(x = 0; (x+3) < i; x += p_lda)
+		    {
+			    ymm0 = _mm256_loadu_pd((double const *)(a10));
+			    ymm10 = _mm256_loadu_pd((double const *)
+					    (a10 + 2));
+			    ymm1 = _mm256_loadu_pd((double const *)
+					    (a10 + cs_a));
+			    ymm11 = _mm256_loadu_pd((double const *)
+					    (a10 + 2 + cs_a));
 
-                    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
-                    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
-                    ymm8 = _mm256_permute2f128_pd(ymm10,ymm11,0x20);
-                    ymm9 = _mm256_permute2f128_pd(ymm10,ymm11,0x31);
+			    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+			    ymm8 = _mm256_permute2f128_pd(ymm10,ymm11,0x20);
+			    ymm9 = _mm256_permute2f128_pd(ymm10,ymm11,0x31);
 
-                    _mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
-                    _mm256_storeu_pd((double *)(ptr_a10_dup +
-                                p_lda), ymm7);
-                    _mm256_storeu_pd((double *)(ptr_a10_dup +
-                                p_lda*2), ymm8);
-                    _mm256_storeu_pd((double *)(ptr_a10_dup +
-                                p_lda*3), ymm9);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda), ymm7);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda*2), ymm8);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda*3), ymm9);
 
-                    ymm0 = _mm256_loadu_pd((double const *)(a10
-                            + 2 * cs_a));
-                    ymm10 = _mm256_loadu_pd((double const *)(a10
-                                + 2 * cs_a + 2));
+			    ymm0 = _mm256_loadu_pd((double const *)(a10
+						    + 2 * cs_a));
+			    ymm10 = _mm256_loadu_pd((double const *)(a10
+						    + 2 * cs_a + 2));
+			    ymm1 = _mm256_set_pd(1, 1, 1, 1);
 
-                    ymm1 = _mm256_loadu_pd((double const *)(a10
-                            + 3 * cs_a));
-                    ymm11 = _mm256_loadu_pd((double const *)(a10
-                                + 3 * cs_a + 2));
+			    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+			    ymm8 = _mm256_permute2f128_pd(ymm10,ymm1,0x20);
+			    ymm9 = _mm256_permute2f128_pd(ymm10,ymm1,0x31);
 
-                    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
-                    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
-                    ymm8 = _mm256_permute2f128_pd(ymm10,ymm11,0x20);
-                    ymm9 = _mm256_permute2f128_pd(ymm10,ymm11,0x31);
 
-                    _mm256_storeu_pd((double *)(ptr_a10_dup + 2),
-                            ymm6);
-                    _mm256_storeu_pd((double *)(ptr_a10_dup +
-                                p_lda + 2), ymm7);
-                    _mm256_storeu_pd((double *)(ptr_a10_dup +
-                                p_lda*2 + 2), ymm8);
-                    _mm256_storeu_pd((double *)(ptr_a10_dup +
-                                p_lda*3 + 2), ymm9);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup + 2), ymm6);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda + 2), ymm7);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda*2 + 2), ymm8);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda*3 + 2), ymm9);
 
-                    a10 += p_lda;
-                    ptr_a10_dup += p_lda * p_lda;
-                }
+			    a10 += p_lda;
+			    ptr_a10_dup += p_lda * p_lda;
+		    }
+		    for(; (x+2) < i; x += 3)
+		    {
+			    ymm0 = _mm256_loadu_pd((double const *)(a10));
+			    xmm4 = _mm_loadu_pd((double const *)
+					    (a10 + 2));
+			    ymm10 = _mm256_insertf128_pd(ymm10, xmm4, 0);
+			    ymm1 = _mm256_loadu_pd((double const *)
+					    (a10 + cs_a));
+			    xmm4 = _mm_loadu_pd((double const *)
+					    (a10 + 2 + cs_a));
+			    ymm11 = _mm256_insertf128_pd(ymm11, xmm4, 0);
 
-            }
-            else
-            {
-                for(dim_t x=0;x<i;x++)
-                {
-                    ymm0 = _mm256_loadu_pd((double const *)
-                            (a10 + rs_a * x));
-                    _mm256_storeu_pd((double *)
-                            (ptr_a10_dup + p_lda * x), ymm0);
-                    ymm0 = _mm256_loadu_pd((double const *)
-                            (a10 + rs_a * x + 2));
-                    _mm256_storeu_pd((double *)
-                            (ptr_a10_dup + p_lda * x + 2),
-                            ymm0);
-                }
-            }
+			    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+			    ymm8 = _mm256_permute2f128_pd(ymm10,ymm11,0x20);
+
+			    _mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda), ymm7);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda*2), ymm8);
+
+			    ymm0 = _mm256_loadu_pd((double const *)(a10
+						    + 2 * cs_a));
+			    xmm4 = _mm_loadu_pd((double const *)(a10
+						    + 2 * cs_a + 2));
+			    ymm10 = _mm256_insertf128_pd(ymm10, xmm4, 0);
+			    ymm1 = _mm256_set_pd(1, 1, 1, 1);
+
+			    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+			    ymm8 = _mm256_permute2f128_pd(ymm10,ymm1,0x20);
+
+
+			    _mm256_storeu_pd((double *)(ptr_a10_dup + 2), ymm6);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda + 2), ymm7);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda*2 + 2), ymm8);
+
+			    a10 += 3;
+			    ptr_a10_dup += p_lda * p_lda;
+		    }
+		    for(; (x+1) < i; x += 2)
+		    {
+			    ymm0 = _mm256_loadu_pd((double const *)(a10));
+			    ymm1 = _mm256_loadu_pd((double const *)
+					    (a10 + cs_a));
+
+			    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+
+			    _mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda), ymm7);
+
+			    ymm0 = _mm256_loadu_pd((double const *)(a10
+						    + 2 * cs_a));
+			    ymm1 = _mm256_set_pd(1, 1, 1, 1);
+
+			    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+
+
+			    _mm256_storeu_pd((double *)(ptr_a10_dup + 2), ymm6);
+			    _mm256_storeu_pd((double *)(ptr_a10_dup +
+						    p_lda + 2), ymm7);
+
+			    a10 += 2;
+			    ptr_a10_dup += p_lda * p_lda;
+		    }
+		    for(; x < i; x += 1)
+		    {
+			    xmm4 = _mm_loadu_pd((double const *)(a10));
+			    xmm5 = _mm_loadu_pd((double const *)
+					    (a10 + cs_a));
+
+
+			    _mm_storeu_pd((double *)(ptr_a10_dup), xmm4);
+			    _mm_storeu_pd((double *)(ptr_a10_dup + 1), xmm5);
+
+			    xmm4 = _mm_loadu_pd((double const *)(a10
+						    + 2 * cs_a));
+
+			    _mm_storeu_pd((double *)(ptr_a10_dup + 2), xmm4);
+
+			    a10 += 1;
+			    ptr_a10_dup += p_lda * p_lda;
+		    }
+	    }
+	    else
+	    {
+		    for(dim_t x=0;x<i;x++)
+		    {
+			    ymm0 = _mm256_loadu_pd((double const *)
+					    (a10 + rs_a * x));
+			    _mm256_storeu_pd((double *)
+					    (ptr_a10_dup + p_lda * x), ymm0);
+			    xmm4 = _mm_loadu_pd((double const *)
+					    (a10 + rs_a * x + 2));
+			    _mm_storeu_pd((double *)
+					    (ptr_a10_dup + p_lda * x + 2),
+					    xmm4);
+		    }
+	    }
             //cols
             for(j = 0; (j+d_nr-1) < n; j += d_nr)
             {
@@ -32020,7 +32266,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
 
                 BLIS_SET_YMM_REG_ZEROS
                 ///GEMM code begins///
-                BLIS_ZTRSM_SMALL_GEMM_4mx3n(a10,b01,cs_b,p_lda,k_iter)
+                BLIS_ZTRSM_SMALL_GEMM_3mx3n(a10,b01,cs_b,p_lda,k_iter)
                 ///GEMM code ends///
                 ymm16 = _mm256_broadcast_pd((__m128d const *)
                         (&AlphaVal));
@@ -32116,7 +32362,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
                 if(2 == n_rem)
                 {
                     ///GEMM code begins///
-                    BLIS_ZTRSM_SMALL_GEMM_4mx2n(a10,b01,cs_b,
+                    BLIS_ZTRSM_SMALL_GEMM_3mx2n(a10,b01,cs_b,
                             p_lda,k_iter)
                     BLIS_PRE_ZTRSM_SMALL_3M_2N(AlphaVal,b11,cs_b)
 
@@ -32133,7 +32379,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
                 else if(1 == n_rem)
                 {
                     ///GEMM code begins///
-                    BLIS_ZTRSM_SMALL_GEMM_4mx1n(a10,b01,cs_b,
+                    BLIS_ZTRSM_SMALL_GEMM_3mx1n(a10,b01,cs_b,
                             p_lda,k_iter)
                     BLIS_PRE_ZTRSM_SMALL_3M_1N(AlphaVal,b11,cs_b)
 
@@ -32295,34 +32541,35 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
         {
             dim_t p_lda = 2; // packed leading dimension
             if(transa)
-            {
-                for(dim_t x = 0; x < i; x += p_lda)
-                {
-                    ymm0 = _mm256_loadu_pd((double const *)(a10));
-                    ymm1 = _mm256_loadu_pd((double const *)
-                            (a10 + cs_a));
+	    {
+		    dim_t x = 0;
+		    for(x = 0; (x + 1) < i; x += p_lda)
+		    {
+			    ymm0 = _mm256_loadu_pd((double const *)(a10));
+			    _mm_storeu_pd((double *)(ptr_a10_dup),
+					  _mm256_extractf128_pd(ymm0, 0));
+			    _mm_storeu_pd((double *)(ptr_a10_dup +
+			                 p_lda), _mm256_extractf128_pd(ymm0, 1));
+			    a10 += p_lda;
+			    ptr_a10_dup += p_lda * p_lda;
+		    }
+		    for(; x < i; x += 1)
+		    {
+			    xmm4 = _mm_loadu_pd((double const *)(a10));
+			    _mm_storeu_pd((double *)(ptr_a10_dup), xmm4);
+			    a10 += 1;
+			    ptr_a10_dup += 1;
+		    }
 
-                    ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
-                    ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
-
-                    _mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
-                    _mm256_storeu_pd((double *)(ptr_a10_dup +
-                                p_lda), ymm7);
-
-                    a10 += p_lda;
-                    ptr_a10_dup += p_lda * p_lda;
-                }
-
-            }
+	    }
             else
             {
                 for(dim_t x=0;x<i;x++)
                 {
-                    ymm0 = _mm256_loadu_pd((double const *)
-                            (a10 + rs_a * x));
-
-                    _mm256_storeu_pd((double *)
-                            (ptr_a10_dup + p_lda * x), ymm0);
+			xmm4 = _mm_loadu_pd((double const *)
+					(a10 + rs_a *x));
+			_mm_storeu_pd((double *)
+					(ptr_a10_dup + p_lda *x), xmm4);
                 }
             }
             //cols
@@ -33080,73 +33327,158 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
         dim_t p_lda = 4;
         if(transa)
         {
-            for(dim_t x = 0; x < m-m_remainder; x += p_lda)
-            {
-                ymm0 = _mm256_loadu_pd((double const *)(a10));
-                ymm10 = _mm256_loadu_pd((double const *)
-                        (a10 + 2));
-                ymm1 = _mm256_loadu_pd((double const *)
-                        (a10 + cs_a));
-                ymm11 = _mm256_loadu_pd((double const *)
-                        (a10 + 2 + cs_a));
+		dim_t x = 0;
+		for(x = 0; (x+3) < m-m_remainder; x += p_lda)
+		{
+			ymm0 = _mm256_loadu_pd((double const *)(a10));
+			ymm10 = _mm256_loadu_pd((double const *)
+					(a10 + 2));
+			ymm1 = _mm256_loadu_pd((double const *)
+					(a10 + cs_a));
+			ymm11 = _mm256_loadu_pd((double const *)
+					(a10 + 2 + cs_a));
 
-                ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
-                ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
-                ymm8 = _mm256_permute2f128_pd(ymm10,ymm11,0x20);
-                ymm9 = _mm256_permute2f128_pd(ymm10,ymm11,0x31);
+			ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+			ymm8 = _mm256_permute2f128_pd(ymm10,ymm11,0x20);
+			ymm9 = _mm256_permute2f128_pd(ymm10,ymm11,0x31);
 
-                _mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
-                _mm256_storeu_pd((double *)(ptr_a10_dup +
-                            p_lda), ymm7);
-                _mm256_storeu_pd((double *)(ptr_a10_dup +
-                            p_lda*2), ymm8);
-                _mm256_storeu_pd((double *)(ptr_a10_dup +
-                            p_lda*3), ymm9);
+			_mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda), ymm7);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda*2), ymm8);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda*3), ymm9);
 
-                ymm0 = _mm256_loadu_pd((double const *)(a10
-                            + 2 * cs_a));
-                ymm10 = _mm256_loadu_pd((double const *)(a10
-                            + 2 * cs_a + 2));
+			ymm0 = _mm256_loadu_pd((double const *)(a10
+						+ 2 * cs_a));
+			ymm10 = _mm256_loadu_pd((double const *)(a10
+						+ 2 * cs_a + 2));
+			ymm1 = _mm256_set_pd(1, 1, 1, 1);
 
-                ymm1 = _mm256_loadu_pd((double const *)(a10
-                            + 3 * cs_a));
-                ymm11 = _mm256_loadu_pd((double const *)(a10
-                            + 3 * cs_a + 2));
+			ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+			ymm8 = _mm256_permute2f128_pd(ymm10,ymm1,0x20);
+			ymm9 = _mm256_permute2f128_pd(ymm10,ymm1,0x31);
 
-                ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
-                ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
-                ymm8 = _mm256_permute2f128_pd(ymm10,ymm11,0x20);
-                ymm9 = _mm256_permute2f128_pd(ymm10,ymm11,0x31);
 
-                _mm256_storeu_pd((double *)(ptr_a10_dup + 2),
-                        ymm6);
-                _mm256_storeu_pd((double *)(ptr_a10_dup +
-                            p_lda + 2), ymm7);
-                _mm256_storeu_pd((double *)(ptr_a10_dup +
-                            p_lda*2 + 2), ymm8);
-                _mm256_storeu_pd((double *)(ptr_a10_dup +
-                            p_lda*3 + 2), ymm9);
+			_mm256_storeu_pd((double *)(ptr_a10_dup + 2), ymm6);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda + 2), ymm7);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda*2 + 2), ymm8);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda*3 + 2), ymm9);
 
-                a10 += p_lda;
-                ptr_a10_dup += p_lda * p_lda;
-            }
+			a10 += p_lda;
+			ptr_a10_dup += p_lda * p_lda;
+		}
+		for(; (x+2) < m-m_remainder; x += 3)
+		{
+			ymm0 = _mm256_loadu_pd((double const *)(a10));
+			xmm4 = _mm_loadu_pd((double const *)
+					(a10 + 2));
+			ymm10 = _mm256_insertf128_pd(ymm10, xmm4, 0);
+			ymm1 = _mm256_loadu_pd((double const *)
+					(a10 + cs_a));
+			xmm4 = _mm_loadu_pd((double const *)
+					(a10 + 2 + cs_a));
+			ymm11 = _mm256_insertf128_pd(ymm11, xmm4, 0);
 
-        }
-        else
-        {
-            for(dim_t x=0;x < m-m_remainder;x++)
-            {
-                ymm0 = _mm256_loadu_pd((double const *)
-                        (a10 + rs_a * x));
-                _mm256_storeu_pd((double *)
-                        (ptr_a10_dup + p_lda * x), ymm0);
-                ymm0 = _mm256_loadu_pd((double const *)
-                        (a10 + rs_a * x + 2));
-                _mm256_storeu_pd((double *)
-                        (ptr_a10_dup + p_lda * x + 2),
-                        ymm0);
-            }
-        }
+			ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+			ymm8 = _mm256_permute2f128_pd(ymm10,ymm11,0x20);
+
+			_mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda), ymm7);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda*2), ymm8);
+
+			ymm0 = _mm256_loadu_pd((double const *)(a10
+						+ 2 * cs_a));
+			xmm4 = _mm_loadu_pd((double const *)(a10
+						+ 2 * cs_a + 2));
+			ymm10 = _mm256_insertf128_pd(ymm10, xmm4, 0);
+			ymm1 = _mm256_set_pd(1, 1, 1, 1);
+
+			ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+			ymm8 = _mm256_permute2f128_pd(ymm10,ymm1,0x20);
+
+
+			_mm256_storeu_pd((double *)(ptr_a10_dup + 2), ymm6);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda + 2), ymm7);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda*2 + 2), ymm8);
+
+			a10 += 3;
+			ptr_a10_dup += p_lda * p_lda;
+		}
+		for(; (x+1) < m-m_remainder; x += 2)
+		{
+			ymm0 = _mm256_loadu_pd((double const *)(a10));
+			ymm1 = _mm256_loadu_pd((double const *)
+					(a10 + cs_a));
+
+			ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+
+			_mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda), ymm7);
+
+			ymm0 = _mm256_loadu_pd((double const *)(a10
+						+ 2 * cs_a));
+			ymm1 = _mm256_set_pd(1, 1, 1, 1);
+
+			ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
+			ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
+
+
+			_mm256_storeu_pd((double *)(ptr_a10_dup + 2), ymm6);
+			_mm256_storeu_pd((double *)(ptr_a10_dup +
+						p_lda + 2), ymm7);
+
+			a10 += 2;
+			ptr_a10_dup += p_lda * p_lda;
+		}
+		for(; x < m-m_remainder; x += 1)
+		{
+			xmm4 = _mm_loadu_pd((double const *)(a10));
+			xmm5 = _mm_loadu_pd((double const *)
+					(a10 + cs_a));
+
+
+			_mm_storeu_pd((double *)(ptr_a10_dup), xmm4);
+			_mm_storeu_pd((double *)(ptr_a10_dup + 1), xmm5);
+
+			xmm4 = _mm_loadu_pd((double const *)(a10
+						+ 2 * cs_a));
+
+			_mm_storeu_pd((double *)(ptr_a10_dup + 2), xmm4);
+
+			a10 += 1;
+			ptr_a10_dup += p_lda * p_lda;
+		}
+	}
+	else
+	{
+		for(dim_t x=0;x < m-m_remainder;x++)
+		{
+			ymm0 = _mm256_loadu_pd((double const *)
+					(a10 + rs_a * x));
+			_mm256_storeu_pd((double *)
+					(ptr_a10_dup + p_lda * x), ymm0);
+			xmm4 = _mm_loadu_pd((double const *)
+					(a10 + rs_a * x + 2));
+			_mm_storeu_pd((double *)
+					(ptr_a10_dup + p_lda * x + 2),
+					xmm4);
+		}
+	}
         //cols
         for(j = (n - d_nr); (j + 1) > 0; j -= d_nr)
         {
@@ -33426,37 +33758,38 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
     }
     else if(m_remainder == 1)
     {
-        dim_t p_lda = 2; // packed leading dimension
-        if(transa)
-        {
-            for(dim_t x = 0; x <  m-m_remainder; x += p_lda)
-            {
-                ymm0 = _mm256_loadu_pd((double const *)(a10));
-                ymm1 = _mm256_loadu_pd((double const *)
-                        (a10 + cs_a));
-
-                ymm6 = _mm256_permute2f128_pd(ymm0,ymm1,0x20);
-                ymm7 = _mm256_permute2f128_pd(ymm0,ymm1,0x31);
-
-                _mm256_storeu_pd((double *)(ptr_a10_dup), ymm6);
-                _mm256_storeu_pd((double *)(ptr_a10_dup +
-                            p_lda), ymm7);
-
-                a10 += p_lda;
-                ptr_a10_dup += p_lda * p_lda;
-            }
-
-        }
-        else
-        {
-            for(dim_t x=0;x<m-m_remainder;x++)
-            {
-                ymm0 = _mm256_loadu_pd((double const *)
-                        (a10 + rs_a * x));
-                _mm256_storeu_pd((double *)
-                        (ptr_a10_dup + p_lda * x), ymm0);
-            }
-        }
+	    dim_t p_lda = 2; // packed leading dimension
+	    if(transa)
+	    {
+		    dim_t x = 0;
+		    for(x = 0; x <  m-m_remainder; x += p_lda)
+		    {
+			    ymm0 = _mm256_loadu_pd((double const *)(a10));
+			    _mm_storeu_pd((double *)(ptr_a10_dup),
+					 _mm256_extractf128_pd(ymm0, 0));
+			    _mm_storeu_pd((double *)(ptr_a10_dup +
+					 p_lda), _mm256_extractf128_pd(ymm0, 1));
+			    a10 += p_lda;
+			    ptr_a10_dup += p_lda * p_lda;
+		    }
+		    for(; x < m - m_remainder; x += 1)
+		    {
+			    xmm4 = _mm_loadu_pd((double const *)(a10));
+			    _mm_storeu_pd((double *)(ptr_a10_dup), xmm4);
+			    a10 += 1;
+			    ptr_a10_dup += 1;
+		    }
+	    }
+	    else
+	    {
+		    for(dim_t x=0;x<m-m_remainder;x++)
+		    {
+			    xmm4 = _mm_loadu_pd((double const *)
+					    (a10 + rs_a *x));
+			    _mm_storeu_pd((double *)
+					    (ptr_a10_dup + p_lda *x), xmm4);
+		    }
+	    }
         //cols
         for(j = (n - d_nr); (j + 1) > 0; j -= d_nr)
         {
@@ -34470,38 +34803,21 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
         {
             if(transa)
             {
-                ymm0 = _mm256_broadcast_pd((__m128d const *)(a11));
-                ymm1 = _mm256_broadcast_pd((__m128d const *)
-                            (a11+cs_a*1 + 1));
+                ztrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,
+                    d11_pack,n_remainder);
             }
             else
             {
-                //broadcast diagonal elements of A11
-                ymm0 = _mm256_broadcast_pd((__m128d const *)(a11));
-                ymm1 = _mm256_broadcast_pd((__m128d const *)
-                            (a11+rs_a*1 + 1));
+                ztrsm_small_pack_diag_element(is_unitdiag,a11,rs_a,
+                    d11_pack,n_remainder);
             }
-            ymm1 = _mm256_blend_pd(ymm0, ymm1, 0x0C);
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-            ymm7 = _mm256_setr_pd(1.0, -1.0, 1.0, -1.0);
-            /*Taking denomerator multiplication of real &
-             * imaginary components*/
-            ymm4 = _mm256_mul_pd(ymm1, ymm1);
-            /*Swapping real & imaginary component position for addition with
-             * respective components*/
-            ymm6 = _mm256_permute4x64_pd(ymm4, 0xb1);
-            ymm4 = _mm256_add_pd(ymm4, ymm6);
-            /*Negating imaginary component of numerator*/
-            ymm1 = _mm256_mul_pd(ymm1, ymm7);
-            /*Dividing numerator by denominator*/
-            ymm1 = _mm256_div_pd(ymm1, ymm4);
-#endif
         }
         else
         {
             ymm1 = _mm256_broadcast_pd((__m128d const*)&ones);
+            _mm256_storeu_pd((double *)(d11_pack), ymm1);
         }
-        _mm256_storeu_pd((double *)(d11_pack), ymm1);
+        
         for(i = (m-d_mr); (i+1) > 0; i -= d_mr)     //loop along 'M' direction
         {
             a01 = D_A_pack;
@@ -34888,30 +35204,23 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
         }
         if(!is_unitdiag)
         {
-            //broadcast diagonal elements of A11
-            ymm0 = _mm256_broadcast_pd((__m128d const *)(a11));
-            ymm1 = _mm256_broadcast_pd((__m128d const *)&ones);
-            ymm1 = _mm256_blend_pd(ymm0, ymm1, 0x0C);
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-            ymm7 = _mm256_setr_pd(1.0, -1.0, 1.0, -1.0);
-            /*Taking denomerator multiplication of real &
-             * imaginary components*/
-            ymm4 = _mm256_mul_pd(ymm1, ymm1);
-            /*Swapping real & imaginary component position for addition with
-             * respective components*/
-            ymm6 = _mm256_permute4x64_pd(ymm4, 0xb1);
-            ymm4 = _mm256_add_pd(ymm4, ymm6);
-            /*Negating imaginary component of numerator*/
-            ymm1 = _mm256_mul_pd(ymm1, ymm7);
-            /*Dividing numerator by denominator*/
-            ymm1 = _mm256_div_pd(ymm1, ymm4);
-#endif
+            if(transa)
+            {
+                ztrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,
+                    d11_pack,n_remainder);
+            }
+            else
+            {
+                ztrsm_small_pack_diag_element(is_unitdiag,a11,rs_a,
+                    d11_pack,n_remainder);
+            }
         }
         else
         {
             ymm1 = _mm256_broadcast_pd((__m128d const*)&ones);
+            _mm256_storeu_pd((double *)(d11_pack), ymm1);
         }
-        _mm256_storeu_pd((double *)(d11_pack), ymm1);
+        
         for(i = (m-d_mr); (i+1) > 0; i -= d_mr)     //loop along 'M' direction
         {
             a01 = D_A_pack;
@@ -35922,39 +36231,20 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
         {
             if(transa)
             {
-                //broadcast diagonal elements of A11
-                ymm0 = _mm256_broadcast_pd((__m128d const *)(a11));
-                ymm1 = _mm256_broadcast_pd((__m128d const *)
-                            (a11+cs_a*1 + 1));
+                ztrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,
+                    d11_pack,n_remainder);
             }
             else
             {
-                //broadcast diagonal elements of A11
-                ymm0 = _mm256_broadcast_pd((__m128d const *)(a11));
-                ymm1 = _mm256_broadcast_pd((__m128d const *)
-                            (a11+rs_a*1 + 1));
+                ztrsm_small_pack_diag_element(is_unitdiag,a11,rs_a,
+                    d11_pack,n_remainder);
             }
-            ymm1 = _mm256_blend_pd(ymm0, ymm1, 0x0C);
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-            ymm7 = _mm256_setr_pd(1.0, -1.0, 1.0, -1.0);
-            /*Taking denomerator multiplication of real &
-             * imaginary components*/
-            ymm4 = _mm256_mul_pd(ymm1, ymm1);
-            /*Swapping real & imaginary component position for addition with
-             * respective components*/
-            ymm6 = _mm256_permute4x64_pd(ymm4, 0xb1);
-            ymm4 = _mm256_add_pd(ymm4, ymm6);
-            /*Negating imaginary component of numerator*/
-            ymm1 = _mm256_mul_pd(ymm1, ymm7);
-            /*Dividing numerator by denominator*/
-            ymm1 = _mm256_div_pd(ymm1, ymm4);
-#endif
         }
         else
         {
             ymm1 = _mm256_broadcast_pd((__m128d const *)&ones);
+            _mm256_storeu_pd((double *)(d11_pack), ymm1);
         }
-        _mm256_storeu_pd((double *)(d11_pack), ymm1);
 
         for(i = 0; (i+d_mr-1) < m; i += d_mr)     //loop along 'M' direction
         {
@@ -36341,30 +36631,22 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
         }
         if(!is_unitdiag)
         {
-            //broadcast diagonal elements of A11
-            ymm0 = _mm256_broadcast_pd((__m128d const *)(a11));
-            ymm1 = _mm256_broadcast_pd((__m128d const *)&ones);
-            ymm1 = _mm256_blend_pd(ymm0, ymm1, 0x0C);
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-            ymm7 = _mm256_setr_pd(1.0, -1.0, 1.0, -1.0);
-            /*Taking denomerator multiplication of real &
-             * imaginary components*/
-            ymm4 = _mm256_mul_pd(ymm1, ymm1);
-            /*Swapping real & imaginary component position for addition with
-             * respective components*/
-            ymm6 = _mm256_permute4x64_pd(ymm4, 0xb1);
-            ymm4 = _mm256_add_pd(ymm4, ymm6);
-            /*Negating imaginary component of numerator*/
-            ymm1 = _mm256_mul_pd(ymm1, ymm7);
-            /*Dividing numerator by denominator*/
-            ymm1 = _mm256_div_pd(ymm1, ymm4);
-#endif
+            if(transa)
+            {
+                ztrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,
+                    d11_pack,n_remainder);
+            }
+            else
+            {
+                ztrsm_small_pack_diag_element(is_unitdiag,a11,rs_a,
+                    d11_pack,n_remainder);
+            }
         }
         else
         {
             ymm1 = _mm256_broadcast_pd((__m128d const *)&ones);
-        }
-        _mm256_storeu_pd((double *)(d11_pack), ymm1);
+            _mm256_storeu_pd((double *)(d11_pack), ymm1);
+        }        
 
         for(i = 0; (i+d_mr-1) < m; i += d_mr)     //loop along 'M' direction
         {
@@ -36527,33 +36809,19 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
  */
 
 #define SCOMPLEX_INV(a, b) {\
-	a.real = b.real;\
-	a.imag = (b.imag * -1.0);\
-	/*Compute denominator eliminating imaginary component*/\
-	float dnm = (b.real * b.real);\
-        /*multiply two times with -1 for correct  result as
-         * dcomplex number with positive imaginary part will
-         * invert the sign if not multiplied twice with -1*/\
-	dnm += ((-1.0 * (b.imag * b.imag)) * -1.0);\
-	/*Compute the final result by dividing real and imag part by dnm*/\
-	a.real /= dnm;\
-	a.imag /= dnm;\
+	a.real = 1.0;\
+	a.imag = 0.0;\
+	bli_cinvscals(b, a);\
 }
 
 #define SCOMPLEX_MUL(a, b, c) {\
-	float real = a.real * b.real;\
-	real += ((a.imag * b.imag) * -1.0);\
-	float imag = (a.real * b.imag);\
-	imag += (a.imag * b.real);\
-	c.real = real;\
-	c.imag = imag;\
+	c.real = b.real;\
+	c.imag = b.imag;\
+	bli_cscals(a,c);\
 }
 
 #define SCOMPLEX_DIV(a, b){\
-	float dnm = b.real * b.real;\
-	dnm += (-1.0 * (b.imag * (b.imag * -1.0) ));\
-	a.real /= dnm;\
-	a.imag /= dnm;\
+	bli_cinvscals(b,a); \
 }
 
 #ifdef BLIS_ENABLE_TRSM_PREINVERSION
@@ -36579,13 +36847,10 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
 
 #ifdef BLIS_DISABLE_TRSM_PREINVERSION
 #define CTRSM_DIAG_ELE_EVAL_OPS(a,b,c){\
-	 if(!is_unitdiag)\
-	 {\
-		 a.real = b.real;\
-		 a.imag = (b.imag * -1.0);\
-		 SCOMPLEX_MUL(c, a, c)\
-		 SCOMPLEX_DIV(c, b)\
-	}\
+       if(!is_unitdiag)\
+       {\
+	     bli_cinvscals(b, c);\
+       }\
 }
 #endif
 
@@ -36981,72 +37246,30 @@ BLIS_INLINE void ctrsm_small_pack_diag_element
 	dim_t size
 )
 {
-	__m256  ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm8;
-	bool is_eight = (size == 8) ? 1 : 0;
-	scomplex ones = {1.0, 1.0};
-	ymm2 = ymm1 = _mm256_broadcast_ps((__m128 const *)&ones);
 #ifdef BLIS_ENABLE_TRSM_PREINVERSION
-	__m256  ymm7;
-	ymm7 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);
-#endif
-
-	if(!is_unitdiag)
+	// If Preinversion is disabled, inverse the diaganol
+	// elements from A and pack into diagonal buffer.
+	// In order to avoid the overflow and underflow scenarios,
+	// bli_cinvscals is used.
+	for( dim_t i = 0; i < size; i++)
 	{
-		//broadcast diagonal elements of A11
-		ymm1 = _mm256_broadcast_ps((__m128  const *)a11);
-		ymm2 = _mm256_broadcast_ps((__m128  const *) (a11+ cs_a +1));
-		ymm3 = _mm256_broadcast_ps((__m128  const *) (a11+ cs_a*2 +2));
-
-		ymm1 = _mm256_shuffle_ps(ymm1, ymm2, 0x44);
-
-		if(is_eight) {
-			ymm4 = _mm256_broadcast_ps((__m128 const *)(a11 + 4 + cs_a*4));
-			ymm5 = _mm256_broadcast_ps((__m128 const *)(a11 + 5 + cs_a*5));
-			ymm6 = _mm256_shuffle_ps(ymm4, ymm5, 0x44);
-
-			ymm4 = _mm256_broadcast_ps((__m128 const *)(a11 + 6 + cs_a*6));
-			ymm5 = _mm256_broadcast_ps((__m128 const *)(a11 + 7 + cs_a*7));
-			ymm8 = _mm256_shuffle_ps(ymm4, ymm5, 0x44);
-
-			ymm2 = _mm256_blend_ps(ymm6, ymm8, 0xF0);
-
-			ymm4 = _mm256_broadcast_ps((__m128 const *)(a11 + 3 + cs_a*3));
-			ymm3 = _mm256_shuffle_ps(ymm3, ymm4, 0x44);
-		}
-
-		ymm1 = _mm256_blend_ps(ymm1, ymm3, 0xF0);
-
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-		/*Taking denomerator multiplication of real & imaginary components*/
-		ymm4 = _mm256_mul_ps(ymm1, ymm1);
-		ymm5 = _mm256_mul_ps(ymm2, ymm2);
-		/*Swapping real & imaginary component position for addition with
-		 * respective components*/
-		//BEFORE
-		//a[0] a[1] a[2] a[3]
-		//AFTER
-		//a[1] a[0] a[3] a[2]
-		//MESS
-		ymm6 = _mm256_permute_ps(ymm4, 0xB1);
-		ymm8 = _mm256_permute_ps(ymm5, 0xB1);
-		ymm4 = _mm256_add_ps(ymm4, ymm6);
-		ymm5 = _mm256_add_ps(ymm5, ymm8);
-
-		/*Negating imaginary component of numerator*/
-		ymm1 = _mm256_mul_ps(ymm1, ymm7);
-		ymm2 = _mm256_mul_ps(ymm2, ymm7);
-
-		/*Dividing numerator by denominator*/
-		ymm1 = _mm256_div_ps(ymm1, ymm4);
-		ymm2 = _mm256_div_ps(ymm2, ymm5);
-
-#endif
+		dim_t d = ((i*cs_a) + i);
+		scomplex ones = {1.0, 0.0};
+		bli_cinvscals(a11[d], ones)
+		d11_pack[i].real = ones.real;
+		d11_pack[i].imag = ones.imag;
 	}
-	_mm256_store_ps((float *)d11_pack, ymm1);
-	if(is_eight)
+
+#else //BLIS_ENABLE_TRSM_PREINVERSION
+	// If Preinversion is disabled, pack the diaganol
+	// elements from A into diagonal buffer.
+	for( dim_t i = 0; i < size; i++)
 	{
-		_mm256_store_ps((float *)(d11_pack + 4), ymm2);
+		dim_t d =  ((i*cs_a) + i);
+		bli_ccopys(a11[d],d11_pack[i]);
 	}
+
+#endif //BLIS_ENABLE_TRSM_PREINVERSION
 }
 
 /**
@@ -37294,26 +37517,19 @@ BLIS_INLINE void ctrsm_small_pack_diag_element
 			ymm2 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);\
 			ymm1 = _mm256_mul_ps(ymm1, ymm2);\
 		}\
-		/*Negating imaginary component of numerator*/\
-		ymm2 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);\
-		ymm1 = _mm256_mul_ps(ymm1, ymm2);\
-		/*BLIS_CTRSM_MUL(vec1)*/\
-		/*BLIS_CTRSM_MUL(vec2)*/\
-		/*vec1 * ymm1*/\
-		ymm3 = _mm256_shuffle_ps(ymm1, ymm1, 0x11);\
-		ymm2 = _mm256_shuffle_ps(vec1, vec1, 0xA0);\
-		ymm16 = _mm256_shuffle_ps(vec1, vec1,0xF5);\
-		ymm16 = _mm256_mul_ps(ymm16, ymm3);\
-		vec1 = _mm256_fmaddsub_ps(ymm2, ymm1, ymm16);\
-		/*vec1 * ymm1*/\
-		ymm2 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);\
-		ymm1 = _mm256_mul_ps(ymm1, ymm2);\
-		/*Taking denomerator multiplication of real & imaginary components*/\
-		ymm3 = _mm256_mul_ps(ymm1, ymm1);\
-		ymm2 = _mm256_permute_ps(ymm3, 0xB1);\
-		ymm3 = _mm256_add_ps(ymm2, ymm3);\
-		/*Dividing numerator by denominator*/\
-		vec1 = _mm256_div_ps(vec1, ymm3);\
+		scomplex b_data[4];\
+		scomplex d11_data[4];\
+		\
+		_mm256_storeu_ps((float *)(b_data), vec1);\
+		_mm256_storeu_ps((float *)(d11_data), ymm1);\
+		\
+		for(dim_t i = 0; i < 4; i++)\
+		{\
+			bli_cinvscals(d11_data[0],b_data[i]);\
+		}\
+		\
+		vec1 = _mm256_loadu_ps((float *)b_data);\
+		\
 	}\
 }
 
@@ -37324,32 +37540,21 @@ BLIS_INLINE void ctrsm_small_pack_diag_element
 			ymm2 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);\
 			ymm1 = _mm256_mul_ps(ymm1, ymm2);\
 		}\
-		/*Negating imaginary component of numerator*/\
-		ymm2 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);\
-		ymm1 = _mm256_mul_ps(ymm1, ymm2);\
-		/*BLIS_CTRSM_MUL(vec1)*/\
-		/*BLIS_CTRSM_MUL(vec2)*/\
-		/*vec1 * ymm1*/\
-		ymm3 = _mm256_shuffle_ps(ymm1, ymm1, 0x11);\
-		ymm2 = _mm256_shuffle_ps(vec1, vec1, 0xA0);\
-		ymm16 = _mm256_shuffle_ps(vec1, vec1,0xF5);\
-		ymm16 = _mm256_mul_ps(ymm16, ymm3);\
-		vec1 = _mm256_fmaddsub_ps(ymm2, ymm1, ymm16);\
-		/*vec1 * ymm1*/\
-		ymm2 = _mm256_shuffle_ps(vec2, vec2, 0xA0);\
-		ymm16 = _mm256_shuffle_ps(vec2, vec2,0xF5);\
-		ymm16 = _mm256_mul_ps(ymm16, ymm3);\
-		vec2 = _mm256_fmaddsub_ps(ymm2, ymm1, ymm16);\
-		/*done*/\
-		ymm2 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);\
-		ymm1 = _mm256_mul_ps(ymm1, ymm2);\
-		/*Taking denomerator multiplication of real & imaginary components*/\
-		ymm3 = _mm256_mul_ps(ymm1, ymm1);\
-		ymm2 = _mm256_permute_ps(ymm3, 0xB1);\
-		ymm3 = _mm256_add_ps(ymm2, ymm3);\
-		/*Dividing numerator by denominator*/\
-		vec1 = _mm256_div_ps(vec1, ymm3);\
-		vec2 = _mm256_div_ps(vec2, ymm3);\
+		scomplex b_data[8];\
+		scomplex d11_data[4];\
+		\
+		_mm256_storeu_ps((float *)(b_data), vec1);\
+		_mm256_storeu_ps((float *)(b_data + 4), vec2);\
+		_mm256_storeu_ps((float *)(d11_data), ymm1);\
+		\
+		for(dim_t i = 0; i < 8; i++)\
+		{\
+			bli_cinvscals(d11_data[0],b_data[i]);\
+		}\
+		\
+		vec1 = _mm256_loadu_ps((float *)b_data);\
+		vec2 = _mm256_loadu_ps((float *)(b_data+4));\
+		\
 	}\
 }
 
@@ -39983,43 +40188,13 @@ BLIS_INLINE err_t bli_ctrsm_small_AutXB_AlXB
 		{
 			if(transa)
 			{
-				//broadcast diagonal elements of A11
-				ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-				ymm1 = _mm256_broadcast_ps((__m128 const *)(a11+cs_a*1 + 1));
-				ymm2 = _mm256_broadcast_ps((__m128 const *)(a11+cs_a*2 + 2));
-				ymm3 = _mm256_broadcast_ps((__m128 const *)(a11+cs_a*3 + 3));
-				ymm0 = _mm256_permute_ps(ymm0, 0x44);
-				ymm1 = _mm256_permute_ps(ymm1, 0x44);
-				ymm2 = _mm256_permute_ps(ymm2, 0x44);
-				ymm3 = _mm256_permute_ps(ymm3, 0x44);
+				ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,m_rem);
 			}
 			else
 			{
-				//broadcast diagonal elements of A11
-				ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-				ymm1 = _mm256_broadcast_ps((__m128 const *)(a11+rs_a*1 + 1));
-				ymm2 = _mm256_broadcast_ps((__m128 const *)(a11+rs_a*2 + 2));
-				ymm3 = _mm256_broadcast_ps((__m128 const *)(a11+rs_a*3 + 3));
-				ymm0 = _mm256_permute_ps(ymm0, 0x44);
-				ymm1 = _mm256_permute_ps(ymm1, 0x44);
-				ymm2 = _mm256_permute_ps(ymm2, 0x44);
-				ymm3 = _mm256_permute_ps(ymm3, 0x44);
+				ctrsm_small_pack_diag_element(is_unitdiag,a11,rs_a,d11_pack,m_rem);
 			}
-
-			ymm1 = _mm256_shuffle_ps(ymm0, ymm1, 0x44);
-			ymm2 = _mm256_shuffle_ps(ymm2, ymm3, 0x44);
-			ymm1 = _mm256_blend_ps(ymm1, ymm2, 0xF0);
-
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-			ymm7 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);
-			ymm4 = _mm256_mul_ps(ymm1, ymm1);
-			ymm6 = _mm256_permute_ps(ymm4, 0xB1);
-			ymm4 = _mm256_add_ps(ymm4, ymm6);
-			ymm1 = _mm256_mul_ps(ymm1, ymm7);
-			ymm1 = _mm256_div_ps(ymm1, ymm4);
-#endif
 		}
-		_mm256_storeu_ps((float *)(d11_pack), ymm1);
 
 		for(j = 0; (j+d_nr-1) < n; j += d_nr)
 		{
@@ -42230,43 +42405,13 @@ BLIS_INLINE err_t bli_ctrsm_small_AltXB_AuXB
 		{
 			if(transa)
 			{
-				//broadcast diagonal elements of A11
-				ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-				ymm1 = _mm256_broadcast_ps((__m128 const *)(a11+cs_a*1 + 1));
-				ymm2 = _mm256_broadcast_ps((__m128 const *)(a11+cs_a*2 + 2));
-				ymm3 = _mm256_broadcast_ps((__m128 const *)(a11+cs_a*3 + 3));
-				ymm0 = _mm256_permute_ps(ymm0, 0x44);
-				ymm1 = _mm256_permute_ps(ymm1, 0x44);
-				ymm2 = _mm256_permute_ps(ymm2, 0x44);
-				ymm3 = _mm256_permute_ps(ymm3, 0x44);
+				ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,m_rem);
 			}
 			else
 			{
-				//broadcast diagonal elements of A11
-				ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-				ymm1 = _mm256_broadcast_ps((__m128 const *)(a11+rs_a*1 + 1));
-				ymm2 = _mm256_broadcast_ps((__m128 const *)(a11+rs_a*2 + 2));
-				ymm3 = _mm256_broadcast_ps((__m128 const *)(a11+rs_a*3 + 3));
-				ymm0 = _mm256_permute_ps(ymm0, 0x44);
-				ymm1 = _mm256_permute_ps(ymm1, 0x44);
-				ymm2 = _mm256_permute_ps(ymm2, 0x44);
-				ymm3 = _mm256_permute_ps(ymm3, 0x44);
+				ctrsm_small_pack_diag_element(is_unitdiag,a11,rs_a,d11_pack,m_rem);
 			}
-
-			ymm1 = _mm256_shuffle_ps(ymm0, ymm1, 0x44);
-			ymm2 = _mm256_shuffle_ps(ymm2, ymm3, 0x44);
-			ymm1 = _mm256_blend_ps(ymm1, ymm2, 0xF0);
-
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-			ymm7 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);
-			ymm4 = _mm256_mul_ps(ymm1, ymm1);
-			ymm6 = _mm256_permute_ps(ymm4, 0xB1);
-			ymm4 = _mm256_add_ps(ymm4, ymm6);
-			ymm1 = _mm256_mul_ps(ymm1, ymm7);
-			ymm1 = _mm256_div_ps(ymm1, ymm4);
-#endif
 		}
-		_mm256_storeu_ps((float *)(d11_pack), ymm1);
 
 		for(j = (n - d_nr); (j + 1) > 0; j -= d_nr)
 		{
@@ -43822,30 +43967,13 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 		{
 			if(transa)
 			{
-				//broadcast diagonal elements of A11
-				ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-				ymm1 = _mm256_broadcast_ps((__m128 const *)
-						(a11+cs_a*1 + 1));
+				ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,n_rem);
 			}
 			else
 			{
-				//broadcast diagonal elements of A11
-				ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-				ymm1 = _mm256_broadcast_ps((__m128 const *)
-						(a11+rs_a*1 + 1));
+				ctrsm_small_pack_diag_element(is_unitdiag,a11,rs_a,d11_pack,n_rem);
 			}
-			ymm1 = _mm256_shuffle_ps(ymm0, ymm1, 0x44);
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-			ymm7 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);
-			ymm4 = _mm256_mul_ps(ymm1, ymm1);
-			ymm6 = _mm256_permute_ps(ymm4, 0xB1);
-			ymm4 = _mm256_add_ps(ymm4, ymm6);
-			ymm1 = _mm256_mul_ps(ymm1, ymm7);
-			ymm1 = _mm256_div_ps(ymm1, ymm4);
-#endif
 		}
-		_mm_store_ps((float *)(d11_pack),
-				_mm256_extractf128_ps(ymm1,0));
 
 		for(i = (m-d_mr); (i+1) > 0; i -= d_mr)
 		{
@@ -44301,25 +44429,10 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 
 		}
 
-
-		ymm1 = _mm256_broadcast_ps((__m128 const *)&ones);
-		ymm1 = _mm256_permute_ps(ymm1, 0x44);
 		if(!is_unitdiag)
 		{
-				//broadcast diagonal elements of A11
-			ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-			ymm1 = _mm256_blend_ps(ymm0, ymm1, 0xC0);
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-			ymm7 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);
-			ymm4 = _mm256_mul_ps(ymm1, ymm1);
-			ymm6 = _mm256_permute_ps(ymm4, 0xB1);
-			ymm4 = _mm256_add_ps(ymm4, ymm6);
-			ymm1 = _mm256_mul_ps(ymm1, ymm7);
-			ymm1 = _mm256_div_ps(ymm1, ymm4);
-#endif
+			ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,n_rem);
 		}
-		_mm_store_ps((float *)(d11_pack), 
-				_mm256_extractf128_ps(ymm1,0));
 
 		for(i = (m-d_mr); (i+1) > 0; i -= d_mr)
 		{
@@ -44574,7 +44687,6 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 
 	scomplex *a01, *a11, *b10, *b11;    //pointers that point to blocks for GEMM and TRSM
 
-	scomplex ones = {1.0, 1.0};
 	bool is_unitdiag = bli_obj_has_unit_diag(a);
 
 	//scratch registers
@@ -45333,37 +45445,17 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 			}
 		}
 
-
-		ymm1 = _mm256_broadcast_ps((__m128 const *)&ones);
-		ymm1 = _mm256_permute_ps(ymm1, 0x44);
 		if(!is_unitdiag)
 		{
 			if(transa)
 			{
-				//broadcast diagonal elements of A11
-				ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-				ymm1 = _mm256_broadcast_ps((__m128 const *)
-						(a11+cs_a*1 + 1));
+				ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,n_rem);
 			}
 			else
 			{
-				//broadcast diagonal elements of A11
-				ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-				ymm1 = _mm256_broadcast_ps((__m128 const *)
-						(a11+rs_a*1 + 1));
+				ctrsm_small_pack_diag_element(is_unitdiag,a11,rs_a,d11_pack,n_rem);
 			}
-			ymm1 = _mm256_shuffle_ps(ymm0, ymm1, 0x44);
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-			ymm7 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);
-			ymm4 = _mm256_mul_ps(ymm1, ymm1);
-			ymm6 = _mm256_permute_ps(ymm4, 0xB1);
-			ymm4 = _mm256_add_ps(ymm4, ymm6);
-			ymm1 = _mm256_mul_ps(ymm1, ymm7);
-			ymm1 = _mm256_div_ps(ymm1, ymm4);
-#endif
 		}
-		_mm_store_ps((float *)(d11_pack),
-				_mm256_extractf128_ps(ymm1,0));
 
 		for(i = 0; (i+d_mr-1) < m; i += d_mr)
 		{
@@ -45828,25 +45920,10 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 			}
 		}
 
-
-		ymm1 = _mm256_broadcast_ps((__m128 const *)&ones);
-		ymm1 = _mm256_permute_ps(ymm1, 0x44);
 		if(!is_unitdiag)
 		{
-				//broadcast diagonal elements of A11
-			ymm0 = _mm256_broadcast_ps((__m128 const *)(a11));
-			ymm1 = _mm256_blend_ps(ymm0, ymm1, 0xC0);
-#ifdef BLIS_ENABLE_TRSM_PREINVERSION
-			ymm7 = _mm256_setr_ps(1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0);
-			ymm4 = _mm256_mul_ps(ymm1, ymm1);
-			ymm6 = _mm256_permute_ps(ymm4, 0xB1);
-			ymm4 = _mm256_add_ps(ymm4, ymm6);
-			ymm1 = _mm256_mul_ps(ymm1, ymm7);
-			ymm1 = _mm256_div_ps(ymm1, ymm4);
-#endif
+			 ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,n_rem);
 		}
-		_mm_store_ps((float *)(d11_pack),
-				_mm256_extractf128_ps(ymm1,0));
 
 		for(i = 0; (i+d_mr-1) < m; i += d_mr)
 		{
