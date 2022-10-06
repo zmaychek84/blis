@@ -821,8 +821,7 @@ void zgemm_
 
 #ifdef BLIS_ENABLE_SMALL_MATRIX
 
-    if (((nt == 0) && (((m0 <= 40) && (n0 <= 40)) || 
-         ((m0 <= 128) && (n0 <= 128) && bli_is_notrans(blis_transb))) && (k0 <= 512)) ||
+    if (((nt == 0) && ((m0 <= 512) && (n0 <= 512) && (k0 <= 512))) ||
         ((nt == 1) && (((m0 <= 32) || (n0 <= 32) || (k0 <= 32)) && ((m0 + n0 + k0) <= 100))))
     {
         err_t status = BLIS_NOT_YET_IMPLEMENTED;
@@ -860,12 +859,16 @@ void zgemm_
     }
 #endif
 
-    err_t status = bli_gemmsup(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
-    if (status == BLIS_SUCCESS)
+    // disabling sup path for single thread in zgemm until further tuning.
+    if (nt == 1)
     {
-        AOCL_DTL_LOG_GEMM_STATS(AOCL_DTL_LEVEL_TRACE_1, *m, *n, *k);
-        AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
-        return;
+        err_t status = bli_gemmsup(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
+        if (status == BLIS_SUCCESS)
+        {
+            AOCL_DTL_LOG_GEMM_STATS(AOCL_DTL_LEVEL_TRACE_1, *m, *n, *k);
+            AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
+            return;
+        }
     }
 
     // fall back on native path when zgemm is not handled in sup path.
