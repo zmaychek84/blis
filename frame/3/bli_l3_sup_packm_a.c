@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018, Advanced Micro Devices, Inc.
+   Copyright (C) 2022, Advanced Micro Devices, Inc.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -58,7 +58,7 @@ void PASTEMAC(ch,opname) \
 	} \
 	else /* if ( will_pack == TRUE ) */ \
 	{ \
-		/* NOTE: This is "rounding up" of the last upanel is actually optional
+		/* NOTE: This "rounding up" of the last upanel is actually optional
 		   for the rrc/crc cases, but absolutely necessary for the other cases
 		   since we NEED that last micropanel to have the same ldim (cs_p) as
 		   the other micropanels. Why? So that millikernels can use the same

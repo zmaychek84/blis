@@ -6,7 +6,7 @@
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2017 - 2021, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2017 - 2022, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -186,6 +186,7 @@ blis: \
        bench_gemv_blis.x \
        bench_syrk_blis.x \
        bench_ger_blis.x \
+       bench_nrm2_blis.x \
        bench_scalv_blis.x \
        bench_dotv_blis.x \
        bench_trsv_blis.x \
@@ -201,6 +202,7 @@ openblas: \
       bench_gemv_openblas.x \
       bench_syrk_openblas.x \
       bench_ger_openblas.x \
+      bench_nrm2_openblas.x \
       bench_scalv_openblas.x \
       bench_dotv_openblas.x \
       bench_trsv_openblas.x \
@@ -231,6 +233,7 @@ mkl:  \
       bench_gemv_mkl.x \
       bench_syrk_mkl.x \
       bench_ger_mkl.x \
+      bench_nrm2_mkl.x \
       bench_scalv_mkl.x \
       bench_dotv_mkl.x \
       bench_trsv_mkl.x \
@@ -246,17 +249,17 @@ $(TEST_OBJ_PATH)/%.o: $(TEST_SRC_PATH)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 bench_%_openblas.o: bench_%.c
-	$(CC) $(CFLAGS) -DBLAS=\"openblas\" $(NRTS) -c $< -o $@
+	$(CC) $(CFLAGS) -DBLAS=\"openblas\" $(NRTS) -DINT_FS=\"%ld\" -DUINT_FS=\"%lu\" -c $< -o $@
 
 bench_%_atlas.o: bench_%.c
-	$(CC) $(CFLAGS) -DBLAS=\"atlas\" $(NRTS) -c $< -o $@
+	$(CC) $(CFLAGS) -DBLAS=\"atlas\" $(NRTS) -DINT_FS=\"%ld\" -DUINT_FS=\"%lu\" -c $< -o $@
 
 bench_%_mkl.o: bench_%.c
-	$(CC) $(CFLAGS) -DBLAS=\"mkl\" $(NRTS) -c $< -o $@
+	$(CC) $(CFLAGS) -DBLAS=\"mkl\" $(NRTS) -DINT_FS=\"%ld\" -DUINT_FS=\"%lu\" -c $< -o $@
 
 
 bench_%_blis.o: bench_%.c
-	$(CC) $(CFLAGS) -DBLAS=\"aocl\" $(NRTS) -c $< -o $@
+	$(CC) $(CFLAGS) -DBLAS=\"aocl\" $(NRTS) -DINT_FS=\"%ld\" -DUINT_FS=\"%lu\" -c $< -o $@
 
 
 # -- Executable file rules --

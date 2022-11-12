@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2016, Hewlett Packard Enterprise Development LP
-   Copyright (C) 2019, Advanced Micro Devices, Inc.
+   Copyright (C) 2022, Advanced Micro Devices, Inc.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -1190,7 +1190,7 @@ BLIS_INLINE stor3_t bli_obj_stor3_from_strides( obj_t* c, obj_t* a, obj_t* b )
 // -- Initialization-related macros --
 
 // Finish the initialization started by the matrix-specific static initializer
-// (e.g. BLIS_OBJECT_PREINITIALIZER)
+// (e.g. BLIS_OBJECT_INITIALIZER)
 // NOTE: This is intended only for use in the BLAS compatibility API and typed
 // BLIS API.
 
@@ -1223,7 +1223,7 @@ BLIS_INLINE void bli_obj_init_finish( num_t dt, dim_t m, dim_t n, void* p, inc_t
 }
 
 // Finish the initialization started by the 1x1-specific static initializer
-// (e.g. BLIS_OBJECT_PREINITIALIZER_1X1)
+// (e.g. BLIS_OBJECT_INITIALIZER_1X1)
 // NOTE: This is intended only for use in the BLAS compatibility API and typed
 // BLIS API.
 

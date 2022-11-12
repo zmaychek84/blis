@@ -4,8 +4,8 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2016 - 2018 - 2019, Advanced Micro Devices, Inc.
-   Copyright (C) 2018, The University of Texas at Austin
+   Copyright (C) 2016 - 2022, Advanced Micro Devices, Inc.
+   Copyright (C) 2018, The University of Texas at Austin	
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,7 +35,6 @@
 
 #include "immintrin.h"
 #include "blis.h"
-
 
 /* Union data structure to access AVX registers
    One 256-bit AVX register holds 8 SP elements. */
@@ -266,7 +265,6 @@ void bli_samaxv_zen_int
 }
 
 // -----------------------------------------------------------------------------
-
 void bli_damaxv_zen_int
      (
        dim_t            n,
@@ -423,101 +421,3 @@ void bli_damaxv_zen_int
 	*i_max = i_max_l;
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_3)
 }
-
-// -----------------------------------------------------------------------------
-
-#if 0
-#undef  GENTFUNCR
-#define GENTFUNCR( ctype, ctype_r, ch, chr, varname ) \
-\
-void PASTEMAC(ch,varname) \
-     ( \
-       dim_t    n, \
-       ctype*   x, inc_t incx, \
-       dim_t*   i_max, \
-       cntx_t*  cntx  \
-     ) \
-{ \
-	ctype_r* minus_one = PASTEMAC(chr,m1); \
-	dim_t*   zero_i    = PASTEMAC(i,0); \
-\
-	ctype_r  chi1_r; \
-	ctype_r  chi1_i; \
-	ctype_r  abs_chi1; \
-	ctype_r  abs_chi1_max; \
-	dim_t    i; \
-\
-	/* Initialize the index of the maximum absolute value to zero. */ \
-	PASTEMAC(i,copys)( zero_i, *i_max ); \
-\
-	/* If the vector length is zero, return early. This directly emulates
-	   the behavior of netlib BLAS's i?amax() routines. */ \
-	if ( bli_zero_dim1( n ) ) return; \
-\
-	/* Initialize the maximum absolute value search candidate with
-	   -1, which is guaranteed to be less than all values we will
-	   compute. */ \
-	PASTEMAC(chr,copys)( *minus_one, abs_chi1_max ); \
-\
-	if ( incx == 1 ) \
-	{ \
-		for ( i = 0; i < n; ++i ) \
-		{ \
-			/* Get the real and imaginary components of chi1. */ \
-			PASTEMAC2(ch,chr,gets)( x[i], chi1_r, chi1_i ); \
-\
-			/* Replace chi1_r and chi1_i with their absolute values. */ \
-			PASTEMAC(chr,abval2s)( chi1_r, chi1_r ); \
-			PASTEMAC(chr,abval2s)( chi1_i, chi1_i ); \
-\
-			/* Add the real and imaginary absolute values together. */ \
-			PASTEMAC(chr,set0s)( abs_chi1 ); \
-			PASTEMAC(chr,adds)( chi1_r, abs_chi1 ); \
-			PASTEMAC(chr,adds)( chi1_i, abs_chi1 ); \
-\
-			/* If the absolute value of the current element exceeds that of
-			   the previous largest, save it and its index. If NaN is
-			   encountered, then treat it the same as if it were a valid
-			   value that was smaller than any previously seen. This
-			   behavior mimics that of LAPACK's ?lange(). */ \
-			if ( abs_chi1_max < abs_chi1 || bli_isnan( abs_chi1 ) ) \
-			{ \
-				abs_chi1_max = abs_chi1; \
-				*i_max       = i; \
-			} \
-		} \
-	} \
-	else \
-	{ \
-		for ( i = 0; i < n; ++i ) \
-		{ \
-			ctype* chi1 = x + (i  )*incx; \
-\
-			/* Get the real and imaginary components of chi1. */ \
-			PASTEMAC2(ch,chr,gets)( *chi1, chi1_r, chi1_i ); \
-\
-			/* Replace chi1_r and chi1_i with their absolute values. */ \
-			PASTEMAC(chr,abval2s)( chi1_r, chi1_r ); \
-			PASTEMAC(chr,abval2s)( chi1_i, chi1_i ); \
-\
-			/* Add the real and imaginary absolute values together. */ \
-			PASTEMAC(chr,set0s)( abs_chi1 ); \
-			PASTEMAC(chr,adds)( chi1_r, abs_chi1 ); \
-			PASTEMAC(chr,adds)( chi1_i, abs_chi1 ); \
-\
-			/* If the absolute value of the current element exceeds that of
-			   the previous largest, save it and its index. If NaN is
-			   encountered, then treat it the same as if it were a valid
-			   value that was smaller than any previously seen. This
-			   behavior mimics that of LAPACK's ?lange(). */ \
-			if ( abs_chi1_max < abs_chi1 || bli_isnan( abs_chi1 ) ) \
-			{ \
-				abs_chi1_max = abs_chi1; \
-				*i_max       = i; \
-			} \
-		} \
-	} \
-}
-GENTFUNCR( scomplex, float,  c, s, amaxv_zen_int )
-GENTFUNCR( dcomplex, double, z, d, amaxv_zen_int )
-#endif

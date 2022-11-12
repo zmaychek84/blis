@@ -76,7 +76,9 @@ def remove_lines_in_file(filename):
         'add_subdirectory(${CMAKE_BINARY_DIR}/ref_kernels/zen2 '
         '${CMAKE_BINARY_DIR}/ref_kernels/zen2)\n'
         'add_subdirectory(${CMAKE_BINARY_DIR}/ref_kernels/zen3 '
-        '${CMAKE_BINARY_DIR}/ref_kernels/zen3)\nelse()', '\n')
+        '${CMAKE_BINARY_DIR}/ref_kernels/zen3)\n'
+        'add_subdirectory(${CMAKE_BINARY_DIR}/ref_kernels/zen4 '
+        '${CMAKE_BINARY_DIR}/ref_kernels/zen4)\nelse()', '\n')
     data = file_content.replace('endif()', '\n')
     with open(filename, 'w') as fd:
         fd.write(data + '\n')

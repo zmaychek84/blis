@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2016, Hewlett Packard Enterprise Development LP
-   Copyright (C) 2020 - 21, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 22, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -601,6 +601,27 @@ BLIS_INLINE bool bli_cntx_l3_vir_ukr_dislikes_storage_of( obj_t* obj, l3ukr_t uk
 	       !bli_cntx_l3_vir_ukr_prefers_storage_of( obj, ukr_id, cntx );
 }
 
+BLIS_INLINE bool bli_cntx_l3_vir_ukr_prefers_storage_of_md( obj_t* obj, num_t dt, l3ukr_t ukr_id, cntx_t* cntx )
+{
+	// we use the computation datatype, which may differ from the
+	// storage datatype of C
+	const bool  ukr_prefers_rows
+	                  = bli_cntx_l3_vir_ukr_prefers_rows_dt( dt, ukr_id, cntx );
+	const bool  ukr_prefers_cols
+	                  = bli_cntx_l3_vir_ukr_prefers_cols_dt( dt, ukr_id, cntx );
+	bool        r_val = FALSE;
+
+	if      ( bli_obj_is_row_stored( obj ) && ukr_prefers_rows ) r_val = TRUE;
+	else if ( bli_obj_is_col_stored( obj ) && ukr_prefers_cols ) r_val = TRUE;
+	return r_val;
+}
+
+BLIS_INLINE bool bli_cntx_l3_vir_ukr_dislikes_storage_of_md( obj_t* obj, num_t dt, l3ukr_t ukr_id, cntx_t* cntx )
+{
+	return ( bool )
+	       !bli_cntx_l3_vir_ukr_prefers_storage_of_md( obj, dt, ukr_id, cntx );
+}
+
 // -----------------------------------------------------------------------------
 BLIS_INLINE bool bli_cntx_l3_sup_thresh_is_met( obj_t* a, obj_t* b, obj_t* c, cntx_t* cntx )
 {
@@ -620,6 +641,30 @@ BLIS_INLINE bool bli_cntx_l3_sup_thresh_is_met( obj_t* a, obj_t* b, obj_t* c, cn
 		n = bli_obj_width( c );
 
 	}
+
+
+	if(dt == BLIS_DOUBLE)
+	{
+		/**
+		 * In case of both matrices having large strides,
+		 * are to be handled in native path, since native
+		 * path does packing of both matrices by default.
+		 * It helps avoiding huge memory jumps while accessing
+		 * matrices during GEMM computation.
+		 */
+		dim_t  k = bli_obj_width( a );
+		inc_t rs_a = bli_obj_row_stride( a );
+		inc_t cs_a = bli_obj_col_stride( a );
+		inc_t rs_b = bli_obj_row_stride( b );
+		inc_t cs_b = bli_obj_col_stride( b );
+		inc_t stride_a = rs_a > cs_a ? rs_a : cs_a;
+		inc_t stride_b = rs_b > cs_b ? rs_b : cs_b;
+		if( (m > 5000 && n > 700 && k > 120) && (stride_a > 5000 && stride_b > 5000) )
+		{
+			return FALSE;
+		}
+	}
+
 
 	if ( m < bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_MT, cntx ) ) return TRUE;
 	if ( n < bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_NT, cntx ) ) return TRUE;

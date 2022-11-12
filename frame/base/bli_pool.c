@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2021, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2022, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -51,6 +51,11 @@ void bli_pool_init
 {
 	// Make sure that block_ptrs_len is at least num_blocks.
 	block_ptrs_len = bli_max( block_ptrs_len, num_blocks );
+
+	// Handle the case where block_ptrs_len is zero, we explicitly set it to 1,
+	// to avoid any malloc() with zero size, whose behavior is not fixed, and
+	// also to prevent from falling into any further memory corruption bug.
+	block_ptrs_len = ( block_ptrs_len == 0 ) ? 1 : block_ptrs_len;
 
 	#ifdef BLIS_ENABLE_MEM_TRACING
 	printf( "bli_pool_init(): allocating block_ptrs (length %d): ",
@@ -373,7 +378,15 @@ void bli_pool_grow
 	{
 		// To prevent this from happening often, we double the current
 		// length of the block_ptrs array.
-		const siz_t block_ptrs_len_new = 2 * block_ptrs_len_cur;
+		// Sanity: make sure that the block_ptrs_len_new will be at least
+		// num_blocks_new, in case doubling the block_ptrs_len_cur is not enough.
+		// Example 1:
+		// - block_ptrs_len_cur == num_blocks_cur == 0 and num_blocks_add = 1
+		// - So doubling: 2 * block_ptrs_len_cur = 0, whereas 1 is expected
+		// Example 2:
+		// - block_ptrs_len_cur == num_blocks_cur == 10 and num_blocks_add = 30
+		// - So doubling: 2 * block_ptrs_len_cur = 20, whereas 40 is expected
+		const siz_t block_ptrs_len_new = bli_max( (2 * block_ptrs_len_cur), num_blocks_new );
 
 		#ifdef BLIS_ENABLE_MEM_TRACING
 		printf( "bli_pool_grow(): growing block_ptrs_len (%d -> %d): ",

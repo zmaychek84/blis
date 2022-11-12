@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020, Advanced Micro Devices, Inc.
+   Copyright (C) 2022, Advanced Micro Devices, Inc.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -137,6 +137,20 @@ arrayname[BLIS_NUM_FP_TYPES][BLIS_NUM_FP_TYPES] = \
 	{ PASTEMAC2(z,s,op), NULL,              PASTEMAC2(z,d,op), NULL,             }  \
 }
 */
+
+
+
+// -- One-operand macro (with custom prefix) --
+
+#define GENARRAY_PREF(arrayname,prefix,op) \
+\
+arrayname[BLIS_NUM_FP_TYPES] = \
+{ \
+	PASTECH2(prefix,s,op), \
+	PASTECH2(prefix,c,op), \
+	PASTECH2(prefix,d,op), \
+	PASTECH2(prefix,z,op)  \
+}
 
 
 

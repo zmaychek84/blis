@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2020, Advanced Micro Devices, Inc.
+   Copyright (C) 2018-2022, Advanced Micro Devices, Inc.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -61,6 +61,7 @@ bool bli_cpuid_is_sandybridge( uint32_t family, uint32_t model, uint32_t feature
 bool bli_cpuid_is_penryn( uint32_t family, uint32_t model, uint32_t features );
 
 // AMD
+bool bli_cpuid_is_zen4( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_zen3( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_zen2( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_zen( uint32_t family, uint32_t model, uint32_t features );
@@ -133,6 +134,8 @@ BLIS_INLINE bool bli_cpuid_has_features( uint32_t have, uint32_t want )
 void get_cpu_name( char *cpu_name );
 int  vpu_count( void );
 bool bli_cpuid_is_avx_supported(void);
+bool bli_cpuid_is_avx512vnni_supported(void);
+bool bli_cpuid_is_avx512_bf16_supported(void);
 
 enum
 {
@@ -142,24 +145,24 @@ enum
 };
 enum
 {
-	FEATURE_SSE3     = 0x0001,
-	FEATURE_SSSE3    = 0x0002,
-	FEATURE_SSE41    = 0x0004,
-	FEATURE_SSE42    = 0x0008,
-	FEATURE_AVX      = 0x0010,
-	FEATURE_AVX2     = 0x0020,
-	FEATURE_FMA3     = 0x0040,
-	FEATURE_FMA4     = 0x0080,
-	FEATURE_AVX512F  = 0x0100,
-	FEATURE_AVX512DQ = 0x0200,
-	FEATURE_AVX512PF = 0x0400,
-	FEATURE_AVX512ER = 0x0800,
-	FEATURE_AVX512CD = 0x1000,
-	FEATURE_AVX512BW = 0x2000,
-	FEATURE_AVX512VL = 0x4000
+  FEATURE_SSE3 = 0x0001,
+  FEATURE_SSSE3 = 0x0002,
+  FEATURE_SSE41 = 0x0004,
+  FEATURE_SSE42 = 0x0008,
+  FEATURE_AVX = 0x0010,
+  FEATURE_AVX2 = 0x0020,
+  FEATURE_FMA3 = 0x0040,
+  FEATURE_FMA4 = 0x0080,
+  FEATURE_AVX512F = 0x0100,
+  FEATURE_AVX512DQ = 0x0200,
+  FEATURE_AVX512PF = 0x0400,
+  FEATURE_AVX512ER = 0x0800,
+  FEATURE_AVX512CD = 0x1000,
+  FEATURE_AVX512BW = 0x2000,
+  FEATURE_AVX512VL = 0x4000,
+  FEATURE_AVX512VNNI = 0x8000,
+  FEATURE_AVX512BF16 = 0x10000
 };
-
-
 
 #elif defined(__aarch64__) || defined(__arm__) || defined(_M_ARM)
 

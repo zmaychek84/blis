@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2020, Advanced Micro Devices, Inc.
+   Copyright (C) 2018 - 2022, Advanced Micro Devices, Inc.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -2386,7 +2386,11 @@ void libblis_test_op_driver
 
 
 	// Mark this operation as done.
-	op->test_done = TRUE;
+	if ( tdata->id == 0 )
+		op->test_done = TRUE;
+
+	// Wait here so that all threads know we are done
+	bli_pthread_barrier_wait( tdata->barrier );
 }
 
 

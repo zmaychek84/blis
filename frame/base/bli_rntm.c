@@ -59,12 +59,20 @@ void bli_rntm_init_from_global( rntm_t* rntm )
 	// Acquire the mutex protecting global_rntm.
 	bli_pthread_mutex_lock( &global_rntm_mutex );
 
-	// Update the latest value of number of threads into global rntm structure,
-	// before copying into local rntm structure. This updated value will be
-	// used in the subsequent parallel regions.
+	// If BLIS_NUM_THREADS environment variable is not set or
+	// if bli_thread_set_num_threads() API is not used by the
+	// application, blis_mt flag will be false.
+	// Then we derive number of threads using OpenMP API
+	// omp_get_max_threads(), and update into global rntm structure,
+	// before copying into local rntm structure.
+
+	// This updated value will be used in the subsequent parallel regions.
+	if(!(global_rntm.blis_mt))
+	{
 #ifdef BLIS_ENABLE_OPENMP
-	global_rntm.num_threads = n_threads;
+	    global_rntm.num_threads = n_threads;
 #endif
+	}
 
 	*rntm = global_rntm;
 
@@ -624,13 +632,28 @@ void bli_nthreads_optimum(
 		dim_t n = bli_obj_width(c);
 		dim_t k = bli_obj_width_after_trans(a);
 
-		if((m<=128 || n<=128 || k<=128) && ((m+n+k) <= 400) )
+		if((m<=128 || n<=128 || k<=128) && ((m+n+k) <= 400))
 		{
 			n_threads_ideal = 8;
 		}
-		else if((m<=256 || n<=256 || k<=256) && ((m+n+k) <= 800) )
+		else if((m<=256 || n<=256 || k<=256) && ((m+n+k) <= 800))
 		{
 			n_threads_ideal = 16;
+		}
+		if((m<=48) || (n<=48) || (k<=48))
+		{
+			if((m+n+k) <= 840)
+			{
+				n_threads_ideal = 8;
+			}
+			else if((m+n+k) <= 1240)
+			{
+				n_threads_ideal = 16;
+			}
+			else if((m+n+k) <= 1540)
+			{
+				n_threads_ideal = 32;
+			}
 		}
 	}
 	else if( family == BLIS_SYRK && bli_obj_is_double(c))
@@ -679,17 +702,87 @@ void bli_nthreads_optimum(
 	{
 		dim_t n = bli_obj_length(c);
 		dim_t k = bli_obj_width_after_trans(a);
-		dim_t product = (n*k)>>4; /* product is derived based on n and k */
 
-		//Limit the number thread for smaller sizes:
-		if(product <= 346)
+		if ( n < 8 )
 		{
-			n_threads_ideal = 1;
+			if ( k <= 512)
+			{
+				n_threads_ideal = 1;
+			}
+			else if ( k <= 1024 )
+			{
+				n_threads_ideal = 4;
+			}
 		}
-		/* finer threshold needs to set for max_thread cap of 2,3,4,5,6..32 */
-		else
+		else if ( n < 32 )
 		{
-			n_threads_ideal = n_threads;
+			if ( k < 128 )
+			{
+				n_threads_ideal = 1;
+			}
+			else if ( k <= 512 )
+			{
+				n_threads_ideal = 4;
+			}
+			else if ( k <= 1024 )
+			{
+				n_threads_ideal = 6;
+			}
+			else if ( k <= 1600 )
+			{
+				n_threads_ideal = 10;
+			}
+		}
+		else if ( n <= 40 )
+		{
+			if ( k < 32 )
+			{
+				n_threads_ideal = 2;
+			}
+			else if ( k < 128 )
+			{
+				n_threads_ideal = 4;
+			}
+			else if ( k <= 256 )
+			{
+				n_threads_ideal = 8;
+			}
+		}
+		else if ( n < 115 )
+		{
+			if ( k < 128 )
+			{
+				n_threads_ideal = 6;
+			}
+			else if ( k <= 216 )
+			{
+				n_threads_ideal = 8;
+			}
+		}
+		else if ( n <= 160 )
+		{
+			if ( k <= 132 )
+			{
+				n_threads_ideal = 8;
+			}
+		}
+		else if ( n < 176 )
+		{
+			if ( k < 128 )
+			{
+				n_threads_ideal = 8;
+			}
+			else if ( k <= 512 )
+			{
+				n_threads_ideal = 14;
+			}
+		}
+		else if ( n <= 220 )
+		{
+			if ( k < 128 )
+			{
+				n_threads_ideal = 8;
+			}
 		}
 	}
 	else if( family == BLIS_TRMM && bli_obj_is_double(c))

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2020 - 21, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 22, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -55,6 +55,63 @@ typedef void (*FUNCPTR_T)
        rntm_t* restrict rntm,
        thrinfo_t* restrict thread
      );
+
+
+// Declaration of gemmt specific kernels function pointer
+// This is aligned to bli_dgemmsup_rv_haswell_asm_6x8m function protype.
+typedef void (*gemmt_ker_ft)
+     (
+       conj_t              conja,
+       conj_t              conjb,
+       dim_t               m0,
+       dim_t               n0,
+       dim_t               k0,
+       double*    restrict alpha,
+       double*    restrict a, inc_t rs_a0, inc_t cs_a0,
+       double*    restrict b, inc_t rs_b0, inc_t cs_b0,
+       double*    restrict beta,
+       double*    restrict c, inc_t rs_c0, inc_t cs_c0,
+       auxinfo_t* restrict data,
+       cntx_t*    restrict cntx
+     );
+
+//Look-up table for Gemmt Upper Variant Kernels
+gemmt_ker_ft ker_fpus[14] =
+	{
+		bli_dgemmsup_rv_haswell_asm_6x8m_0x0_U,
+		bli_dgemmsup_rv_haswell_asm_6x8m_6x0_U,
+		bli_dgemmsup_rv_haswell_asm_6x8m_6x8_U,
+		bli_dgemmsup_rv_haswell_asm_6x8m_12x8_U,
+		bli_dgemmsup_rv_haswell_asm_6x8m_12x16_U,
+		bli_dgemmsup_rv_haswell_asm_6x8m_18x16_U,
+		bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U,
+		bli_dgemmsup_rd_haswell_asm_6x8m_0x0_U,
+		bli_dgemmsup_rd_haswell_asm_6x8m_6x0_U,
+		bli_dgemmsup_rd_haswell_asm_6x8m_6x8_U,
+		bli_dgemmsup_rd_haswell_asm_6x8m_12x8_U,
+		bli_dgemmsup_rd_haswell_asm_6x8m_12x16_U,
+		bli_dgemmsup_rd_haswell_asm_6x8m_18x16_U,
+		bli_dgemmsup_rd_haswell_asm_6x8m_0x0_combined_U};
+
+//Look-up table for Gemmt Lower Variant Kernels
+gemmt_ker_ft ker_fpls[14] =
+{
+	bli_dgemmsup_rv_haswell_asm_6x8m_0x0_L,
+	bli_dgemmsup_rv_haswell_asm_6x8m_6x0_L,
+	bli_dgemmsup_rv_haswell_asm_6x8m_6x8_L,
+	bli_dgemmsup_rv_haswell_asm_6x8m_12x8_L,
+	bli_dgemmsup_rv_haswell_asm_6x8m_12x16_L,
+	bli_dgemmsup_rv_haswell_asm_6x8m_18x16_L,
+	bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L,
+	bli_dgemmsup_rd_haswell_asm_6x8m_0x0_L,
+	bli_dgemmsup_rd_haswell_asm_6x8m_6x0_L,
+	bli_dgemmsup_rd_haswell_asm_6x8m_6x8_L,
+	bli_dgemmsup_rd_haswell_asm_6x8m_12x8_L,
+	bli_dgemmsup_rd_haswell_asm_6x8m_12x16_L,
+	bli_dgemmsup_rd_haswell_asm_6x8m_18x16_L,
+	bli_dgemmsup_rd_haswell_asm_6x8m_16x12_combined_L
+};
+
 //
 // -- var1n --------------------------------------------------------------------
 //
@@ -1501,7 +1558,7 @@ void PASTEMACT(ch,opname,uplo,varname) \
 \
 	/* storage-scheme of ct should be same as that of C.
 	  Since update routines only support row-major order,
-	  col_pref flag is used to induce transpose to matrices before 
+	  col_pref flag is used to induce transpose to matrices before
 	  passing to update routine whenever C is col-stored */ \
 	const bool col_pref = (rs_c == 1)? 1 : 0; \
 \
@@ -1833,40 +1890,142 @@ void PASTEMACT(ch,opname,uplo,varname) \
 					{ \
 						const dim_t mr_cur = (i+MR-1) < mc_cur ? MR : mc_cur - i; \
 \
-						/* Invoke the gemmsup millikernel. */ \
-						gemmsup_ker \
-						( \
-						  conja, \
-						  conjb, \
-						  mr_cur, \
-						  nr_cur, \
-						  kc_cur, \
-						  alpha_cast, \
-						  a_ir, rs_a_use, cs_a_use, \
-						  b_jr,     rs_b_use, cs_b_use, \
-						  zero, \
-						  ct,     rs_ct,     cs_ct, \
-						  &aux, \
-						  cntx  \
-						); \
-						/* Scale the bottom edge of C and add the result from above. */ \
-						/* If c and ct are col-major, induce transpose and call update for upper-triangle of C */ \
-						if( col_pref ) \
-						{ \
-							PASTEMAC(ch,update_upper_triang)( n_off_cblock, m_off_cblock, \
-							nr_cur, mr_cur, \
-							ct, cs_ct, rs_ct, \
-							beta_use, \
-							c_ir, cs_c, rs_c ); \
+						/* Prerequisites : MR = 6, NR = 8.
+						   An optimization: allow the last jr iteration to contain up to NRE
+						   In DGEMMT API implementation, kernel operates on 6x8 block. MR and
+						   NR are set as 6 and 8 respectively. 24 being the LCM of 6 and 8,
+						   the diagonal pattern repeats for every 24x24 block.
+						   This pattern is exploited to achieve the optimization in diagonal
+						   blocks by computing only the required elements. In the previous
+						   implementation, all the 48 outputs of the given 6x8 block are
+						   computed and stored into a temporary buffer. Later, the required
+						   elements are copied into the final C output buffer.
+						   With this optimization, we are avoiding copy operation and also
+						   reducing the number of computations.
+						   Variables m_off_24 and n_off_24 respectively store the m and n
+						   offsets from the starting point of the corresponding 24x24 block.
+						   Variables m_idx and n_idx store indices of the current 6x8 block
+						   along m and n dimensions, in 24x24 block. m_idx is computed as
+						   (m_off_24 / MR) while n_idx is computed as (n_off_24 / NR).
+						   Range of m_idx is 0 <= m_idx <= 3 and the range of n_idx is
+						   0 <= n_idx <= 2. Based on these indices, for the given 6x8 block,
+						   logic is implemented to identify the relevant kernel from the
+						   look-up table.
+						   During instances, where m is not a multiple of 6 or n is not a
+						   multiple of 8, it goes to the default gemm kernel. MR and NR must be
+						   6 and 8 for these kernels to achieve the expected functionality.*/ \
+\
+						dim_t m_off_24 = m_off_cblock % 24; \
+						dim_t n_off_24 = n_off_cblock % 24; \
+						dim_t m_idx = (dim_t)(m_off_24 / MR); \
+						dim_t n_idx = (dim_t)(n_off_24 / NR); \
+\
+						/* Check if m, n indices are multiple of MR and NR respectively
+						   and current block is a complete 6x8 block */ \
+						bool idx_supported = ((m_off_24 % MR) == 0) && ((n_off_24 % NR) == 0) && (mr_cur == MR) && (nr_cur == NR); \
+\
+						/* m_idx and n_idx would be equal only if the current block is
+						   a diagonal block */\
+						if( (dt == BLIS_DOUBLE) && (m_idx == n_idx) && (idx_supported) )  {  \
+							/* index of kernel in lookup table is 2*m_idx) */ \
+							dim_t ker_idx; \
+							ker_idx = m_idx<<1; \
+\
+							/* If there is another 6x8 diagonal block pending for computation
+							   after the current 6x8 diagonal block, then the two blocks can
+							   be computed together(12x8). This combined kernel is implemented
+							   only for the case where n_idx = 2 i.e., n_off_24 = 16. To call
+							   this, it has to be ensured that at least 12 rows are pending in
+							   C for computation. (m_off + 2 * MR <=m). Usage of this combined
+							   kernel saves the entire time to execute one kernel*/ \
+							if( (n_idx == 2) && (m_off_cblock + MR + MR <= m) ) {\
+								ker_idx = 6; /* use combined kernel, index of combined kernel
+								                in lookup table is 6 */\
+							} \
+							/* use rd kernel if B is column major storage */ \
+							if( stor_id == BLIS_RRC ) { \
+								ker_idx += 7; /* index of rd kernel*/ \
+							} \
+							gemmt_ker_ft ker_fp = ker_fpls[ker_idx]; \
+							ker_fp \
+							( \
+							conja, \
+							conjb, \
+							mr_cur, \
+							nr_cur, \
+							kc_cur, \
+							(double*) alpha_cast, \
+							(double*) a_ir, rs_a_use, cs_a_use, \
+							(double*) b_jr,     rs_b_use, cs_b_use, \
+							(double*) beta_use, \
+							(double*) c_ir,     rs_c,     cs_c, \
+							&aux, \
+							cntx  \
+							); \
 						} \
-						else \
-						{ \
-							PASTEMAC(ch,update_lower_triang)( m_off_cblock, n_off_cblock, \
-							mr_cur, nr_cur, \
-							ct, rs_ct, cs_ct, \
-							beta_use, \
-							c_ir, rs_c, cs_c ); \
+						/* 6x8 block where m_idx == n_idx+1 also has some parts of the diagonal */\
+						else if( (dt == BLIS_DOUBLE) && (m_idx == n_idx+1) && (idx_supported) ) { \
+							/* If current block was already computed in the combined kernel it
+							   can be skipped combined kernel is only implemented for n_idx=2,
+							   i == m_zero is only true for the first iteration therefore if
+							   i == m_zero then the current 6x8 block was not computed in
+							   combined kernel*/ \
+							if( (n_idx != 2) || (i == m_zero) ) { \
+								dim_t ker_idx = (n_idx << 1) + 1; \
+								/* use rd kernel if B is column major storage */ \
+								if( stor_id == BLIS_RRC ) { ker_idx += 7; } \
+								gemmt_ker_ft ker_fp = ker_fpls[ker_idx]; \
+								ker_fp \
+								( \
+								conja, \
+								conjb, \
+								mr_cur, \
+								nr_cur, \
+								kc_cur, \
+								(double*) alpha_cast, \
+								(double*) a_ir, rs_a_use, cs_a_use, \
+								(double*) b_jr,     rs_b_use, cs_b_use, \
+								(double*) beta_use, \
+								(double*) c_ir,     rs_c,     cs_c, \
+								&aux, \
+								cntx  \
+								); \
+							} \
 						} \
+						/* Call the regular kernel for non applicable cases */ \
+						else { \
+							gemmsup_ker \
+							( \
+							conja, \
+							conjb, \
+							mr_cur, \
+							nr_cur, \
+							kc_cur, \
+							alpha_cast, \
+							a_ir, rs_a_use, cs_a_use, \
+							b_jr,     rs_b_use, cs_b_use, \
+							zero, \
+							ct,     rs_ct,     cs_ct, \
+							&aux, \
+							cntx  \
+							); \
+							if( col_pref ) \
+							{ \
+								PASTEMAC(ch,update_upper_triang)( n_off_cblock, m_off_cblock, \
+								nr_cur, mr_cur, \
+								ct, cs_ct, rs_ct, \
+								beta_use, \
+								c_ir, cs_c, rs_c ); \
+							} \
+							else \
+							{ \
+								PASTEMAC(ch,update_lower_triang)( m_off_cblock, n_off_cblock, \
+								mr_cur, nr_cur, \
+								ct, rs_ct, cs_ct, \
+								beta_use, \
+								c_ir, rs_c, cs_c ); \
+							}\
+						}\
 \
 						a_ir += ps_a_use; \
 						c_ir += irstep_c; \
@@ -2410,39 +2569,140 @@ void PASTEMACT(ch,opname,uplo,varname) \
 					{ \
 						const dim_t mr_cur = (i+MR-1) < mc_cur ? MR : mc_cur - i; \
 \
-						/* Invoke the gemmsup millikernel. */ \
-						gemmsup_ker \
-						( \
-						  conja, \
-						  conjb, \
-						  mr_cur, \
-						  nr_cur, \
-						  kc_cur, \
-						  alpha_cast, \
-						  a_ir, rs_a_use, cs_a_use, \
-						  b_jr,     rs_b_use, cs_b_use, \
-						  zero, \
-						  ct,     rs_ct,     cs_ct, \
-						  &aux, \
-						  cntx  \
-						); \
+						/* Prerequisites : MR = 6, NR = 8.
+						   An optimization: allow the last jr iteration to contain up to NRE
+						   In DGEMMT API implementation, kernel operates on 6x8 block. MR and
+						   NR are set as 6 and 8 respectively. 24 being the LCM of 6 and 8,
+						   the diagonal pattern repeats for every 24x24 block.
+						   This pattern is exploited to achieve the optimization in diagonal
+						   blocks by computing only the required elements. In the previous
+						   implementation, all the 48 outputs of the given 6x8 block are
+						   computed and stored into a temporary buffer. Later, the required
+						   elements are copied into the final C output buffer.
+						   With this optimization, we are avoiding copy operation and also
+						   reducing the number of computations.
+						   Variables m_off_24 and n_off_24 respectively store the m and n
+						   offsets from the starting point of the corresponding 24x24 block.
+						   Variables m_idx and n_idx store indices of the current 6x8 block
+						   along m and n dimensions, in 24x24 block. m_idx is computed as
+						   (m_off_24 / MR) while n_idx is computed as (n_off_24 / NR).
+						   Range of m_idx is 0 <= m_idx <= 3 and the range of n_idx is
+						   0 <= n_idx <= 2. Based on these indices, for the given 6x8 block,
+						   logic is implemented to identify the relevant kernel from the
+						   look-up table.
+						   During instances, where m is not a multiple of 6 or n is not a
+						   multiple of 8, it goes to the default gemm kernel. MR and NR must be
+						   6 and 8 for these kernels to achieve the expected functionality.*/ \
+						dim_t m_off_24 = m_off_cblock % 24; \
+						dim_t n_off_24 = n_off_cblock % 24; \
+						dim_t m_idx = (dim_t)(m_off_24 / MR); \
+						dim_t n_idx = (dim_t)(n_off_24 / NR); \
 \
-						if( col_pref ) \
-						{ \
-							PASTEMAC(ch,update_lower_triang)( n_off_cblock, m_off_cblock,  \
-								nr_cur, mr_cur, \
-								ct, cs_ct, rs_ct, \
-								beta_use, \
-								c_ir, cs_c, rs_c ); \
+						/* Check if m, n indices are multiple of MR and NR respectively
+						   and current block is a complete 6x8 block */ \
+						bool idx_supported = ((m_off_24 % MR) == 0) && ((n_off_24 % NR) == 0) && (mr_cur==MR) && (nr_cur==NR); \
+\
+						/* m_idx and n_idx would be equal only if the current block is
+						   a diagonal block */\
+						if( (dt == BLIS_DOUBLE) && (m_idx == n_idx) && idx_supported )  {  \
+							dim_t ker_idx = m_idx<<1; \
+							/* If there is another 6x8 diagonal block pending for computation
+							   after the current 6x8 diagonal block, then the two blocks can
+							   be computed together(12x8). This combined kernel is implemented
+							   only for the case where n_idx = 0 i.e., n_off_24 = 0. To call
+							   this, it has to be ensured that at least 12 rows are pending in
+							   C for computation (i+ MR + MR <= mc_cur). Usage of this combined
+							   kernel saves the entire time to execute one kernel*/ \
+							if( (n_idx == 0) && (i+ MR + MR <= mc_cur) ) { \
+								ker_idx = 6; /* use combined kernel, index of combined kernel
+								              in lookup table is 6 */\
+							} \
+							/* if B is column storage we use rd kernel*/ \
+							if( stor_id == BLIS_RRC ) { \
+								ker_idx += 7; /* index of rd kernel*/\
+							} \
+				    		gemmt_ker_ft ker_fp = ker_fpus[ker_idx]; \
+							ker_fp \
+							( \
+							conja, \
+							conjb, \
+							mr_cur, \
+							nr_cur, \
+							kc_cur, \
+							(double*) alpha_cast, \
+							(double*) a_ir, rs_a_use, cs_a_use, \
+							(double*) b_jr,     rs_b_use, cs_b_use, \
+							(double*) beta_use, \
+							(double*) c_ir, rs_c, cs_c,  \
+							&aux, \
+							cntx  \
+							); \
 						} \
-						else \
-						{ \
-							PASTEMAC(ch,update_upper_triang)( m_off_cblock, n_off_cblock,  \
-								mr_cur, nr_cur, \
-								ct, rs_ct, cs_ct, \
-								beta_use, \
-								c_ir, rs_c, cs_c ); \
+						/* 6x8 block where m_idx == n_idx+1 also has some parts of the diagonal */\
+						else if( (dt == BLIS_DOUBLE) && (m_idx == n_idx+1) && (idx_supported) ) { \
+							/* If current block was already computed in the combined kernel it
+							   can be skipped combined kernel is only implemented for n_idx=0,
+							   i == m_rect is only true for the first iteration therefore if
+							   i == m_rect then the current 6x8 block was not computed in
+							   combined kernel*/ \
+							if( (n_idx != 0) || (i == m_rect) ) { \
+								dim_t ker_idx = (n_idx << 1) + 1 ; \
+								/* use rd kernel if B is column major storage */ \
+								if( stor_id == BLIS_RRC ) { ker_idx += 7; } \
+								gemmt_ker_ft ker_fp = ker_fpus[ker_idx]; \
+								ker_fp \
+								( \
+								conja, \
+								conjb, \
+								mr_cur, \
+								nr_cur, \
+								kc_cur, \
+								(double*) alpha_cast, \
+								(double*) a_ir, rs_a_use, cs_a_use, \
+								(double*) b_jr,     rs_b_use, cs_b_use, \
+								(double*) beta_use, \
+								(double*) c_ir,     rs_c,     cs_c, \
+								&aux, \
+								cntx  \
+								); \
+							} \
 						} \
+						/* call the regular kernel for non applicable cases */ \
+						else { \
+							gemmsup_ker \
+							( \
+							conja, \
+							conjb, \
+							mr_cur, \
+							nr_cur, \
+							kc_cur, \
+							alpha_cast, \
+							a_ir, rs_a_use, cs_a_use, \
+							b_jr,     rs_b_use, cs_b_use, \
+							zero, \
+							ct,     rs_ct,     cs_ct,  \
+							&aux, \
+							cntx  \
+							); \
+	\
+							if( col_pref ) \
+							{ \
+								PASTEMAC(ch,update_lower_triang)( n_off_cblock, m_off_cblock,  \
+									nr_cur, mr_cur, \
+									ct, cs_ct, rs_ct, \
+									beta_use, \
+									c_ir, cs_c, rs_c ); \
+							} \
+							else \
+							{ \
+								PASTEMAC(ch,update_upper_triang)( m_off_cblock, n_off_cblock,  \
+									mr_cur, nr_cur, \
+									ct, rs_ct, cs_ct, \
+									beta_use, \
+									c_ir, rs_c, cs_c ); \
+							} \
+						} \
+\
 						a_ir += ps_a_use; \
 						c_ir += irstep_c; \
 						m_off_cblock += mr_cur; \

@@ -1951,12 +1951,12 @@ static err_t bli_sgemm_small
                 tA_packed = D_A_pack;
 
 #ifdef BLIS_ENABLE_PREFETCH
-                _mm_prefetch((char*)(tC + 0), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 8), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + ldc), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + ldc + 8), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 2 * ldc), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 2 * ldc + 8), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 15), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + ldc + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + ldc + 15), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 2 * ldc + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 2 * ldc + 15), _MM_HINT_T0);
 #endif
                 // clear scratch registers.
                 ymm4 = _mm256_setzero_pd();
@@ -2111,12 +2111,12 @@ static err_t bli_sgemm_small
                 tA = tA_packed + row_idx_packed;
 
 #ifdef BLIS_ENABLE_PREFETCH
-                _mm_prefetch((char*)(tC + 0), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 8), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + ldc), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + ldc + 8), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 2 * ldc), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 2 * ldc + 8), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 15), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + ldc + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + ldc + 15), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 2 * ldc + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 2 * ldc + 15), _MM_HINT_T0);
 #endif
                 // clear scratch registers.
                 ymm4 = _mm256_setzero_pd();
@@ -4513,12 +4513,12 @@ err_t bli_dgemm_small_At
                 tA = tA_packed + row_idx_packed;
 
 #ifdef BLIS_ENABLE_PREFETCH
-                _mm_prefetch((char*)(tC + 0), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 8), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + ldc), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + ldc + 8), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 2 * ldc), _MM_HINT_T0);
-                _mm_prefetch((char*)(tC + 2 * ldc + 8), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 15), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + ldc + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + ldc + 15), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 2 * ldc + 7), _MM_HINT_T0);
+                _mm_prefetch((char*)(tC + 2 * ldc + 15), _MM_HINT_T0);
 #endif
                 // clear scratch registers.
                 ymm4 = _mm256_setzero_pd();
@@ -7274,7 +7274,7 @@ err_t bli_zgemm_small
         }
         m_remainder = M - row_idx;
 
-        if ((m_remainder == 3))
+        if (m_remainder == 3)
         {
             m_remainder -= 3;
             __m128d xmm0;
@@ -8213,7 +8213,7 @@ err_t bli_zgemm_small
                 _mm_storeu_pd((double *)(tC + 2), xmm0);
             }
         }
-        if ((m_remainder == 2))
+        if (m_remainder == 2)
         {
             m_remainder -= 2;
 
@@ -8952,7 +8952,7 @@ err_t bli_zgemm_small
                 _mm256_storeu_pd((double *)tC, ymm8);
             }
         }
-        if ((m_remainder == 1))
+        if (m_remainder == 1)
         {
             m_remainder -= 1;
             __m128d xmm0;
@@ -10842,7 +10842,7 @@ err_t bli_zgemm_small_At
         }
 
         m_remainder = M - row_idx;
-        if ((m_remainder == 3))
+        if (m_remainder == 3)
         {
             m_remainder -= 3;
             __m128d xmm0;
@@ -11832,7 +11832,7 @@ err_t bli_zgemm_small_At
                 _mm_storeu_pd((double *)(tC + 2), xmm0);
             }
         }
-        if ((m_remainder == 2))
+        if (m_remainder == 2)
         {
             m_remainder -= 2;
 
@@ -12615,7 +12615,7 @@ err_t bli_zgemm_small_At
                 _mm256_storeu_pd((double *)tC, ymm8);
             }
         }
-        if ((m_remainder == 1))
+        if (m_remainder == 1)
         {
             m_remainder -= 1;
             __m128d xmm0;

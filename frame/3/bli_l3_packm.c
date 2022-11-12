@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2019, Advanced Micro Devices, Inc.
+   Copyright (C) 2018 - 2022, Advanced Micro Devices, Inc.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -47,6 +47,8 @@ void bli_l3_packm
 {
 	packbuf_t pack_buf_type;
 	mem_t*    cntl_mem_p;
+	mem_t*    local_mem_p;
+	mem_t     local_mem_s;
 	siz_t     size_needed;
 
 	// FGVZ: Not sure why we need this barrier, but we do.
@@ -80,9 +82,6 @@ void bli_l3_packm
 	// all threads in the chief's thread group.
 	if ( bli_mem_is_unalloc( cntl_mem_p ) )
 	{
-		mem_t* local_mem_p;
-		mem_t  local_mem_s;
-
 		if ( bli_thread_am_ochief( thread ) )
 		{
 			#ifdef BLIS_ENABLE_MEM_TRACING
@@ -110,9 +109,6 @@ void bli_l3_packm
 	}
 	else // ( bli_mem_is_alloc( cntl_mem_p ) )
 	{
-		mem_t* local_mem_p;
-		mem_t  local_mem_s;
-
 		// If the mem_t entry in the control tree does NOT contain a NULL
 		// buffer, then a block has already been acquired from the memory
 		// broker and cached in the control tree.

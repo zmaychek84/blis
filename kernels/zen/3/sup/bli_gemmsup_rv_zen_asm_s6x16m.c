@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020, Advanced Micro Devices, Inc.
+   Copyright (C) 2020-2022, Advanced Micro Devices, Inc.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -1291,13 +1291,17 @@ void bli_sgemmsup_rv_zen_asm_6x8m
 	vextractf128(imm(0x1), ymm0, xmm2)
 	vpermilps(imm(0xe),xmm0,xmm5)
 	vpermilps(imm(0xe),xmm2,xmm6)
-	vfmadd231ps(mem(rdx), xmm3, xmm0)
-	vfmadd231ps(mem(rdx, rsi, 4), xmm3, xmm2)
+	vmovq(mem(rdx),xmm4) 
+	vmovq(mem(rdx, rsi, 4),xmm1)
+	vfmadd231ps(xmm4, xmm3, xmm0)
+	vfmadd231ps(xmm1, xmm3, xmm2)
 	vmovlpd(xmm0, mem(rdx)) // store ( gamma40..gamma50 )
 	vmovlpd(xmm2, mem(rdx, rsi, 4)) // store ( gamma44..gamma54 )
 	lea(mem(rdx, rsi, 1), rdx)
-	vfmadd231ps(mem(rdx), xmm3, xmm5)
-	vfmadd231ps(mem(rdx, rsi, 4), xmm3, xmm6)
+	vmovq(mem(rdx),xmm4) 
+	vmovq(mem(rdx, rsi, 4),xmm1)
+	vfmadd231ps(xmm4, xmm3, xmm5)
+	vfmadd231ps(xmm1, xmm3, xmm6)
 	vmovlpd(xmm5, mem(rdx)) // store ( gamma41..gamma51 )	
 	vmovlpd(xmm6, mem(rdx, rsi, 4)) // store ( gamma45..gamma55 )
 	lea(mem(rdx, rsi, 1), rdx)
@@ -1306,13 +1310,17 @@ void bli_sgemmsup_rv_zen_asm_6x8m
 	vextractf128(imm(0x1), ymm0, xmm2)
 	vpermilps(imm(0xe),xmm0,xmm5)
 	vpermilps(imm(0xe),xmm2,xmm6)	
-	vfmadd231ps(mem(rdx), xmm3, xmm0)
-	vfmadd231ps(mem(rdx, rsi, 4), xmm3, xmm2)	
+	vmovq(mem(rdx),xmm4) 
+	vmovq(mem(rdx, rsi, 4),xmm1)
+	vfmadd231ps(xmm4, xmm3, xmm0)
+	vfmadd231ps(xmm1, xmm3, xmm2)	
 	vmovlpd(xmm0, mem(rdx)) // store ( gamma42..gamma52 )
 	vmovlpd(xmm2, mem(rdx, rsi, 4)) // store ( gamma46..gamma56 )	
 	lea(mem(rdx, rsi, 1), rdx)
-	vfmadd231ps(mem(rdx), xmm3, xmm5)
-	vfmadd231ps(mem(rdx, rsi, 4), xmm3, xmm6)
+	vmovq(mem(rdx),xmm4) 
+	vmovq(mem(rdx, rsi, 4),xmm1)
+	vfmadd231ps(xmm4, xmm3, xmm5)
+	vfmadd231ps(xmm1, xmm3, xmm6)
 	vmovlpd(xmm5, mem(rdx)) // store ( gamma43..gamma53 )
 	vmovlpd(xmm6, mem(rdx, rsi, 4)) // store ( gamma47..gamma57 )
 	
@@ -1810,11 +1818,13 @@ void bli_sgemmsup_rv_zen_asm_6x4m
 	lea(mem(rdx, rsi, 1), rdx)
 	vunpckhps(xmm14, xmm12, xmm0)
 	vpermilps(imm(0x4e), xmm0, xmm5)
-	vfmadd231ps(mem(rdx), xmm3, xmm0)
+	vmovq(mem(rdx),xmm4)
+	vfmadd231ps(xmm4, xmm3, xmm0)
 	vmovlpd(xmm0, mem(rdx)) // store ( gamma42..gamma52 )
 
 	lea(mem(rdx, rsi, 1), rdx)
-	vfmadd231ps(mem(rdx), xmm3, xmm5)
+	vmovq(mem(rdx),xmm4)
+	vfmadd231ps(xmm4, xmm3, xmm5)
 	vmovlpd(xmm5, mem(rdx)) // store ( gamma43..gamma53 )
 
 	jmp(.SDONE)                        // jump to end.
@@ -2231,22 +2241,28 @@ void bli_sgemmsup_rv_zen_asm_6x2m
 
 	label(.SROWSTORED)
 		
-	vfmadd231ps(mem(rcx), xmm3, xmm4)
+	vmovsd(mem(rcx), xmm0)
+	vfmadd231ps(xmm0, xmm3, xmm4)
 	vmovlpd(xmm4, mem(rcx))
 	add(rdi, rcx)	
-	vfmadd231ps(mem(rcx), xmm3, xmm6)
+	vmovsd(mem(rcx), xmm0)
+	vfmadd231ps(xmm0, xmm3, xmm6)
 	vmovlpd(xmm6, mem(rcx))
 	add(rdi, rcx)	
-	vfmadd231ps(mem(rcx), xmm3, xmm8)
+	vmovsd(mem(rcx), xmm0)
+	vfmadd231ps(xmm0, xmm3, xmm8)
 	vmovlpd(xmm8, mem(rcx))
 	add(rdi, rcx)	
-	vfmadd231ps(mem(rcx), xmm3, xmm10)
+	vmovsd(mem(rcx), xmm0)
+	vfmadd231ps(xmm0, xmm3, xmm10)
 	vmovlpd(xmm10, mem(rcx))
 	add(rdi, rcx)	
-	vfmadd231ps(mem(rcx), xmm3, xmm12)
+	vmovsd(mem(rcx), xmm0)
+	vfmadd231ps(xmm0, xmm3, xmm12)
 	vmovlpd(xmm12, mem(rcx))
 	add(rdi, rcx)	
-	vfmadd231ps(mem(rcx), xmm3, xmm14)
+	vmovsd(mem(rcx), xmm0)
+	vfmadd231ps(xmm0, xmm3, xmm14)
 	vmovlpd(xmm14, mem(rcx))
 		
 	jmp(.SDONE)                        // jump to end.

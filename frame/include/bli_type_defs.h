@@ -388,7 +388,7 @@ typedef void* void_fp;
 #define BLIS_BITVAL_SINGLE_PREC               0x0
 #define BLIS_BITVAL_DOUBLE_PREC               BLIS_PRECISION_BIT
 #define   BLIS_BITVAL_FLOAT_TYPE              0x0
-#define   BLIS_BITVAL_SCOMPLEX_TYPE           BLIS_DOMAIN_BIT  
+#define   BLIS_BITVAL_SCOMPLEX_TYPE           BLIS_DOMAIN_BIT
 #define   BLIS_BITVAL_DOUBLE_TYPE             BLIS_PRECISION_BIT
 #define   BLIS_BITVAL_DCOMPLEX_TYPE         ( BLIS_DOMAIN_BIT | BLIS_PRECISION_BIT )
 #define   BLIS_BITVAL_INT_TYPE                0x04
@@ -398,10 +398,10 @@ typedef void* void_fp;
 #define BLIS_BITVAL_NO_CONJ                   0x0
 #define BLIS_BITVAL_CONJ                      BLIS_CONJ_BIT
 #define BLIS_BITVAL_CONJ_TRANS              ( BLIS_CONJ_BIT | BLIS_TRANS_BIT )
-#define BLIS_BITVAL_ZEROS                     0x0 
+#define BLIS_BITVAL_ZEROS                     0x0
 #define BLIS_BITVAL_UPPER                   ( BLIS_UPPER_BIT | BLIS_DIAG_BIT )
 #define BLIS_BITVAL_LOWER                   ( BLIS_LOWER_BIT | BLIS_DIAG_BIT )
-#define BLIS_BITVAL_DENSE                     BLIS_UPLO_BITS  
+#define BLIS_BITVAL_DENSE                     BLIS_UPLO_BITS
 #define BLIS_BITVAL_NONUNIT_DIAG              0x0
 #define BLIS_BITVAL_UNIT_DIAG                 BLIS_UNIT_DIAG_BIT
 #define BLIS_BITVAL_INVERT_DIAG               BLIS_INVERT_DIAG_BIT
@@ -802,10 +802,11 @@ typedef enum
 	BLIS_GEMMTRSM_L_UKR,
 	BLIS_GEMMTRSM_U_UKR,
 	BLIS_TRSM_L_UKR,
-	BLIS_TRSM_U_UKR
+	BLIS_TRSM_U_UKR,
+	BLIS_GEMM_AVX2_UKR
 } l3ukr_t;
 
-#define BLIS_NUM_LEVEL3_UKRS 5
+#define BLIS_NUM_LEVEL3_UKRS 6
 
 
 typedef enum
@@ -989,11 +990,20 @@ typedef enum
 // string array in bli_arch.c. Whenever values are added/inserted
 // OR if values are rearranged, be sure to update the string array
 // in bli_arch.c.
+// This must also be kept up-to-date with the bli_env_get_var_arch_type()
+// function in bli_env.c
 
 typedef enum
 {
 	// NOTE: The C language standard guarantees that the first enum value
 	// starts at 0.
+
+	// Initial value, will be selected for an unrecognized (non-integer)
+	// value of BLIS_ARCH_TYPE
+	BLIS_ARCH_ERROR,
+
+	// Generic architecture/configuration
+	BLIS_ARCH_GENERIC,
 
 	// Intel
 	BLIS_ARCH_SKX,
@@ -1004,6 +1014,7 @@ typedef enum
 	BLIS_ARCH_PENRYN,
 
 	// AMD
+	BLIS_ARCH_ZEN4,
 	BLIS_ARCH_ZEN3,
 	BLIS_ARCH_ZEN2,
 	BLIS_ARCH_ZEN,
@@ -1025,12 +1036,13 @@ typedef enum
 	BLIS_ARCH_POWER7,
 	BLIS_ARCH_BGQ,
 
-	// Generic architecture/configuration
-	BLIS_ARCH_GENERIC
+	// Dummy value, always the last one.
+	// In config_name in bli_arch.c this is also set to "generic"
+	BLIS_ARCH_GENERIC_LAST
 
 } arch_t;
 
-#define BLIS_NUM_ARCHS (BLIS_ARCH_GENERIC + 1)
+#define BLIS_NUM_ARCHS (BLIS_ARCH_GENERIC_LAST + 1)
 
 
 //
@@ -1474,6 +1486,8 @@ typedef struct rntm_s
 	bool      pack_a; // enable/disable packing of left-hand matrix A.
 	bool      pack_b; // enable/disable packing of right-hand matrix B.
 	bool      l3_sup; // enable/disable small matrix handling in level-3 ops.
+	                  // blis_mt, flag to figure out whether number of
+	bool      blis_mt;// threads is set using BLIS APIS or OpenMP APIs.
 
 	// "Internal" fields: these should not be exposed to the end-user.
 
@@ -1546,13 +1560,13 @@ typedef enum
 	BLIS_INVALID_COL_STRIDE                    = ( -51),
 	BLIS_INVALID_DIM_STRIDE_COMBINATION        = ( -52),
 
-	// Structure-specific errors    
+	// Structure-specific errors
 	BLIS_EXPECTED_GENERAL_OBJECT               = ( -60),
 	BLIS_EXPECTED_HERMITIAN_OBJECT             = ( -61),
 	BLIS_EXPECTED_SYMMETRIC_OBJECT             = ( -62),
 	BLIS_EXPECTED_TRIANGULAR_OBJECT            = ( -63),
 
-	// Storage-specific errors    
+	// Storage-specific errors
 	BLIS_EXPECTED_UPPER_OR_LOWER_OBJECT        = ( -70),
 
 	// Partitioning-specific errors
@@ -1566,7 +1580,7 @@ typedef enum
 	// Packing-specific errors
 	BLIS_PACK_SCHEMA_NOT_SUPPORTED_FOR_UNPACK  = (-100),
 
-	// Buffer-specific errors 
+	// Buffer-specific errors
 	BLIS_EXPECTED_NONNULL_OBJECT_BUFFER        = (-110),
 
 	// Memory errors

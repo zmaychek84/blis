@@ -52,21 +52,15 @@ err_t bli_gemmsup_int
 	const dim_t  m           = bli_obj_length( c );
 	const dim_t  n           = bli_obj_width( c );
 	const dim_t  k           = bli_obj_width( a );
-	const dim_t  MR          = bli_cntx_get_blksz_def_dt( dt, BLIS_MR, cntx );
-	const dim_t  NR          = bli_cntx_get_blksz_def_dt( dt, BLIS_NR, cntx );
+	const dim_t  MR          = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_MR, cntx );
+	const dim_t  NR          = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_NR, cntx );
+	const dim_t  KC          = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_KC, cntx );
 	const bool   auto_factor = bli_rntm_auto_factor( rntm );
 	const dim_t  n_threads   = bli_rntm_num_threads( rntm );
-
+	bool         use_pb      = FALSE;
 	dim_t        jc_new;
 	dim_t        ic_new;
 
-
-	//bli_gemmsup_ref_var2
-	//bli_gemmsup_ref_var1
-	#if 0
-	bli_gemmsup_ref_var1n
-	#else
-	#endif
 	const stor3_t stor_id = bli_obj_stor3_from_strides( c, a, b );
 	const bool    is_rrr_rrc_rcr_crr = ( stor_id == BLIS_RRR ||
 	                                     stor_id == BLIS_RRC ||
@@ -96,6 +90,9 @@ err_t bli_gemmsup_int
 	  const dim_t mu = m / MR;
 	  const dim_t nu = n / NR;
 
+	  // Heuristic to decide whether to use 1n variant or not for sgemm.
+	  use_pb = ( ( nu >= ( 4 * mu ) ) && ( k >= KC ) ) ? TRUE : FALSE;
+
 	  // If the parallel thread factorization was automatic, we update it
 	  // with a new factorization based on the matrix dimensions in units
 	  // of micropanels. However in case smart threading is enabled,
@@ -113,15 +110,54 @@ err_t bli_gemmsup_int
 	      bli_l3_sup_thrinfo_update_root( rntm, thread );
 	  }
 
-	  /*Enable packing for B matrix for higher sizes*/
+	  //Enable packing for B matrix for higher sizes
 	  if(bli_is_float(dt) && (n_threads==1)) {
               if((m > 240) &&  (k > 240) && (n > 240))
-	          bli_rntm_set_pack_b( 1, rntm );
+	          bli_rntm_set_pack_b( 1, rntm );//packb
 	  }
 
-	  bli_gemmsup_ref_var2m( BLIS_NO_TRANSPOSE,
-				 alpha, a, b, beta, c,
-				 stor_id, cntx, rntm, thread );
+	  //Enable packing of B matrix for complex data type
+	  if (bli_is_dcomplex(dt) && (n_threads == 1))
+	  {
+		  if ((m > 55) && (k > 55) && (n > 55))
+			  bli_rntm_set_pack_b(1, rntm);//packb
+	  }
+
+	  //Enable packing of B matrix for double data type when dims at per 
+	  //thread level are above caches and enable packing of A when transA 
+	  //(RRC or CRC storage ids) to avoid rd kernels
+	  if(bli_is_double(dt))
+	  {
+		  dim_t m_pt = (m/bli_rntm_ways_for( BLIS_MC, rntm ));
+		  dim_t n_pt = (n/bli_rntm_ways_for( BLIS_NC, rntm ));
+
+		  if(k > 120)
+		  {
+			  if(((m_pt > 320) && (n_pt > 120)) || ((m_pt > 120) && (n_pt > 320)))
+			  {
+				  bli_rntm_set_pack_b(1, rntm);//packb
+
+				  if(stor_id==BLIS_RRC || stor_id==BLIS_CRC) 
+					bli_rntm_set_pack_a(1, rntm);//packa
+			  }
+		  }
+	  }
+
+	  // Using the 1n kernel (B broadcast) gave better performance for sgemm
+	  // in single-thread scenario, given the number of n panels are
+	  // sufficiently larger than m panels.
+	  if ( bli_is_float( dt ) && ( n_threads == 1 ) && ( use_pb == TRUE ) )
+	  {
+		bli_gemmsup_ref_var1n( BLIS_NO_TRANSPOSE,
+			                 alpha, a, b, beta, c,
+			                 stor_id, cntx, rntm, thread );
+	  }
+	  else
+	  {
+	  	bli_gemmsup_ref_var2m( BLIS_NO_TRANSPOSE,
+				             alpha, a, b, beta, c,
+				             stor_id, cntx, rntm, thread );
+	  }
 	}
 	else
 	{
@@ -131,6 +167,8 @@ err_t bli_gemmsup_int
           //  - Currently only row-preferential kernels are only supported.
 	  const dim_t mu = n / MR; // the n becomes m after a transposition
 	  const dim_t nu = m / NR; // the m becomes n after a transposition
+
+	  use_pb = ( ( nu >= ( 4 * mu ) ) && ( k >= KC ) ) ? TRUE : FALSE;
 
 	  if ( auto_factor )
 	  {
@@ -149,12 +187,48 @@ err_t bli_gemmsup_int
 	   * becomes pack B inside var2m because this is transpose case*/
 	  if(bli_is_float(dt) && (n_threads==1)) {
               if((m > 240) &&  (k > 240) && (n > 240))
-	          bli_rntm_set_pack_a( 1, rntm );
+	          bli_rntm_set_pack_a( 1, rntm );//packb
 	  }
 
-	  bli_gemmsup_ref_var2m( BLIS_TRANSPOSE,
-	                         alpha, a, b, beta, c,
-			         stor_id, cntx, rntm, thread );
+	  /*Enable packing of A matrix for complex data type*/
+	  if (bli_is_dcomplex(dt) && (n_threads == 1))
+	  {
+		  if ((m > 55) && (k > 55) && (n > 55))
+			  bli_rntm_set_pack_a(1, rntm);//packb
+	  }
+
+	  //Enable packing of B matrix for double data type when dims at per 
+	  //thread level are above caches and enable packing of A when transA 
+	  //(RRC or CRC storage ids) to avoid rd kernels
+	  if(bli_is_double(dt))
+	  {
+		  dim_t m_pt = (m/bli_rntm_ways_for( BLIS_NC, rntm ));
+		  dim_t n_pt = (n/bli_rntm_ways_for( BLIS_MC, rntm ));
+
+		  if(k > 120)
+		  {
+			  if(((m_pt > 320) && (n_pt > 120)) || ((m_pt > 120) && (n_pt > 320))) 
+			  {
+				  bli_rntm_set_pack_a(1, rntm);//packb
+
+				  if(stor_id==BLIS_RRC || stor_id==BLIS_CRC) 
+					bli_rntm_set_pack_b(1, rntm);//packa
+			  }
+		  }
+	  }
+ 
+	  if ( bli_is_float( dt ) && ( n_threads == 1 ) && ( use_pb == TRUE ) )
+	  {
+		bli_gemmsup_ref_var1n( BLIS_TRANSPOSE,
+			                 alpha, a, b, beta, c,
+			                 stor_id, cntx, rntm, thread );
+	  }
+	  else
+	  {
+	  	bli_gemmsup_ref_var2m( BLIS_TRANSPOSE,
+			                 alpha, a, b, beta, c,
+			                 stor_id, cntx, rntm, thread );
+	  }
 	}
 
 	AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_4);

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2021, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021 - 2022, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -34,203 +34,922 @@
 #include "immintrin.h"
 #include "blis.h"
 
-#ifdef BLIS_ENABLE_FAST_MATH
-/* Union data structure to access AVX registers
-   One 256-bit AVX register holds 8 SP elements. */
+// Union data structure to access AVX registers
+// One 256-bit AVX register holds 8 SP elements. 
 typedef union
 {
     __m256  v;
-    float   f[8] __attribute__((aligned(64)));
+    float   f[8] __attribute__( ( aligned( 64 ) ) );
 } v8sf_t;
 
-/* Union data structure to access AVX registers
-*  One 256-bit AVX register holds 4 DP elements. */
+// Union data structure to access AVX registers
+// One 256-bit AVX register holds 4 DP elements. 
 typedef union
 {
     __m256d v;
-    double  d[4] __attribute__((aligned(64)));
+    double  d[4] __attribute__( ( aligned( 64 ) ) );
 } v4df_t;
 
-// -----------------------------------------------------------------------------
+// Return a mask which indicates either:
+// v <= t or v >= T
+#define CMP256( v, t, T ) \
+	_mm256_or_pd( _mm256_cmp_pd( v, t, _CMP_LE_OS ), _mm256_cmp_pd( v, T, _CMP_GE_OS ) );
 
-void bli_dnorm2fv_unb_var1
-     (
+// Returns true if any of the values in the mask vector is true, 
+// and false, otherwise.
+static inline bool bli_horizontal_or( __m256d a ) { return ! _mm256_testz_pd( a, a ); }
+
+// Optimized function that computes the Frobenius norm using AVX2 intrinsics.
+void bli_dnorm2fv_unb_var1_avx2
+    (
        dim_t    n,
        double*   x, inc_t incx,
        double* norm,
        cntx_t*  cntx
-     )
+    )
 {
+    AOCL_DTL_TRACE_ENTRY( AOCL_DTL_LEVEL_TRACE_3 );
+
     double sumsq = 0;
-    double rem_sumsq = 0; /*sum of squares accumulated for n_remainder<8 cases.*/
+    dim_t i = 0;
     dim_t n_remainder = 0;
-    dim_t i;
-    /*memory pool declarations for packing vector X.
-      Initialize mem pool buffer to NULL and size to 0
-      "buf" and "size" fields are assigned once memory
-      is allocated from the pool in bli_membrk_acquire_m().
-      This will ensure bli_mem_is_alloc() will be passed on
-      an allocated memory if created or a NULL .*/
+    double  *x_buf = x;
+
+    // Early return if n<=0 or incx=0
+    if ( ( n <= 0) || ( incx == 0 ) )
+    {
+        return;
+    }
+
+    // Memory pool declarations for packing vector X.
+    // Initialize mem pool buffer to NULL and size to 0.
+    // "buf" and "size" fields are assigned once memory
+    // is allocated from the pool in bli_membrk_acquire_m().
+    // This will ensure bli_mem_is_alloc() will be passed on
+    // an allocated memory if created or a NULL.
     mem_t   mem_bufX = {0};
     rntm_t  rntm;
-    double  *x_buf = x;
-    
-    /*early return if n<=0 or incx =0 */
-    if((n <= 0) || (incx == 0))
-        return;
-    
-    /*packing for non-unit strided Vector X*/
-    if(incx != 1)
-    {
-        /* In order to get the buffer from pool via rntm access to memory broker
-        is needed.Following are initializations for rntm */
 
+    // Packing for non-unit strided vector x.
+    if ( incx != 1 )
+    {
+        // In order to get the buffer from pool via rntm access to memory broker
+        //is needed. Following are initializations for rntm.
         bli_rntm_init_from_global( &rntm );
         bli_rntm_set_num_threads_only( 1, &rntm );
         bli_membrk_rntm_set_membrk( &rntm );
 
-        //calculate the size required for "n" double elements in vector X.
-        size_t buffer_size = n * sizeof(double);
+        // Calculate the size required for "n" double elements in vector x.
+        size_t buffer_size = n * sizeof( double );
 
         #ifdef BLIS_ENABLE_MEM_TRACING
             printf( "bli_dnorm2fv_unb_var1(): get mem pool block\n" );
         #endif
 
-        /*acquire a Buffer(n*size(double)) from the memory broker
-        and save the associated mem_t entry to mem_bufX.*/
-        bli_membrk_acquire_m(&rntm,
-                                buffer_size,
-                                BLIS_BUFFER_FOR_B_PANEL,
-                                &mem_bufX);
+        // Acquire a Buffer(n*size(double)) from the memory broker
+        // and save the associated mem_t entry to mem_bufX.
+        bli_membrk_acquire_m
+        (
+            &rntm,
+            buffer_size,
+            BLIS_BUFFER_FOR_B_PANEL,
+            &mem_bufX
+        );
 
-        /*Continue packing X if buffer memory is allocated*/
-        if ((bli_mem_is_alloc( &mem_bufX )))
+        // Continue packing X if buffer memory is allocated.
+        if ( ( bli_mem_is_alloc( &mem_bufX ) ) )
         {
-            x_buf = bli_mem_buffer(&mem_bufX);
-
-            /*pack X vector with non-unit stride to a temp buffer x_buf with unit stride*/
-            for(dim_t x_index = 0 ; x_index < n ; x_index++)
+            x_buf = bli_mem_buffer( &mem_bufX );
+            // Pack vector x with non-unit stride to a temp buffer x_buf with unit stride.
+            for ( dim_t x_index = 0; x_index < n; x_index++ )
             {
-                *(x_buf + x_index) =  *(x + (x_index * incx)) ;
+                if ( incx > 0 )
+                {
+                    *( x_buf + x_index ) = *( x + ( x_index * incx ) );
+                }
+                else
+                {
+                    *( x_buf + x_index ) =  *( x + ( - ( n - x_index - 1 ) * incx ) );
+                }
             }
         }
     }
 
-    v4df_t x0v, x1v, x2v, x3v, x4v, x5v, x6v, x7v;
-    /* Initialize rho vector accumulators to zero.*/
-    v4df_t rho0v; rho0v.v = _mm256_setzero_pd();
-    v4df_t rho1v; rho1v.v = _mm256_setzero_pd();
-    v4df_t rho2v; rho2v.v = _mm256_setzero_pd();
-    v4df_t rho3v; rho3v.v = _mm256_setzero_pd();
-    v4df_t rho4v; rho4v.v = _mm256_setzero_pd();
-    v4df_t rho5v; rho5v.v = _mm256_setzero_pd();
-    v4df_t rho6v; rho6v.v = _mm256_setzero_pd();
-    v4df_t rho7v; rho7v.v = _mm256_setzero_pd();
+    double *xt = x_buf;
 
-    double *x0 = x_buf;
+    // Compute the sum of squares on 3 accumulators to avoid overflow
+    // and underflow, depending on the vector element value.
+    // Accumulator for small values; using scaling to avoid underflow.
+    double sum_sml = 0;
+   // Accumulator for medium values; no scaling required.
+    double sum_med = 0;
+    // Accumulator for big values; using scaling to avoid overflow.
+    double sum_big = 0;
 
-    for(i = 0 ; i+31 < n ; i = i + 32)
+    // Constants chosen to minimize roundoff, according to Blue's algorithm.
+    const double thres_sml = pow( ( double )FLT_RADIX,    ceil( ( DBL_MIN_EXP - 1 )  * 0.5 ) );
+    const double thres_big = pow( ( double )FLT_RADIX,   floor( ( DBL_MAX_EXP - 52)  * 0.5 ) );
+    const double scale_sml = pow( ( double )FLT_RADIX, - floor( ( DBL_MIN_EXP - 53 ) * 0.5 ) );
+    const double scale_big = pow( ( double )FLT_RADIX,  - ceil( ( DBL_MAX_EXP - 52 ) * 0.5 ) );
+
+    double scale;
+    double abs_chi;
+    bool isbig = false;
+
+    if ( n > 4 )
     {
+        // Constants used for comparisons.
+        v4df_t temp, thres_sml_vec, thres_big_vec, zerov, ymm0, ymm1;
+        temp.v = _mm256_set1_pd( -0.0 );
+        thres_sml_vec.v = _mm256_set1_pd( thres_sml );
+        thres_big_vec.v = _mm256_set1_pd( thres_big );
+        v4df_t x0v, x1v, mask_vec0, mask_vec1;
+        zerov.v  = _mm256_setzero_pd();
 
-        x0v.v = _mm256_loadu_pd( x0 );
-        x1v.v = _mm256_loadu_pd( x0 + 4 );
-        x2v.v = _mm256_loadu_pd( x0 + 8 );
-        x3v.v = _mm256_loadu_pd( x0 + 12 );
-        x4v.v = _mm256_loadu_pd( x0 + 16 );
-        x5v.v = _mm256_loadu_pd( x0 + 20 );
-        x6v.v = _mm256_loadu_pd( x0 + 24 );
-        x7v.v = _mm256_loadu_pd( x0 + 28 );
+        // Partial sums used for scaling.
+        v4df_t sum_med_vec0, sum_big_vec0, sum_sml_vec0, sum_med_vec1, sum_big_vec1, sum_sml_vec1;
+        sum_med_vec0.v = _mm256_setzero_pd();
+        sum_big_vec0.v = _mm256_setzero_pd();
+        sum_sml_vec0.v = _mm256_setzero_pd();
+        sum_med_vec1.v = _mm256_setzero_pd();
+        sum_big_vec1.v = _mm256_setzero_pd();
+        sum_sml_vec1.v = _mm256_setzero_pd();
 
-        rho0v.v   = _mm256_fmadd_pd(x0v.v, x0v.v, rho0v.v);
-        rho1v.v   = _mm256_fmadd_pd(x1v.v, x1v.v, rho1v.v);
-        rho2v.v   = _mm256_fmadd_pd(x2v.v, x2v.v, rho2v.v);
-        rho3v.v   = _mm256_fmadd_pd(x3v.v, x3v.v, rho3v.v);
-        rho4v.v   = _mm256_fmadd_pd(x4v.v, x4v.v, rho4v.v);
-        rho5v.v   = _mm256_fmadd_pd(x5v.v, x5v.v, rho5v.v);
-        rho6v.v   = _mm256_fmadd_pd(x6v.v, x6v.v, rho6v.v);
-        rho7v.v   = _mm256_fmadd_pd(x7v.v, x7v.v, rho7v.v);
+        for (; ( i + 8 ) <= n; i = i + 8)
+        {
+            x0v.v = _mm256_loadu_pd( xt );
+            x1v.v = _mm256_loadu_pd( xt + 4 );
 
-        x0 += 32;
+            // Getting the abs of the vector elements.
+            x0v.v = _mm256_andnot_pd( temp.v, x0v.v );
+            x1v.v = _mm256_andnot_pd( temp.v, x1v.v );
+
+            // Check if any of the values is a NaN and if so, return.
+            mask_vec0.v = _mm256_cmp_pd(x0v.v, x0v.v, _CMP_UNORD_Q);
+            mask_vec1.v = _mm256_cmp_pd(x1v.v, x1v.v, _CMP_UNORD_Q);
+            if ( bli_horizontal_or( mask_vec0.v ) )
+            {
+                *norm = NAN;
+                return;
+            }
+            if ( bli_horizontal_or( mask_vec1.v ) )
+            {
+                *norm = NAN;
+                return;
+            }
+
+            // Mask vectors which indicate whether
+            // xi<=thres_sml or xi>=thres_big.
+            mask_vec0.v = CMP256( x0v.v, thres_sml_vec.v, thres_big_vec.v );
+            mask_vec1.v = CMP256( x1v.v, thres_sml_vec.v, thres_big_vec.v );
+
+            if ( !bli_horizontal_or( mask_vec0.v ) )
+            {
+                // Scaling is not necessary; only medium values.
+                sum_med_vec0.v = _mm256_fmadd_pd( x0v.v, x0v.v, sum_med_vec0.v );
+            }
+            else
+            {
+                // Mask vector which indicate whether xi > thres_big.
+                mask_vec0.v = _mm256_cmp_pd( x0v.v, thres_big_vec.v, _CMP_GT_OQ );
+
+                if ( bli_horizontal_or( mask_vec0.v ) )
+                {
+                    isbig = true;
+
+                    // Fill sum_med vector without scaling.
+                    ymm0.v = _mm256_blendv_pd( x0v.v, zerov.v, mask_vec0.v );
+                    sum_med_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_med_vec0.v );
+
+                    // Fill sum_big vector using scaling.
+                    temp.v = _mm256_set1_pd( scale_big );
+                    ymm0.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec0.v ); 
+                    ymm0.v = _mm256_mul_pd( x0v.v, ymm0.v );
+                    sum_big_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_big_vec0.v );
+                    temp.v = _mm256_set1_pd( -0.0 );
+                }
+                else
+                {
+                    // Mask vector which indicates whether xi > thres_small.
+                    mask_vec0.v = _mm256_cmp_pd( x0v.v, thres_sml_vec.v, _CMP_LT_OQ );
+                    // Fill sum_med vector without scaling.
+                    ymm0.v = _mm256_blendv_pd( x0v.v, zerov.v, mask_vec0.v );
+                    sum_med_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_med_vec0.v );
+
+                    // Accumulate small values only if there have not been any big values so far.
+                    if ( !isbig )
+                    {
+                        // Fill sum_sml vector using scaling.
+                        temp.v = _mm256_set1_pd( scale_sml );
+                        ymm0.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec0.v );
+                        ymm0.v = _mm256_mul_pd( x0v.v, ymm0.v );
+                        sum_sml_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_sml_vec0.v );
+                        temp.v = _mm256_set1_pd( -0.0 );
+                    }
+                }
+            }
+
+            if ( !bli_horizontal_or( mask_vec1.v ) )
+            {
+                // Scaling is not necessary; only medium values.
+                sum_med_vec1.v = _mm256_fmadd_pd( x1v.v, x1v.v, sum_med_vec1.v );
+            }
+            else
+            {
+                // Mask vector which indicate whether xi > thres_big.
+                mask_vec1.v = _mm256_cmp_pd( x1v.v, thres_big_vec.v, _CMP_GT_OQ );
+
+                if ( bli_horizontal_or( mask_vec1.v ) )
+                {
+                    isbig = true;
+
+                    // Fill sum_med vector without scaling.
+                    ymm1.v = _mm256_blendv_pd( x1v.v, zerov.v, mask_vec1.v );
+                    sum_med_vec1.v = _mm256_fmadd_pd( ymm1.v, ymm1.v, sum_med_vec1.v );
+
+                    // Fill sum_big vector using scaling.
+                    temp.v = _mm256_set1_pd( scale_big );
+                    ymm1.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec1.v ); 
+                    ymm1.v = _mm256_mul_pd( x1v.v, ymm1.v );
+                    sum_big_vec1.v = _mm256_fmadd_pd( ymm1.v, ymm1.v, sum_big_vec1.v ); 
+                    temp.v = _mm256_set1_pd( -0.0 );
+                }
+                else
+                {
+                    // Mask vector which indicates whether xi > thres_small.
+                    mask_vec1.v = _mm256_cmp_pd( x1v.v, thres_sml_vec.v, _CMP_LT_OQ );
+                    // Fill sum_med vector without scaling.
+                    ymm1.v = _mm256_blendv_pd( x1v.v, zerov.v, mask_vec1.v );
+                    sum_med_vec1.v = _mm256_fmadd_pd( ymm1.v, ymm1.v, sum_med_vec1.v );
+
+                    // Accumulate small values only if there have not been any big values so far.
+                    if ( !isbig )
+                    {
+                        // Fill sum_sml vector using scaling.
+                        temp.v = _mm256_set1_pd( scale_sml );
+                        ymm1.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec1.v );
+                        ymm1.v = _mm256_mul_pd( x1v.v, ymm1.v );
+                        sum_sml_vec1.v = _mm256_fmadd_pd( ymm1.v, ymm1.v, sum_sml_vec1.v );
+                        temp.v = _mm256_set1_pd( -0.0 );
+                    }
+                }
+            }
+
+            xt += 8;
+        }
+
+        for ( ; ( i + 4 ) <= n; i = i + 4 )
+        {
+            x0v.v = _mm256_loadu_pd( xt );
+
+            // Getting the abs of the vector elements.
+            x0v.v = _mm256_andnot_pd( temp.v, x0v.v );
+
+            // Check if any of the values is a NaN and if so, return.
+            mask_vec0.v = _mm256_cmp_pd(x0v.v, x0v.v, _CMP_UNORD_Q);
+            if ( bli_horizontal_or( mask_vec0.v ) )
+            {
+                *norm = NAN;
+                return;
+            }
+
+            // Mask vectors which indicate whether
+            // xi<=thres_sml or xi>=thres_big.
+            mask_vec0.v = CMP256( x0v.v, thres_sml_vec.v, thres_big_vec.v );
+
+            if ( !bli_horizontal_or( mask_vec0.v ) )
+            {
+                // Scaling is not necessary; only medium values.
+                sum_med_vec0.v = _mm256_fmadd_pd( x0v.v, x0v.v, sum_med_vec0.v );
+            }
+            else
+            {
+                // Mask vector which indicate whether xi > thres_big.
+                mask_vec0.v = _mm256_cmp_pd( x0v.v, thres_big_vec.v, _CMP_GT_OQ );
+
+                if ( bli_horizontal_or( mask_vec0.v ) )
+                {
+                    isbig = true;
+
+                    // Fill sum_med vector without scaling.
+                    ymm0.v = _mm256_blendv_pd( x0v.v, zerov.v, mask_vec0.v );
+                    sum_med_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_med_vec0.v );
+
+                    // Fill sum_big vector using scaling.
+                    temp.v = _mm256_set1_pd( scale_big );
+                    ymm0.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec0.v );
+                    ymm0.v = _mm256_mul_pd( x0v.v, ymm0.v );
+                    sum_big_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_big_vec0.v );
+                    temp.v = _mm256_set1_pd( -0.0 );
+                }
+                else
+                {
+                    // Mask vector which indicates whether xi > thres_small.
+                    mask_vec0.v = _mm256_cmp_pd( x0v.v, thres_sml_vec.v, _CMP_LT_OQ );
+                    // Fill sum_med vector without scaling.
+                    ymm0.v = _mm256_blendv_pd( x0v.v, zerov.v, mask_vec0.v );
+                    sum_med_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_med_vec0.v );
+
+                    // Accumulate small values only if there have not been any big values so far.
+                    if ( !isbig )
+                    {
+                        // Fill sum_sml vector using scaling.
+                        temp.v = _mm256_set1_pd( scale_sml );
+                        ymm0.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec0.v );
+                        ymm0.v = _mm256_mul_pd( x0v.v, ymm0.v );
+                        sum_sml_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_sml_vec0.v );
+                        temp.v = _mm256_set1_pd( -0.0 );
+                    }
+                }
+            }
+            xt += 4;
+        }
+
+        sum_sml_vec0.v = _mm256_add_pd( sum_sml_vec0.v, sum_sml_vec1.v );
+        sum_med_vec0.v = _mm256_add_pd( sum_med_vec0.v, sum_med_vec1.v );
+        sum_big_vec0.v = _mm256_add_pd( sum_big_vec0.v, sum_big_vec1.v );
+
+        sum_sml += sum_sml_vec0.v[0] + sum_sml_vec0.v[1]
+                + sum_sml_vec0.v[2] + sum_sml_vec0.v[3];
+        sum_med += sum_med_vec0.v[0] + sum_med_vec0.v[1]
+                + sum_med_vec0.v[2] + sum_med_vec0.v[3];
+        sum_big += sum_big_vec0.v[0] + sum_big_vec0.v[1]
+                + sum_big_vec0.v[2] + sum_big_vec0.v[3];
     }
 
     n_remainder = n - i;
-
-    if(n_remainder)
+    bool hasInf = false;
+    if ( ( n_remainder > 0 ) )
     {
-        if(n_remainder >= 16)
+        // Put first the most likely to happen to avoid evaluations on if statements.
+        for (i = 0; i < n_remainder; i++)
         {
-            x0v.v = _mm256_loadu_pd( x0 );
-            x1v.v = _mm256_loadu_pd( x0 + 4 );
-            x2v.v = _mm256_loadu_pd( x0 + 8 );
-            x3v.v = _mm256_loadu_pd( x0 + 12 );
-
-            rho0v.v   = _mm256_fmadd_pd(x0v.v, x0v.v, rho0v.v);
-            rho1v.v   = _mm256_fmadd_pd(x1v.v, x1v.v, rho1v.v);
-            rho2v.v   = _mm256_fmadd_pd(x2v.v, x2v.v, rho2v.v);
-            rho3v.v   = _mm256_fmadd_pd(x3v.v, x3v.v, rho3v.v);
-
-            x0 += 16;
-            n_remainder -= 16;
-        }
-        if(n_remainder >= 8)
-        {
-            x0v.v = _mm256_loadu_pd( x0 );
-            x1v.v = _mm256_loadu_pd( x0 + 4 );
-
-            rho0v.v   = _mm256_fmadd_pd(x0v.v, x0v.v, rho0v.v);
-            rho1v.v   = _mm256_fmadd_pd(x1v.v, x1v.v, rho1v.v);
-
-            x0 += 8;
-            n_remainder -= 8;
-        }
-        if(n_remainder >= 4)
-        {
-            x0v.v = _mm256_loadu_pd( x0 );
-
-            rho0v.v   = _mm256_fmadd_pd(x0v.v, x0v.v, rho0v.v);
-
-            x0 += 4;
-            n_remainder -= 4;
-        }
-        if(n_remainder)
-        {
-            for(i=0; i< n_remainder ;i++)
+            abs_chi = bli_fabs( *xt );
+            // If any of the elements is NaN, then return NaN as a result.
+            if ( bli_isnan( abs_chi ) )
             {
-                double x_temp = *x0;
-                rem_sumsq += x_temp * x_temp ;
-                x0 += 1;
+                *norm = abs_chi;
+                return;
             }
+            // Else, if any of the elements is an Inf, then return +Inf as a result.
+            if ( bli_isinf( abs_chi ) )
+            {
+                *norm = abs_chi;
+                // Instead of returning immediately, use this flag
+                // to denote that there is an Inf element in the vector.
+                // That is used to avoid cases where there is a NaN which comes
+                // after an Inf.
+                hasInf = true;
+            }
+            // Most likely case: medium values, not over/under-flow.
+            if ( ( abs_chi <= thres_big ) && ( abs_chi >= thres_sml ) )
+            {
+                sum_med += abs_chi * abs_chi;
+            }
+            // Case where there could be an overflow. Scaling is required.
+            else if ( abs_chi > thres_big )
+            {
+                sum_big += ( abs_chi * scale_big ) * ( abs_chi * scale_big );
+                isbig = true;
+            }
+            // Case where there could be an underflow. Scaling is required.
+            else if (  ( !isbig ) && ( abs_chi < thres_sml ) )
+            {
+                sum_sml += ( abs_chi * scale_sml ) * ( abs_chi * scale_sml );
+            }
+            xt++;
         }
     }
 
-    /*add all the dot product of x*x into one vector .*/
-    rho0v.v = _mm256_add_pd ( rho0v.v, rho1v.v );
-    rho1v.v = _mm256_add_pd ( rho2v.v, rho3v.v );
-    rho2v.v = _mm256_add_pd ( rho4v.v, rho5v.v );
-    rho3v.v = _mm256_add_pd ( rho6v.v, rho7v.v );
+    // Early return if there is an Inf.
+    if ( hasInf ) return;
 
-    rho4v.v = _mm256_add_pd ( rho0v.v, rho1v.v );
-    rho5v.v = _mm256_add_pd ( rho2v.v, rho3v.v );
+    // Combine accumulators.
+    if ( isbig )
+    {
+        // Combine sum_big and sum_med if sum_med > 0.
+        if ( sum_med > 0.0 )
+        {
+            sum_big += ( sum_med * scale_big ) * scale_big;
+        }
+        scale = 1.0 / scale_big;
+        sumsq = sum_big;
+    }
 
-    rho6v.v = _mm256_add_pd ( rho4v.v, rho5v.v );
+    else if ( sum_sml > 0.0 )
+    {
+        // Combine sum_med and sum_sml if sum_sml>0.
+        if ( sum_med > 0.0 )
+        {
+            sum_med = sqrt( sum_med );
+            sum_sml = sqrt( sum_sml ) / scale_sml;
+            double ymin, ymax;
+            if ( sum_sml > sum_med )
+            {
+                ymin = sum_med;
+                ymax = sum_sml;
+            }
+            else
+            {
+                ymin = sum_sml;
+                ymax = sum_med;
+            }
+            scale = 1.0;
+            sumsq = ymax * ymax * ( 1.0 + ( ymin / ymax ) * ( ymin / ymax ) );
+        }
+        else
+        {
+            scale = 1.0 / scale_sml;
+            sumsq = sum_sml;
+        }
+    }
+    else
+    {
+        // If all values are mid-range:
+        scale = 1.0;
+        sumsq = sum_med;
+    }
 
-    rho7v.v = _mm256_hadd_pd( rho6v.v, rho6v.v );
+    *norm = scale * sqrt( sumsq );
 
-    /*rem_sumsq will have sum of squares of n_remainder < 4 cases .
-      Accumulate all the sum of squares to sumsq*/
-    sumsq = rem_sumsq + rho7v.d[0] + rho7v.d[2];
-
-    PASTEMAC(d,sqrt2s)( sumsq, *norm );
-
-    if ((incx != 1) && bli_mem_is_alloc( &mem_bufX ))
+    if ( ( incx != 1 ) && bli_mem_is_alloc( &mem_bufX ) )
     {
         #ifdef BLIS_ENABLE_MEM_TRACING
             printf( "bli_dnorm2fv_unb_var1(): releasing mem pool block\n" );
         #endif
-        /* Return the buffer to pool*/
-        bli_membrk_release(&rntm , &mem_bufX);
+        // Return the buffer to pool.
+        bli_membrk_release( &rntm , &mem_bufX );
     }
-    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_3);
-    return ;
+
+    AOCL_DTL_TRACE_EXIT( AOCL_DTL_LEVEL_TRACE_3 );
+
+    return;
 }
-#endif
+
+// Optimized function that computes the Frobenius norm using AVX2 intrinsics.
+void bli_dznorm2fv_unb_var1_avx2
+    (
+       dim_t    n,
+       dcomplex*   x, inc_t incx,
+       double* norm,
+       cntx_t*  cntx
+    )
+{
+    AOCL_DTL_TRACE_ENTRY( AOCL_DTL_LEVEL_TRACE_3 );
+
+    double sumsq = 0;
+    dim_t i = 0;
+    dim_t n_remainder = 0;
+    dcomplex  *x_buf = x;
+
+    // Early return if n<=0 or incx=0
+    if ( ( n <= 0) || ( incx == 0 ) )
+    {
+        return;
+    }
+
+    // Memory pool declarations for packing vector X.
+    // Initialize mem pool buffer to NULL and size to 0.
+    // "buf" and "size" fields are assigned once memory
+    // is allocated from the pool in bli_membrk_acquire_m().
+    // This will ensure bli_mem_is_alloc() will be passed on
+    // an allocated memory if created or a NULL.
+    mem_t   mem_bufX = {0};
+    rntm_t  rntm;
+
+    // Packing for non-unit strided vector x.
+    if ( incx != 1 )
+    {
+        // In order to get the buffer from pool via rntm access to memory broker
+        //is needed. Following are initializations for rntm.
+        bli_rntm_init_from_global( &rntm );
+        bli_rntm_set_num_threads_only( 1, &rntm );
+        bli_membrk_rntm_set_membrk( &rntm );
+
+        // Calculate the size required for "n" dcomplex elements in vector x.
+        size_t buffer_size = n * sizeof( dcomplex );
+
+        #ifdef BLIS_ENABLE_MEM_TRACING
+            printf( "bli_dznorm2fv_unb_var1(): get mem pool block\n" );
+        #endif
+
+        // Acquire a Buffer(n*size(dcomplex)) from the memory broker
+        // and save the associated mem_t entry to mem_bufX.
+        bli_membrk_acquire_m
+        (
+            &rntm,
+            buffer_size,
+            BLIS_BUFFER_FOR_B_PANEL,
+            &mem_bufX
+        );
+
+        // Continue packing X if buffer memory is allocated.
+        if ( ( bli_mem_is_alloc( &mem_bufX ) ) )
+        {
+            x_buf = bli_mem_buffer( &mem_bufX );
+            // Pack vector x with non-unit stride to a temp buffer x_buf with unit stride.
+            for ( dim_t x_index = 0; x_index < n; x_index++ )
+            {
+                if ( incx > 0 )
+                {
+                    *( x_buf + x_index ) = *( x + ( x_index * incx ) );
+                }
+                else
+                {
+                    *( x_buf + x_index ) =  *( x + ( - ( n - x_index - 1 ) * incx ) );
+                }
+            }
+        }
+    }
+
+    dcomplex *xt = x_buf;
+
+    // Compute the sum of squares on 3 accumulators to avoid overflow
+    // and underflow, depending on the vector element value.
+    // Accumulator for small values; using scaling to avoid underflow.
+    double sum_sml = 0;
+   // Accumulator for medium values; no scaling required.
+    double sum_med = 0;
+    // Accumulator for big values; using scaling to avoid overflow.
+    double sum_big = 0;
+
+    // Constants chosen to minimize roundoff, according to Blue's algorithm.
+    const double thres_sml = pow( ( double )FLT_RADIX,    ceil( ( DBL_MIN_EXP - 1 )  * 0.5 ) );
+    const double thres_big = pow( ( double )FLT_RADIX,   floor( ( DBL_MAX_EXP - 52)  * 0.5 ) );
+    const double scale_sml = pow( ( double )FLT_RADIX, - floor( ( DBL_MIN_EXP - 53 ) * 0.5 ) );
+    const double scale_big = pow( ( double )FLT_RADIX,  - ceil( ( DBL_MAX_EXP - 52 ) * 0.5 ) );
+
+    double scale;
+    double abs_chi;
+    bool isbig = false;
+
+    if ( n > 2 )
+    {
+        // Constants used for comparisons.
+        v4df_t temp, thres_sml_vec, thres_big_vec, zerov, ymm0, ymm1;
+        temp.v = _mm256_set1_pd( -0.0 );
+        thres_sml_vec.v = _mm256_set1_pd( thres_sml );
+        thres_big_vec.v = _mm256_set1_pd( thres_big );
+        v4df_t x0v, x1v, mask_vec0, mask_vec1;
+        zerov.v  = _mm256_setzero_pd();
+
+        // Partial sums used for scaling.
+        v4df_t sum_med_vec0, sum_big_vec0, sum_sml_vec0, sum_med_vec1, sum_big_vec1, sum_sml_vec1;
+        sum_med_vec0.v = _mm256_setzero_pd();
+        sum_big_vec0.v = _mm256_setzero_pd();
+        sum_sml_vec0.v = _mm256_setzero_pd();
+        sum_med_vec1.v = _mm256_setzero_pd();
+        sum_big_vec1.v = _mm256_setzero_pd();
+        sum_sml_vec1.v = _mm256_setzero_pd();
+
+        for (; ( i + 4 ) <= n; i = i + 4)
+        {
+            x0v.v = _mm256_loadu_pd( (double*) xt );
+            x1v.v = _mm256_loadu_pd( (double*) (xt + 2) );
+
+            // Getting the abs of the vector elements.
+            x0v.v = _mm256_andnot_pd( temp.v, x0v.v );
+            x1v.v = _mm256_andnot_pd( temp.v, x1v.v );
+
+            // Check if any of the values is a NaN and if so, return.
+            mask_vec0.v = _mm256_cmp_pd(x0v.v, x0v.v, _CMP_UNORD_Q);
+            mask_vec1.v = _mm256_cmp_pd(x1v.v, x1v.v, _CMP_UNORD_Q);
+            if ( bli_horizontal_or( mask_vec0.v ) )
+            {
+                *norm = NAN;
+                return;
+            }
+            if ( bli_horizontal_or( mask_vec1.v ) )
+            {
+                *norm = NAN;
+                return;
+            }
+
+            // Mask vectors which indicate whether
+            // xi<=thres_sml or xi>=thres_big.
+            mask_vec0.v = CMP256( x0v.v, thres_sml_vec.v, thres_big_vec.v );
+            mask_vec1.v = CMP256( x1v.v, thres_sml_vec.v, thres_big_vec.v );
+
+            if ( !bli_horizontal_or( mask_vec0.v ) )
+            {
+                // Scaling is not necessary; only medium values.
+                sum_med_vec0.v = _mm256_fmadd_pd( x0v.v, x0v.v, sum_med_vec0.v );
+            }
+            else
+            {
+                // Mask vector which indicate whether xi > thres_big.
+                mask_vec0.v = _mm256_cmp_pd( x0v.v, thres_big_vec.v, _CMP_GT_OQ );
+
+                if ( bli_horizontal_or( mask_vec0.v ) )
+                {
+                    isbig = true;
+
+                    // Fill sum_med vector without scaling.
+                    ymm0.v = _mm256_blendv_pd( x0v.v, zerov.v, mask_vec0.v );
+                    sum_med_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_med_vec0.v );
+
+                    // Fill sum_big vector using scaling.
+                    temp.v = _mm256_set1_pd( scale_big );
+                    ymm0.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec0.v );
+                    ymm0.v = _mm256_mul_pd( x0v.v, ymm0.v );
+                    sum_big_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_big_vec0.v );
+                    temp.v = _mm256_set1_pd( -0.0 );
+                }
+                else
+                {
+                    // Mask vector which indicates whether xi > thres_small.
+                    mask_vec0.v = _mm256_cmp_pd( x0v.v, thres_sml_vec.v, _CMP_LT_OQ );
+                    // Fill sum_med vector without scaling.
+                    ymm0.v = _mm256_blendv_pd( x0v.v, zerov.v, mask_vec0.v );
+                    sum_med_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_med_vec0.v );
+
+                    // Accumulate small values only if there have not been any big values so far.
+                    if ( !isbig )
+                    {
+                        // Fill sum_sml vector using scaling.
+                        temp.v = _mm256_set1_pd( scale_sml );
+                        ymm0.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec0.v );
+                        ymm0.v = _mm256_mul_pd( x0v.v, ymm0.v );
+                        sum_sml_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_sml_vec0.v );
+                        temp.v = _mm256_set1_pd( -0.0 );
+                    }
+                }
+            }
+
+            if ( !bli_horizontal_or( mask_vec1.v ) )
+            {
+                // Scaling is not necessary; only medium values.
+                sum_med_vec1.v = _mm256_fmadd_pd( x1v.v, x1v.v, sum_med_vec1.v );
+            }
+            else
+            {
+                // Mask vector which indicate whether xi > thres_big.
+                mask_vec1.v = _mm256_cmp_pd( x1v.v, thres_big_vec.v, _CMP_GT_OQ );
+
+                if ( bli_horizontal_or( mask_vec1.v ) )
+                {
+                    isbig = true;
+
+                    // Fill sum_med vector without scaling.
+                    ymm1.v = _mm256_blendv_pd( x1v.v, zerov.v, mask_vec1.v );
+                    sum_med_vec1.v = _mm256_fmadd_pd( ymm1.v, ymm1.v, sum_med_vec1.v );
+
+                    // Fill sum_big vector using scaling.
+                    temp.v = _mm256_set1_pd( scale_big );
+                    ymm1.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec1.v );
+                    ymm1.v = _mm256_mul_pd( x1v.v, ymm1.v );
+                    sum_big_vec1.v = _mm256_fmadd_pd( ymm1.v, ymm1.v, sum_big_vec1.v ); 
+                    temp.v = _mm256_set1_pd( -0.0 );
+                }
+                else
+                {
+                    // Mask vector which indicates whether xi > thres_small.
+                    mask_vec1.v = _mm256_cmp_pd( x1v.v, thres_sml_vec.v, _CMP_LT_OQ );
+                    // Fill sum_med vector without scaling.
+                    ymm1.v = _mm256_blendv_pd( x1v.v, zerov.v, mask_vec1.v );
+                    sum_med_vec1.v = _mm256_fmadd_pd( ymm1.v, ymm1.v, sum_med_vec1.v );
+
+                    // Accumulate small values only if there have not been any big values so far.
+                    if ( !isbig )
+                    {
+                        // Fill sum_sml vector using scaling.
+                        temp.v = _mm256_set1_pd( scale_sml );
+                        ymm1.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec1.v );
+                        ymm1.v = _mm256_mul_pd( x1v.v, ymm1.v );
+                        sum_sml_vec1.v = _mm256_fmadd_pd( ymm1.v, ymm1.v, sum_sml_vec1.v );
+                        temp.v = _mm256_set1_pd( -0.0 );
+                    }
+                }
+            }
+
+            xt += 4;
+        }
+
+        for ( ; ( i + 2 ) <= n; i = i + 2 )
+        {
+            x0v.v = _mm256_loadu_pd( (double*) xt );
+
+            // Getting the abs of the vector elements.
+            x0v.v = _mm256_andnot_pd( temp.v, x0v.v );
+
+            // Check if any of the values is a NaN and if so, return.
+            mask_vec0.v = _mm256_cmp_pd(x0v.v, x0v.v, _CMP_UNORD_Q);
+            if ( bli_horizontal_or( mask_vec0.v ) )
+            {
+                *norm = NAN;
+                return;
+            }
+
+            // Mask vectors which indicate whether
+            // xi<=thres_sml or xi>=thres_big.
+            mask_vec0.v = CMP256( x0v.v, thres_sml_vec.v, thres_big_vec.v );
+
+            if ( !bli_horizontal_or( mask_vec0.v ) )
+            {
+                // Scaling is not necessary; only medium values.
+                sum_med_vec0.v = _mm256_fmadd_pd( x0v.v, x0v.v, sum_med_vec0.v );
+            }
+            else
+            {
+                // Mask vector which indicate whether xi > thres_big.
+                mask_vec0.v = _mm256_cmp_pd( x0v.v, thres_big_vec.v, _CMP_GT_OQ );
+
+                if ( bli_horizontal_or( mask_vec0.v ) )
+                {
+                    isbig = true;
+
+                    // Fill sum_med vector without scaling.
+                    ymm0.v = _mm256_blendv_pd( x0v.v, zerov.v, mask_vec0.v );
+                    sum_med_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_med_vec0.v );
+
+                    // Fill sum_big vector using scaling.
+                    temp.v = _mm256_set1_pd( scale_big );
+                    ymm0.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec0.v );
+                    ymm0.v = _mm256_mul_pd( x0v.v, ymm0.v );
+                    sum_big_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_big_vec0.v );
+                    temp.v = _mm256_set1_pd( -0.0 );
+                }
+                else
+                {
+                    // Mask vector which indicates whether xi > thres_small.
+                    mask_vec0.v = _mm256_cmp_pd( x0v.v, thres_sml_vec.v, _CMP_LT_OQ );
+                    // Fill sum_med vector without scaling.
+                    ymm0.v = _mm256_blendv_pd( x0v.v, zerov.v, mask_vec0.v );
+                    sum_med_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_med_vec0.v );
+
+                    // Accumulate small values only if there have not been any big values so far.
+                    if ( !isbig )
+                    {
+                        // Fill sum_sml vector using scaling.
+                        temp.v = _mm256_set1_pd( scale_sml );
+                        ymm0.v = _mm256_blendv_pd( zerov.v, temp.v, mask_vec0.v );
+                        ymm0.v = _mm256_mul_pd( x0v.v, ymm0.v );
+                        sum_sml_vec0.v = _mm256_fmadd_pd( ymm0.v, ymm0.v, sum_sml_vec0.v );
+                        temp.v = _mm256_set1_pd( -0.0 );
+                    }
+                }
+            }
+            xt += 2;
+        }
+
+        sum_sml_vec0.v = _mm256_add_pd( sum_sml_vec0.v, sum_sml_vec1.v );
+        sum_med_vec0.v = _mm256_add_pd( sum_med_vec0.v, sum_med_vec1.v );
+        sum_big_vec0.v = _mm256_add_pd( sum_big_vec0.v, sum_big_vec1.v );
+
+        sum_sml += sum_sml_vec0.v[0] + sum_sml_vec0.v[1]
+                + sum_sml_vec0.v[2] + sum_sml_vec0.v[3];
+        sum_med += sum_med_vec0.v[0] + sum_med_vec0.v[1]
+                + sum_med_vec0.v[2] + sum_med_vec0.v[3];
+        sum_big += sum_big_vec0.v[0] + sum_big_vec0.v[1]
+                + sum_big_vec0.v[2] + sum_big_vec0.v[3];
+    }
+
+    n_remainder = n - i;
+    bool hasInf = false;
+    if ( ( n_remainder > 0 ) )
+    {
+        // Put first the most likely to happen to avoid evaluations on if statements.
+        for (i = 0; i < n_remainder; i++)
+        {
+            // Get real and imaginary component of the vector element.
+            double chi_r, chi_i;
+            bli_zdgets(*xt, chi_r, chi_i);
+
+            // Start with accumulating the real component of the vector element.
+            abs_chi = bli_fabs( chi_r );
+            // If any of the elements is NaN, then return NaN as a result.
+            if ( bli_isnan( abs_chi ) )
+            {
+                *norm = abs_chi;
+                return;
+            }
+            // Else, if any of the elements is an Inf, then return +Inf as a result.
+            if ( bli_isinf( abs_chi ) )
+            {
+                *norm = abs_chi;
+                // Instead of returning immediately, use this flag
+                // to denote that there is an Inf element in the vector.
+                // That is used to avoid cases where there is a NaN which comes
+                // after an Inf.
+                hasInf = true;
+            }
+            // Most likely case: medium values, not over/under-flow.
+            if ( ( abs_chi <= thres_big ) && ( abs_chi >= thres_sml ) )
+            {
+                sum_med += abs_chi * abs_chi;
+            }
+            // Case where there could be an overflow. Scaling is required.
+            else if ( abs_chi > thres_big )
+            {
+                sum_big += ( abs_chi * scale_big ) * ( abs_chi * scale_big );
+                isbig = true;
+            }
+            // Case where there could be an underflow. Scaling is required.
+            else if ( ( !isbig ) && ( abs_chi < thres_sml ) )
+            {
+                sum_sml += ( abs_chi * scale_sml ) * ( abs_chi * scale_sml );
+            }
+
+            // Accumulate the imaginary component of the vector element.
+            abs_chi = bli_fabs( chi_i );
+            // If any of the elements is NaN, then return NaN as a result.
+            if ( bli_isnan( abs_chi ) )
+            {
+                *norm = abs_chi;
+                return;
+            }
+            // Else, if any of the elements is an Inf, then return +Inf as a result.
+            if ( bli_isinf( abs_chi ) )
+            {
+                *norm = abs_chi;
+                // Instead of returning immediately, use this flag
+                // to denote that there is an Inf element in the vector.
+                // That is used to avoid cases where there is a NaN which comes
+                // after an Inf.
+                hasInf = true;
+            }
+            // Most likely case: medium values, not over/under-flow.
+            if ( ( abs_chi <= thres_big ) && ( abs_chi >= thres_sml ) )
+            {
+                sum_med += abs_chi * abs_chi;
+            }
+            // Case where there could be an overflow. Scaling is required.
+            else if ( abs_chi > thres_big )
+            {
+                sum_big += ( abs_chi * scale_big ) * ( abs_chi * scale_big );
+                isbig = true;
+            }
+            // Case where there could be an underflow. Scaling is required.
+            else if ( ( !isbig ) && ( abs_chi < thres_sml ) )
+            {
+                sum_sml += ( abs_chi * scale_sml ) * ( abs_chi * scale_sml );
+            }
+
+            xt++;
+        }
+    }
+
+    // Early return if there is an Inf.
+    if ( hasInf ) return;
+
+    // Combine accumulators.
+    if ( isbig )
+    {
+        // Combine sum_big and sum_med if sum_med > 0.
+        if ( sum_med > 0.0 )
+        {
+            sum_big += ( sum_med * scale_big ) * scale_big;
+        }
+        scale = 1.0 / scale_big;
+        sumsq = sum_big;
+    }
+
+    else if ( sum_sml > 0.0 )
+    {
+        // Combine sum_med and sum_sml if sum_sml>0.
+        if ( sum_med > 0.0 )
+        {
+            sum_med = sqrt( sum_med );
+            sum_sml = sqrt( sum_sml ) / scale_sml;
+            double ymin, ymax;
+            if ( sum_sml > sum_med )
+            {
+                ymin = sum_med;
+                ymax = sum_sml;
+            }
+            else
+            {
+                ymin = sum_sml;
+                ymax = sum_med;
+            }
+            scale = 1.0;
+            sumsq = ymax * ymax * ( 1.0 + ( ymin / ymax ) * ( ymin / ymax ) );
+        }
+        else
+        {
+            scale = 1.0 / scale_sml;
+            sumsq = sum_sml;
+        }
+    }
+    else
+    {
+        // If all values are mid-range:
+        scale = 1.0;
+        sumsq = sum_med;
+    }
+
+    *norm = scale * sqrt( sumsq );
+
+    if ( ( incx != 1 ) && bli_mem_is_alloc( &mem_bufX ) )
+    {
+        #ifdef BLIS_ENABLE_MEM_TRACING
+            printf( "bli_dznorm2fv_unb_var1(): releasing mem pool block\n" );
+        #endif
+        // Return the buffer to pool.
+        bli_membrk_release( &rntm , &mem_bufX );
+    }
+
+    AOCL_DTL_TRACE_EXIT( AOCL_DTL_LEVEL_TRACE_3 );
+
+    return;
+}

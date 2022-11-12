@@ -138,6 +138,10 @@ GEMV_KER_PROT( double,   d,  gemv_zen_ref_c )
 GEMV_KER_PROT( scomplex, c,  gemv_zen_int_4x4 )
 GEMV_KER_PROT( dcomplex, z,  gemv_zen_int_4x4 )
 
+// her (intrinsics)
+HER_KER_PROT( dcomplex, z,  her_zen_int_var1 )
+HER_KER_PROT( dcomplex, z,  her_zen_int_var2 )
+
 // -- level-3 sup --------------------------------------------------------------
 // semmsup_rv
 
@@ -285,18 +289,6 @@ err_t bli_zgemm_small_At
       cntl_t* cntl
     );
 
-// gemm square matrix size friendly implementation
-err_t bli_gemm_sqp
-     (
-       obj_t*  alpha,
-       obj_t*  a,
-       obj_t*  b,
-       obj_t*  beta,
-       obj_t*  c,
-       cntx_t* cntx,
-       cntl_t* cntl
-      );
-
 void bli_dgemm_ref_k1_nn
     (
       dim_t m,
@@ -307,6 +299,18 @@ void bli_dgemm_ref_k1_nn
       double* b, const inc_t ldb,
       double* beta,
       double* c, const inc_t ldc
+     );
+
+void bli_zgemm_ref_k1_nn
+    (
+      dim_t m,
+      dim_t n,
+      dim_t k,
+      dcomplex* alpha,
+      dcomplex* a, const inc_t lda,
+      dcomplex* b, const inc_t ldb,
+      dcomplex* beta,
+      dcomplex* c, const inc_t ldc
      );
 
 err_t bli_trsm_small
@@ -364,13 +368,37 @@ bool bli_cntx_syrksup_thresh_is_met_zen
        cntx_t* cntx
      );
 
-#ifdef BLIS_ENABLE_FAST_MATH
-void bli_dnorm2fv_unb_var1
+/*
+ * Check if the TRSM small path should be taken for this
+ * input and threads combination
+ */
+bool bli_cntx_trsm_small_thresh_is_met_zen
+     (
+        obj_t* a,
+        dim_t m,
+        dim_t n
+    );
+
+void bli_dnorm2fv_unb_var1_avx2
      (
        dim_t    n,
        double*   x, inc_t incx,
        double* norm,
        cntx_t*  cntx
      );
-#endif
 
+void bli_dznorm2fv_unb_var1_avx2
+     (
+       dim_t    n,
+       dcomplex*   x, inc_t incx,
+       double* norm,
+       cntx_t*  cntx
+     );
+void bli_zdscalv_zen_int10
+     (
+       conj_t           conjalpha,
+       dim_t            n,
+       double* restrict alpha,
+       dcomplex* restrict x, inc_t incx,
+       cntx_t* restrict cntx
+     );
