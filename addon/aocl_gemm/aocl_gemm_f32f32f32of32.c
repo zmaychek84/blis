@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -37,6 +37,7 @@
 #include "lpgemm_types.h"
 #include "lpgemm_post_ops.h"
 #include "lpgemm_thread_decor_openmp.h"
+#include "lpgemm_config.h"
 #include "lpgemm_utils.h"
 #include "lpgemm_5loop_interface_apis.h"
 
@@ -45,15 +46,19 @@ AOCL_GEMM_MATMUL(float,float,float,float,f32f32f32of32)
 	trans_t blis_transa;
 	trans_t blis_transb;
 
-	// Check if avx ISA is supported, lpgemm fp32 matmul only works with it.
-	if ( bli_cpuid_is_avx_supported() == FALSE )
+	// Check if AVX2 ISA is supported, lpgemm fp32 matmul only works with it.
+	if ( bli_cpuid_is_avx2fma3_supported() == FALSE )
 	{
-		printf(" AVX2 ISA not supported by processor, cannot perform lpgemm.\n");
+		bli_print_msg(" AVX2 ISA not supported by processor, "
+				"cannot perform f32f32f32 gemm.", __FILE__, __LINE__ );
 		return; // Error.
 	}
 
 	/* Initialize BLIS. */
 	bli_init_auto();
+
+	// Initialize lpgemm context.
+	aocl_lpgemm_init_global_cntx();
 
 	AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
 	AOCL_DTL_LOG_GEMM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), transa, transb, m, n, k,\
@@ -86,16 +91,20 @@ AOCL_GEMM_MATMUL(float,float,float,float,f32f32f32of32)
 			( ( order == 'r' ) || ( order == 'R' ) ||
 			  ( order == 'c' ) || ( order == 'C' ) ) ?
 			order : 'r';
-	if ( ( order_use != 'r' ) && ( order_use != 'R' ) )
-	{
-		return; // Only row major supported.
-	}
 
-	// Row major input expected with leading dimensions equal to row stride.
-	if ( ( lda != k ) || ( ldb != n ) || ( ldc != n ) )
+	bool is_row_major = ( ( order_use == 'r' ) || ( order_use == 'R' ) );
+	bool is_column_major = ( ( order_use == 'c' ) || ( order_use == 'C' ) );
+
+	// Row major input expected with leading dimensions >= row stride.
+	if ( ( is_row_major == TRUE ) &&
+		 ( ( lda < k ) || ( ldb < n ) || ( ldc < n ) ) )
 	{
-		AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_1, \
-						"Column major and general stride not supported.");
+		return; // Error.
+	}
+	// Column major input expected with leading dimensions >= column stride.
+	else if ( ( is_column_major == TRUE ) &&
+			  ( ( lda < m ) || ( ldb < k ) || ( ldc < m ) ) )
+	{
 		return; // Error.
 	}
 
@@ -108,6 +117,7 @@ AOCL_GEMM_MATMUL(float,float,float,float,f32f32f32of32)
 		return; // Error.
 	}
 
+	// The strides are set assuming a row major kernel.
 	const inc_t rs_a = lda;
 	const inc_t cs_a = 1;
 	const inc_t rs_b = ldb;
@@ -121,11 +131,38 @@ AOCL_GEMM_MATMUL(float,float,float,float,f32f32f32of32)
 	bli_param_map_char_to_lpmtag( mem_format_a, &mtag_a );
 	bli_param_map_char_to_lpmtag( mem_format_b, &mtag_b );
 
-	// Only unreordered A supported now.
-	if ( mtag_a != UNPACKED )
+	if ( ( is_column_major == TRUE ) && ( mtag_b == REORDERED ) )
 	{
 		AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_1, \
-						"A matrix packing/reordering not supported.");
+					"Reordered B matrix not supported in column major case.");
+		return;
+	}
+
+	// By default enable packing for B matrix. Before the 5 loop, based on
+	// the input dimensions, the smart threading logic will adjust it
+	// (disable/enable) accordingly.
+	if ( ( is_row_major == TRUE ) && ( mtag_b == UNPACKED ) )
+	{
+		mtag_b = PACK;
+	}
+	// Inputs swapped in column major, A becomes B from kernel point of view.
+	else if ( ( is_column_major == TRUE ) && ( mtag_a == UNPACKED ) )
+	{
+		mtag_a = PACK;
+	}
+
+	// Reordered A not supported now.
+	if ( ( is_row_major == TRUE ) && ( mtag_a == REORDERED ) )
+	{
+		AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_1, \
+				"A matrix reordering not supported for row major inputs.");
+		return; // Error.
+	}
+	// Inputs swapped in column major, A becomes B from kernel point of view.
+	else if ( ( is_column_major == TRUE ) && ( mtag_b == REORDERED ) )
+	{
+		AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_1, \
+				"B matrix reordering not supported for column major inputs.");
 		return; // Error.
 	}
 
@@ -143,31 +180,71 @@ AOCL_GEMM_MATMUL(float,float,float,float,f32f32f32of32)
 	bli_rntm_init_from_global( &rntm_g );
 	bli_membrk_rntm_set_membrk( &rntm_g );
 
-#ifdef BLIS_ENABLE_OPENMP
-	lpgemm_f32f32f32of32_openmp_thread_decorator
-	(
-	  m, n, k,
-	  a, rs_a, cs_a, mtag_a,
-	  b, rs_b, cs_b, mtag_b,
-	  c, rs_c, cs_c,
-	  alpha, beta,
-	  &rntm_g,
-	  post_op_list, FALSE
-	);
-#else
-	// Setting pack A by default for non open mp case.
-	bli_rntm_set_pack_a( 1, &rntm_g );
+	lpgemm_cntx_t* lcntx_g = lpgemm_get_global_cntx_obj( F32F32F32OF32 );
 
-	lpgemm_f32f32f32of32_thread_decorator
-	(
-	  m, n, k,
-	  a, rs_a, cs_a, mtag_a,
-	  b, rs_b, cs_b, mtag_b,
-	  c, rs_c, cs_c,
-	  alpha, beta,
-	  &rntm_g,
-	  post_op_list, FALSE
-	);
+#ifdef BLIS_ENABLE_OPENMP
+	// The lpgemm_cntx_t argument will be NULL for f32 since it still uses
+	// BLIS cntx_t internally. Its a workaround for now and will be replaced
+	// with lpgemm_cntx_t eventually.
+	// Swapping inputs to induce row major computation for column major inputs.
+	if ( is_column_major == TRUE )
+	{
+		lpgemm_f32f32f32of32_openmp_thread_decorator
+		(
+		  n, m, k,
+		  b, rs_b, cs_b, mtag_b,
+		  a, rs_a, cs_a, mtag_a,
+		  c, rs_c, cs_c,
+		  alpha, beta,
+		  &rntm_g, lcntx_g,
+		  post_op_list, FALSE
+		);
+	}
+	else
+	{
+		lpgemm_f32f32f32of32_openmp_thread_decorator
+		(
+		  m, n, k,
+		  a, rs_a, cs_a, mtag_a,
+		  b, rs_b, cs_b, mtag_b,
+		  c, rs_c, cs_c,
+		  alpha, beta,
+		  &rntm_g, lcntx_g,
+		  post_op_list, FALSE
+		);
+	}
+#else
+	// Setting pack A and B by default for non open mp case.
+	bli_rntm_set_pack_a( 1, &rntm_g );
+	bli_rntm_set_pack_b( 1, &rntm_g );
+
+	// Swapping inputs to induce row major computation for column major inputs.
+	if ( is_column_major == TRUE )
+	{
+		lpgemm_f32f32f32of32_thread_decorator
+		(
+		  n, m, k,
+		  b, rs_b, cs_b, mtag_b,
+		  a, rs_a, cs_a, mtag_a,
+		  c, rs_c, cs_c,
+		  alpha, beta,
+		  &rntm_g, lcntx_g,
+		  post_op_list, FALSE
+		);
+	}
+	else
+	{
+		lpgemm_f32f32f32of32_thread_decorator
+		(
+		  m, n, k,
+		  a, rs_a, cs_a, mtag_a,
+		  b, rs_b, cs_b, mtag_b,
+		  c, rs_c, cs_c,
+		  alpha, beta,
+		  &rntm_g, lcntx_g,
+		  post_op_list, FALSE
+		);
+	}
 #endif
 
 	AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);

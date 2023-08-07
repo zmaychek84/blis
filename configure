@@ -5,7 +5,7 @@
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2020-2022, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2020-2023, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -215,7 +215,7 @@ print_usage()
 	echo " "
 	echo "                 Set the size (in bits) of internal BLIS integers and"
 	echo "                 integer types used in native BLIS interfaces. The"
-	echo "                 default inteter type size is architecture dependent."
+	echo "                 default integer type size is architecture dependent."
 	echo "                 (Hint: You can always find this value printed at the"
 	echo "                 beginning of the testsuite output.)"
 	echo " "
@@ -355,16 +355,21 @@ print_usage()
 	echo " "
 	echo "   --enable-blis-arch-type, --disable-blis-arch-type"
 	echo " "
-	echo "                 Disable (Enabled by default) support for BLIS_ARCH_TYPE"
-	echo "                 environment variable, which allows user to select"
-	echo "                 architecture-specific code path at runtime."
+	echo "                 Disable (Enabled by default) support for BLIS_ARCH_TYPE and BLIS_MODEL_TYPE"
+	echo "                 environment variables, which allows user to select"
+	echo "                 architecture specific code path and optimizations at runtime."
 	echo "                 If disabled, in builds with multiple code paths, BLIS"
-	echo "                 will still select path automatically."
+	echo "                 will still select path and optimizations automatically."
 	echo " "
 	echo "   --rename-blis-arch-type=STRING"
 	echo " "
-	echo "                 Change environment variable used to select architecture-specific"
+	echo "                 Change environment variable used to select architecture specific"
 	echo "                 code path from BLIS_ARCH_TYPE to STRING"
+	echo " "
+	echo "   --rename-blis-model-type=STRING"
+	echo " "
+	echo "                 Change environment variable used to select architecture model specific"
+	echo "                 optimizations from BLIS_MODEL_TYPE to STRING"
 	echo " "
 	echo "   -q, --quiet   Suppress informational output. By default, configure"
 	echo "                 is verbose. (NOTE: -q is not yet implemented)"
@@ -1163,6 +1168,7 @@ auto_detect()
 	cmd="${cc} ${config_defines} \
 	      -DBLIS_CONFIGURETIME_CPUID \
 	      -D__blis_arch_type_name=${double_quote_open}${rename_blis_arch_type}${double_quote_close} \
+	      -D__blis_model_type_name=${double_quote_open}${rename_blis_model_type}${double_quote_close} \
 	      ${c_hdr_paths} \
 	      -std=c99 -D_GNU_SOURCE \
 	      ${cflags} \
@@ -2043,6 +2049,7 @@ main()
 	complex_return='default'
 	disable_blis_arch_type='no'
 	rename_blis_arch_type='BLIS_ARCH_TYPE'
+	rename_blis_model_type='BLIS_MODEL_TYPE'
 
 	# The addon flag and names.
 	addon_flag=''
@@ -2280,6 +2287,9 @@ main()
 							;;
 						rename-blis-arch-type=*)
 							rename_blis_arch_type=${OPTARG#*=}
+							;;
+						rename-blis-model-type=*)
+							rename_blis_model_type=${OPTARG#*=}
 							;;
 						*)
 							print_usage
@@ -3076,13 +3086,6 @@ main()
 		echo "${script_name}: compiler appears to not support #pragma omp simd."
 		enable_pragma_omp_simd_01=0
 	fi
-	if [ "x${enable_blas}" = "xyes" ]; then
-		echo "${script_name}: the BLAS compatibility layer is enabled."
-		enable_blas_01=1
-	else
-		echo "${script_name}: the BLAS compatibility layer is disabled."
-		enable_blas_01=0
-	fi
 	if [ "x${enable_cblas}" = "xyes" ]; then
 		echo "${script_name}: the CBLAS compatibility layer is enabled."
 		enable_cblas_01=1
@@ -3091,6 +3094,13 @@ main()
 	else
 		echo "${script_name}: the CBLAS compatibility layer is disabled."
 		enable_cblas_01=0
+	fi
+	if [ "x${enable_blas}" = "xyes" ]; then
+		echo "${script_name}: the BLAS compatibility layer is enabled."
+		enable_blas_01=1
+	else
+		echo "${script_name}: the BLAS compatibility layer is disabled."
+		enable_blas_01=0
 	fi
 	if [ "x${enable_mixed_dt}" = "xyes" ]; then
 		echo "${script_name}: mixed datatype support is enabled."
@@ -3257,7 +3267,7 @@ main()
 	fi
 
 	if [ "x${disable_blis_arch_type}" = "xyes"  ]; then
-		echo "${script_name}: user selection of code path using BLIS_ARCH_TYPE env var is disabled."
+		echo "${script_name}: user selection of code path using BLIS_ARCH_TYPE and BLIS_MODEL_TYPE env vars is disabled."
 		disable_blis_arch_type_01='1'
 	else
 		disable_blis_arch_type_01='0'
@@ -3266,6 +3276,10 @@ main()
 	# Check if the user requested a custom env var name to replace BLIS_ARCH_TYPE.
 	if [ "x${rename_blis_arch_type}" != "xBLIS_ARCH_TYPE" ]; then
 		echo "${script_name}: configuring with BLIS_ARCH_TYPE env var renamed to '${rename_blis_arch_type}'."
+	fi
+	# Check if the user requested a custom env var name to replace BLIS_MODEL_TYPE.
+	if [ "x${rename_blis_model_type}" != "xBLIS_MODEL_TYPE" ]; then
+		echo "${script_name}: configuring with BLIS_MODEL_TYPE env var renamed to '${rename_blis_model_type}'."
 	fi
 
 	echo "${script_name}: configuring complex return type as \"${complex_return}\"."
@@ -3482,6 +3496,7 @@ main()
 		| sed   -e "s/@complex_return_intel@/${complex_return_intel01}/g" \
 		| sed   -e "s/@disable_blis_arch_type@/${disable_blis_arch_type_01}/g" \
 		| sed   -e "s/@rename_blis_arch_type@/${rename_blis_arch_type}/g" \
+		| sed   -e "s/@rename_blis_model_type@/${rename_blis_model_type}/g" \
 		> "${bli_config_h_out_path}"
 
 	# -- Instantiate bli_addon.h file from template ----------------------------

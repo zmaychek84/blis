@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-23, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -31,6 +31,8 @@
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
+
+#ifdef BLIS_ENABLE_BLAS
 
 // file define different formats of BLAS APIs- uppercase with
 // and without underscore, lowercase without underscore.
@@ -1087,6 +1089,14 @@ BLIS_EXPORT_BLIS void DGEMM_(const char   *transa, const char   *transb, const f
 
 
 
+BLIS_EXPORT_BLIS void DZGEMM( const f77_char *transa, const f77_char *transb, const f77_int *m, const f77_int *n, const f77_int *k, const dcomplex *alpha, const double *a, const f77_int *lda, const dcomplex *b, const f77_int *ldb, const dcomplex *beta, dcomplex *c, const f77_int *ldc );
+
+BLIS_EXPORT_BLIS void dzgemm( const f77_char *transa, const f77_char *transb, const f77_int *m, const f77_int *n, const f77_int *k, const dcomplex *alpha, const double *a, const f77_int *lda, const dcomplex *b, const f77_int *ldb, const dcomplex *beta, dcomplex *c, const f77_int *ldc );
+
+BLIS_EXPORT_BLIS void DZGEMM_( const f77_char *transa, const f77_char *transb, const f77_int *m, const f77_int *n, const f77_int *k, const dcomplex *alpha, const double *a, const f77_int *lda, const dcomplex *b, const f77_int *ldb, const dcomplex *beta, dcomplex *c, const f77_int *ldc );
+
+
+
 BLIS_EXPORT_BLIS void DSYMM(const char   *side, const char   *uplo, const f77_int *m, const f77_int *n, const double *alpha, const double *a, const f77_int *lda, const double *b, const f77_int *ldb, const double *beta, double *c, const f77_int *ldc);
 
 BLIS_EXPORT_BLIS void dsymm(const char   *side, const char   *uplo, const f77_int *m, const f77_int *n, const double *alpha, const double *a, const f77_int *lda, const double *b, const f77_int *ldb, const double *beta, double *c, const f77_int *ldc);
@@ -1272,6 +1282,9 @@ BLIS_EXPORT_BLIS void ZTRSM_(const char   *side, const char   *uplo, const char 
 
 
 // Miscellaneous APIs
+
+#ifdef BLIS_ENABLE_CBLAS
+
 BLIS_EXPORT_BLIS void CDOTCSUB( const f77_int* n,  const scomplex* x, const f77_int* incx,  const scomplex* y,  const f77_int* incy,  scomplex* rval);
 
 BLIS_EXPORT_BLIS void cdotcsub( const f77_int* n,  const scomplex* x, const f77_int* incx,  const scomplex* y,  const f77_int* incy,  scomplex* rval);
@@ -1462,6 +1475,7 @@ BLIS_EXPORT_BLIS void dsdotsub( const f77_int* n,  const float* x,  const f77_in
 
 BLIS_EXPORT_BLIS void DSDOTSUB_( const f77_int* n,  const float* x,  const f77_int* incx,  const float* y,  const f77_int* incy,  double* dot);
 
+#endif // BLIS_ENABLE_CBLAS
 
 
 BLIS_EXPORT_BLIS f77_int LSAME(const char   *ca, const char   *cb, const f77_int a, const f77_int b);
@@ -1609,6 +1623,7 @@ BLIS_EXPORT_BLIS void zgemmt( const f77_char* uploc,  const f77_char* transa,  c
 BLIS_EXPORT_BLIS void ZGEMMT_( const f77_char* uploc,  const f77_char* transa,  const f77_char* transb,  const f77_int* n,  const f77_int* k,  const  dcomplex* alpha,  const dcomplex* a,  const f77_int* lda,  const dcomplex* b,  const f77_int* ldb,  const dcomplex* beta,  dcomplex* c,  const f77_int* ldc);
 
 
+//#ifdef BLIS_ENABLE_CBLAS
 
 BLIS_EXPORT_BLIS void CIMATCOPY(f77_char* trans,  f77_int* rows,  f77_int* cols,  const scomplex* alpha, scomplex* aptr,  f77_int* lda,  f77_int* ldb);
 
@@ -1728,6 +1743,9 @@ BLIS_EXPORT_BLIS void zomatcopy(f77_char* trans,  f77_int* rows,  f77_int* cols,
 
 BLIS_EXPORT_BLIS void ZOMATCOPY_(f77_char* trans,  f77_int* rows,  f77_int* cols,  const dcomplex* alpha,  const dcomplex* aptr,  f77_int* lda,  dcomplex* bptr,  f77_int* ldb);
 
+//#endif // BLIS_ENABLE_CBLAS
 
 #endif
 #endif
+
+#endif // BLIS_ENABLE_BLAS

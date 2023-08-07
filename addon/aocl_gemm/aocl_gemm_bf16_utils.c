@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -47,9 +47,10 @@ AOCL_GEMM_GET_REORDER_BUF_SIZE(bf16bf16f32of32)
 	}
 
 	// Check if avx512_bf16 ISA is supported, lpgemm matmul only works with it.
-	if ( bli_cpuid_is_avx512_bf16_supported() == FALSE )
+	if ( bli_cpuid_is_avx512bf16_supported() == FALSE )
 	{
-		printf(" AVX512_BF16 ISA not supported by processor, cannot perform lpgemm.\n");
+		bli_print_msg(" AVX512_BF16 ISA not supported by processor, "
+				"cannot perform bf16bf16f32 gemm.", __FILE__, __LINE__ );
 		return 0; // Error.
 	}
 
@@ -68,8 +69,8 @@ AOCL_GEMM_GET_REORDER_BUF_SIZE(bf16bf16f32of32)
 	}
 
 	// Extra space since packing does width in multiples of 16. The bf16
-	// instruction can be used as long as atleast one zmm register can be fully
-	// loaded; and since k_dim needs to be atleast 2, having n_dim atleast 16
+	// instruction can be used as long as at least one zmm register can be fully
+	// loaded; and since k_dim needs to be at least 2, having n_dim at least 16
 	// should give 2x16=32 elements, enough for 1 zmm register.The padding is
 	// not rounded to NR (=64), since that would result in memory wastage.
 	dim_t n_reorder = make_multiple_of_n( n, 16 );
@@ -91,9 +92,10 @@ AOCL_GEMM_REORDER(bfloat16, bf16bf16f32of32)
 	}
 
 	// Check if avx512_bf16 ISA is supported, lpgemm matmul only works with it.
-	if ( bli_cpuid_is_avx512_bf16_supported() == FALSE )
+	if ( bli_cpuid_is_avx512bf16_supported() == FALSE )
 	{
-		printf(" AVX512_BF16 ISA not supported by processor, cannot perform lpgemm.\n");
+		bli_print_msg(" AVX512_BF16 ISA not supported by processor, "
+				"cannot perform bf16bf16f32 gemm.", __FILE__, __LINE__ );
 		return; // Error.
 	}
 
@@ -111,6 +113,14 @@ AOCL_GEMM_REORDER(bfloat16, bf16bf16f32of32)
 		return; // A reorder not supported.
 	}
 
+	// Initialize a local runtime with global settings if necessary. Note
+	// that in the case that a runtime is passed in, we make a local copy.
+	rntm_t rntm_g;
+	bli_rntm_init_from_global( &rntm_g );
+	bli_membrk_rntm_set_membrk( &rntm_g );
+
+	lpgemm_cntx_t* lcntx_g = lpgemm_get_global_cntx_obj( BF16BF16F32OF32 );
+
 	// Create dummy b_reorder obj.
 	lpgemm_obj_t b_reorder;
 	b_reorder.storage.aligned_buffer = reorder_buf_addr;
@@ -122,5 +132,5 @@ AOCL_GEMM_REORDER(bfloat16, bf16bf16f32of32)
 	b.width = n;
 	b.length = k;
 
-	reorderb_nr64_bf16bf16f32of32( &b, &b_reorder );
+	reorderb_nr64_bf16bf16f32of32( &b, &b_reorder, &rntm_g, lcntx_g );
 }

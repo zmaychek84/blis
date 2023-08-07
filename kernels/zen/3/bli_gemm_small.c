@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2017-2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2017-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -61,36 +61,6 @@ static err_t bli_sgemm_small
        cntl_t* cntl
      );
 
-err_t bli_dgemm_small
-     (
-       obj_t*  alpha,
-       obj_t*  a,
-       obj_t*  b,
-       obj_t*  beta,
-       obj_t*  c,
-       cntx_t* cntx,
-       cntl_t* cntl
-     );
-err_t bli_zgemm_small
-     (
-       obj_t*  alpha,
-       obj_t*  a,
-       obj_t*  b,
-       obj_t*  beta,
-       obj_t*  c,
-       cntx_t* cntx,
-       cntl_t* cntl
-     );
-err_t bli_zgemm_small_At
-     (
-       obj_t*  alpha,
-       obj_t*  a,
-       obj_t*  b,
-       obj_t*  beta,
-       obj_t*  c,
-       cntx_t* cntx,
-       cntl_t* cntl
-     );
 static err_t bli_sgemm_small_atbn
      (
        obj_t*  alpha,
@@ -134,9 +104,9 @@ err_t bli_gemm_small
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_7);
     return BLIS_NOT_YET_IMPLEMENTED;
 #else
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         return BLIS_NOT_YET_IMPLEMENTED;
     }
@@ -165,25 +135,25 @@ err_t bli_gemm_small
 #ifndef BLIS_ENABLE_MULTITHREADING
             // bli_dgemm_small_At is called directly from blas interface for
             // sizes within thresholds.
-            // Avoinding calling of bli_dgemm_small_At from gemm_front
+            // Avoiding calling of bli_dgemm_small_At from gemm_front
             // and directing to native implementation.
             return BLIS_NOT_YET_IMPLEMENTED;
 #else
             return bli_dgemm_small_At(alpha, a, b, beta, c, cntx, cntl);
 #endif
         }
-    if(dt == BLIS_DCOMPLEX)
-    {
+        if(dt == BLIS_DCOMPLEX)
+        {
 #ifndef BLIS_ENABLE_MULTITHREADING
             // bli_zgemm_small_At is called directly from blas interface for
             // sizes within thresholds.
-            // Avoinding calling of bli_zgemm_small_At from gemm_front
+            // Avoiding calling of bli_zgemm_small_At from gemm_front
             // and directing to native implementation.
             return BLIS_NOT_YET_IMPLEMENTED;
 #else
-        return bli_zgemm_small_At(alpha, a, b, beta, c, cntx, cntl);
+            return bli_zgemm_small_At(alpha, a, b, beta, c, cntx, cntl);
 #endif
-    }
+        }
 
         if (bli_obj_has_notrans( b ))
         {
@@ -390,8 +360,8 @@ static err_t bli_sgemm_small
 
             // This is the part of the pack and compute optimization.
             // During the first column iteration, we store the accessed A matrix into
-            // contiguous static memory. This helps to keep te A matrix in Cache and
-            // aviods the TLB misses.
+            // contiguous static memory. This helps to keep the A matrix in Cache and
+            // avoids the TLB misses.
             if (required_packing_A)
             {
                 col_idx = 0;
@@ -1778,14 +1748,14 @@ static err_t bli_sgemm_small
     {
         AOCL_DTL_TRACE_EXIT_ERR(
             AOCL_DTL_LEVEL_INFO,
-            "Invalid dimesions for small gemm."
+            "Invalid dimensions for small gemm."
             );
         return BLIS_NONCONFORMAL_DIMENSIONS;
     }
 
 };
 
-/*static*/ err_t bli_dgemm_small
+err_t bli_dgemm_small
      (
        obj_t*  alpha,
        obj_t*  a,
@@ -1797,7 +1767,7 @@ static err_t bli_sgemm_small
      )
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO);
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         return BLIS_NOT_YET_IMPLEMENTED;
     }
@@ -1806,7 +1776,7 @@ static err_t bli_sgemm_small
     gint_t K = bli_obj_width( a );  // number of columns of OP(A), will be updated if OP(A) is Transpose(A) .
     gint_t L = M * N;
 
-    /* if (N<3) //Implemenation assumes that N is atleast 3. VK */
+    /* if (N<3) //Implementation assumes that N is at least 3. VK */
     /*  { */
     /*      AOCL_DTL_TRACE_EXIT_ERR( */
     /*          AOCL_DTL_LEVEL_INFO, */
@@ -1827,7 +1797,7 @@ static err_t bli_sgemm_small
         double *C = bli_obj_buffer_at_off(c); // pointer to elements of Matrix C
 
         double *tA = A, *tB = B, *tC = C;//, *tA_pack;
-        double *tA_packed; // temprorary pointer to hold packed A memory pointer
+        double *tA_packed; // temporary pointer to hold packed A memory pointer
         guint_t row_idx_packed; //packed A memory row index
         guint_t lda_packed; //lda of packed A
         guint_t col_idx_start; //starting index after A matrix is packed.
@@ -1938,8 +1908,8 @@ static err_t bli_sgemm_small
 
             // This is the part of the pack and compute optimization.
             // During the first column iteration, we store the accessed A matrix into
-            // contiguous static memory. This helps to keep te A matrix in Cache and
-            // aviods the TLB misses.
+            // contiguous static memory. This helps to keep the A matrix in Cache and
+            // avoids the TLB misses.
             if (required_packing_A)
             {
                 col_idx = 0;
@@ -3369,7 +3339,7 @@ static err_t bli_sgemm_small
     {
         AOCL_DTL_TRACE_EXIT_ERR(
             AOCL_DTL_LEVEL_INFO,
-            "Invalid dimesions for small gemm."
+            "Invalid dimensions for small gemm."
             );
         return BLIS_NONCONFORMAL_DIMENSIONS;
     }
@@ -3846,7 +3816,7 @@ static err_t bli_sgemm_small_atbn
     {
         AOCL_DTL_TRACE_EXIT_ERR(
             AOCL_DTL_LEVEL_INFO,
-            "Invalid dimesions for small gemm."
+            "Invalid dimensions for small gemm."
             );
         return BLIS_NONCONFORMAL_DIMENSIONS;
     }
@@ -4286,7 +4256,7 @@ static err_t bli_dgemm_small_atbn
     {
         AOCL_DTL_TRACE_EXIT_ERR(
             AOCL_DTL_LEVEL_INFO,
-            "Invalid dimesions for small gemm."
+            "Invalid dimensions for small gemm."
             );
         return BLIS_NONCONFORMAL_DIMENSIONS;
     }
@@ -4305,7 +4275,7 @@ err_t bli_dgemm_small_At
 {
 
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO);
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         return BLIS_NOT_YET_IMPLEMENTED;
     }
@@ -4314,7 +4284,7 @@ err_t bli_dgemm_small_At
     gint_t K = bli_obj_width_after_trans( a );  // number of columns of OP(A), will be updated if OP(A) is Transpose(A) .
 
 
-    if (N<3) //Implemenation assumes that N is atleast 3.
+    if (N<3) //Implementation assumes that N is at least 3.
     {
         AOCL_DTL_TRACE_EXIT_ERR(
             AOCL_DTL_LEVEL_INFO,
@@ -4341,7 +4311,7 @@ err_t bli_dgemm_small_At
         double *C = bli_obj_buffer_at_off(c); // pointer to elements of Matrix C
 
         double *tA = A, *tB = B, *tC = C;//, *tA_pack;
-        double *tA_packed; // temprorary pointer to hold packed A memory pointer
+        double *tA_packed; // temporary pointer to hold packed A memory pointer
         guint_t row_idx_packed; //packed A memory row index
         guint_t lda_packed; //lda of packed A
         dim_t tb_inc_row = 1; // row stride of matrix B
@@ -5748,7 +5718,7 @@ err_t bli_dgemm_small_At
     {
         AOCL_DTL_TRACE_EXIT_ERR(
             AOCL_DTL_LEVEL_INFO,
-            "Invalid dimesions for dgemm_small_At."
+            "Invalid dimensions for dgemm_small_At."
             );
         return BLIS_NONCONFORMAL_DIMENSIONS;
     }
@@ -5798,7 +5768,7 @@ err_t bli_zgemm_small
      )
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO);
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         return BLIS_NOT_YET_IMPLEMENTED;
     }
@@ -5822,7 +5792,7 @@ err_t bli_zgemm_small
         dcomplex *C = bli_obj_buffer_at_off(c); //pointer to elements of Matrix C
 
         dcomplex *tA = A, *tB = B, *tC = C;//, *tA_pack;
-        dcomplex *tA_packed; //temprorary pointer to hold packed A memory pointer
+        dcomplex *tA_packed; //temporary pointer to hold packed A memory pointer
         guint_t row_idx_packed; //packed A memory row index
         guint_t lda_packed; //lda of packed A
         guint_t col_idx_start; //starting index after A matrix is packed.
@@ -5833,6 +5803,10 @@ err_t bli_zgemm_small
         __m256d ymm12, ymm13, ymm14, ymm15;
         __m256d ymm16, ymm17, ymm18, ymm19, ymm20, ymm21;
         __m256d ymm0, ymm1, ymm2, ymm3;
+
+        //gcc12 throws a unitialized warning,
+        //To avoid that these variable are se to zero.
+        ymm0 = _mm256_setzero_pd();
 
         gint_t n_remainder; // If the N is non multiple of 3.(N%3)
         gint_t m_remainder; // If the M is non multiple of 4.(M%4)
@@ -5933,8 +5907,8 @@ err_t bli_zgemm_small
             /**
              * This is the part of the pack and compute optimization.
              * During the first column iteration, we store the accessed A
-             * matrix into contiguous static memory. This helps to keep te A
-             * matrix in Cache and aviods the TLB misses.
+             * matrix into contiguous static memory. This helps to keep the A
+             * matrix in Cache and avoids the TLB misses.
              */
             if (required_packing_A)
             {
@@ -9730,7 +9704,7 @@ err_t bli_zgemm_small
     {
         AOCL_DTL_TRACE_EXIT_ERR(
                 AOCL_DTL_LEVEL_INFO,
-                "Invalid dimesions for small gemm."
+                "Invalid dimensions for small gemm."
                 );
         return BLIS_NONCONFORMAL_DIMENSIONS;
     }
@@ -9748,7 +9722,7 @@ err_t bli_zgemm_small_At
      )
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO);
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         return BLIS_NOT_YET_IMPLEMENTED;
     }
@@ -9759,7 +9733,7 @@ err_t bli_zgemm_small_At
     gint_t N = bli_obj_width( c );  // number of columns of Matrix C
     gint_t K = bli_obj_width_after_trans( a );  // number of columns of OP(A)
 
-    if (N<3) //Implemenation assumes that N is atleast 3.
+    if (N<3) //Implementation assumes that N is at least 3.
     {
         AOCL_DTL_TRACE_EXIT_ERR(
                 AOCL_DTL_LEVEL_INFO,
@@ -9779,7 +9753,7 @@ err_t bli_zgemm_small_At
         dcomplex *C = bli_obj_buffer_at_off(c); //pointer to elements of Matrix C
 
         dcomplex *tA = A, *tB = B, *tC = C;//, *tA_pack;
-        dcomplex *tA_packed; // temprorary pointer to hold packed A memory pointer
+        dcomplex *tA_packed; // temporary pointer to hold packed A memory pointer
         guint_t row_idx_packed; //packed A memory row index
         guint_t lda_packed; //lda of packed A
         dim_t tb_inc_row = 1; // row stride of matrix B
@@ -9805,6 +9779,10 @@ err_t bli_zgemm_small_At
         __m256d ymm12, ymm13, ymm14, ymm15;
         __m256d ymm16, ymm17, ymm18, ymm19, ymm20, ymm21;
         __m256d ymm0, ymm1, ymm2, ymm3;
+
+        //gcc12 throws a unitialized warning,
+        //To avoid that these variable are set to zero.
+        ymm0 = _mm256_setzero_pd();
 
         gint_t n_remainder; // If the N is non multiple of 3.(N%3)
         gint_t m_remainder; // If the M is non multiple of 16.(M%16)
@@ -13428,7 +13406,7 @@ err_t bli_zgemm_small_At
     {
         AOCL_DTL_TRACE_EXIT_ERR(
                 AOCL_DTL_LEVEL_INFO,
-                "Invalid dimesions for dgemm_small_At."
+                "Invalid dimensions for dgemm_small_At."
                 );
         return BLIS_NONCONFORMAL_DIMENSIONS;
     }

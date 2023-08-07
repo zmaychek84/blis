@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin.
-   Copyright (C) 2019 - 2022, Advanced Micro Devices, Inc.All Rights Reserved.
+   Copyright (C) 2019-2023, Advanced Micro Devices, Inc.All Rights Reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,7 +35,6 @@
 
 #include "blis.h"
 
-
 //
 // Define BLAS-to-BLIS interfaces.
 //
@@ -45,7 +44,7 @@
 #undef  GENTFUNC
 #define GENTFUNC( ftype, ch, blasname, blisname ) \
 \
-void PASTEF77(ch,blasname) \
+void PASTEF77S(ch,blasname) \
      ( \
        const f77_char* side, \
        const f77_char* uploa, \
@@ -112,6 +111,24 @@ void PASTEF77(ch,blasname) \
 	rs_b = 1; \
 	cs_b = *ldb; \
 \
+	/* If alphs is zero, set B to zero and return early */ \
+	if( PASTEMAC(ch,eq0)( *alpha ) ) \
+	{ \
+		PASTEMAC2(ch,setm,_ex)( BLIS_NO_CONJUGATE, \
+								0, \
+								BLIS_NONUNIT_DIAG, \
+								BLIS_DENSE, \
+								m0, n0, \
+								(ftype*) alpha, \
+								(ftype*) b, rs_b, cs_b, \
+								NULL, NULL \
+							 ); \
+		/* Finalize BLIS. */ \
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
+		bli_finalize_auto(); \
+		return; \
+	} \
+\
 	/* Call BLIS interface. */ \
 	PASTEMAC2(ch,blisname,BLIS_TAPI_EX_SUF) \
 	( \
@@ -131,14 +148,31 @@ void PASTEF77(ch,blasname) \
 	/* Finalize BLIS. */ \
 	AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
 	bli_finalize_auto(); \
-}
+} \
+IF_BLIS_ENABLE_BLAS(\
+void PASTEF77(ch,blasname) \
+     ( \
+       const f77_char* side, \
+       const f77_char* uploa, \
+       const f77_char* transa, \
+       const f77_char* diaga, \
+       const f77_int*  m, \
+       const f77_int*  n, \
+       const ftype*    alpha, \
+       const ftype*    a, const f77_int* lda, \
+             ftype*    b, const f77_int* ldb  \
+     ) \
+{ \
+	PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
+} \
+)
 
 #else
 
 #undef  GENTFUNC
 #define GENTFUNC( ftype, ch, blasname, blisname ) \
 \
-void PASTEF77(ch,blasname) \
+void PASTEF77S(ch,blasname) \
      ( \
        const f77_char* side, \
        const f77_char* uploa, \
@@ -203,6 +237,24 @@ void PASTEF77(ch,blasname) \
 	const inc_t rs_b = 1; \
 	const inc_t cs_b = *ldb; \
 \
+	/* If alphs is zero, set B to zero and return early */ \
+	if( PASTEMAC(ch,eq0)( *alpha ) ) \
+	{ \
+		PASTEMAC2(ch,setm,_ex)( BLIS_NO_CONJUGATE, \
+								0, \
+								BLIS_NONUNIT_DIAG, \
+								BLIS_DENSE, \
+								m0, n0, \
+								(ftype*) alpha, \
+								(ftype*) b, rs_b, cs_b, \
+								NULL, NULL \
+							 ); \
+		/* Finalize BLIS. */ \
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
+		bli_finalize_auto(); \
+		return; \
+	} \
+\
 	const num_t   dt     = PASTEMAC(ch,type); \
 \
 	const struc_t struca = BLIS_TRIANGULAR; \
@@ -239,11 +291,26 @@ void PASTEF77(ch,blasname) \
 	/* Finalize BLIS. */ \
 	AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
 	bli_finalize_auto(); \
-}
+} \
+IF_BLIS_ENABLE_BLAS(\
+void PASTEF77(ch,blasname) \
+     ( \
+       const f77_char* side, \
+       const f77_char* uploa, \
+       const f77_char* transa, \
+       const f77_char* diaga, \
+       const f77_int*  m, \
+       const f77_int*  n, \
+       const ftype*    alpha, \
+       const ftype*    a, const f77_int* lda, \
+             ftype*    b, const f77_int* ldb  \
+     ) \
+{ \
+	PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
+} \
+)
 
 #endif
 
-#ifdef BLIS_ENABLE_BLAS
 INSERT_GENTFUNC_BLAS( trmm, trmm )
-#endif
 

@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2016, Hewlett Packard Enterprise Development LP
-   Copyright (C) 2021 - 22, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -756,6 +756,7 @@ typedef enum
 	BLIS_PACKM_29XK_KER = 29,
 	BLIS_PACKM_30XK_KER = 30,
 	BLIS_PACKM_31XK_KER = 31,
+	BLIS_PACKM_32XK_KER = 32,
 
 	BLIS_UNPACKM_0XK_KER  = 0,
 	BLIS_UNPACKM_1XK_KER  = 1,
@@ -792,7 +793,7 @@ typedef enum
 
 } l1mkr_t;
 
-#define BLIS_NUM_PACKM_KERS   32
+#define BLIS_NUM_PACKM_KERS   33
 #define BLIS_NUM_UNPACKM_KERS 32
 
 
@@ -803,7 +804,7 @@ typedef enum
 	BLIS_GEMMTRSM_U_UKR,
 	BLIS_TRSM_L_UKR,
 	BLIS_TRSM_U_UKR,
-	BLIS_GEMM_AVX2_UKR
+	BLIS_GEMM_FOR_TRSM_UKR
 } l3ukr_t;
 
 #define BLIS_NUM_LEVEL3_UKRS 6
@@ -1044,6 +1045,32 @@ typedef enum
 
 #define BLIS_NUM_ARCHS (BLIS_ARCH_GENERIC_LAST + 1)
 
+
+typedef enum
+{
+	// Initial value, will be selected for an unrecognized (non-integer)
+	// value of BLIS_MODEL_TYPE
+	BLIS_MODEL_ERROR,
+
+	// Default model
+	BLIS_MODEL_DEFAULT,
+
+	// AMD Zen4
+	BLIS_MODEL_GENOA,
+	BLIS_MODEL_BERGAMO,
+	BLIS_MODEL_GENOA_X,
+
+	// AMD Zen3
+	BLIS_MODEL_MILAN,
+	BLIS_MODEL_MILAN_X,
+
+	// Dummy value, always the last one.
+	// In config_name in bli_arch.c this is also set to "generic"
+	BLIS_MODEL_DEFAULT_LAST
+
+} model_t;
+
+#define BLIS_NUM_MODELS (BLIS_MODEL_DEFAULT_LAST + 1)
 
 //
 // -- BLIS misc. structure types -----------------------------------------------
@@ -1599,6 +1626,7 @@ typedef enum
 	// Architecture-related errors
 	BLIS_INVALID_ARCH_ID                       = (-150),
 	BLIS_UNINITIALIZED_GKS_CNTX                = (-151),
+	BLIS_INVALID_MODEL_ID                      = (-152),
 
 	// Blocksize-related errors
 	BLIS_MC_DEF_NONMULTIPLE_OF_MR              = (-160),

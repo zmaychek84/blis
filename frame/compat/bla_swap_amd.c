@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020-22, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -42,7 +42,7 @@
 #undef  GENTFUNC
 #define GENTFUNC( ftype, ch, blasname, blisname ) \
 \
-void PASTEF77(ch,blasname) \
+void PASTEF77S(ch,blasname) \
      ( \
        const f77_int* n, \
        ftype*   x, const f77_int* incx, \
@@ -80,11 +80,21 @@ void PASTEF77(ch,blasname) \
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
     /* Finalize BLIS. */ \
     bli_finalize_auto(); \
-}
+} \
+\
+IF_BLIS_ENABLE_BLAS(\
+void PASTEF77(ch,blasname) \
+	( \
+		const f77_int* n, \
+		ftype*   x, const f77_int* incx, \
+		ftype*   y, const f77_int* incy  \
+		) \
+{ \
+   PASTEF77S(ch,blasname)( n, x, incx, y, incy ); \
+}\
+)
 
-#ifdef BLIS_ENABLE_BLAS
-
-void sswap_
+void sswap_blis_impl
      (
        const f77_int* n,
        float*   x, const f77_int* incx,
@@ -145,9 +155,9 @@ void sswap_
         incy0 = ( inc_t )(*incy);
     }
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE) {
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE) {
         /* Call BLIS kernel */
 	    bli_sswapv_zen_int8
 		    (
@@ -172,8 +182,18 @@ void sswap_
 //    bli_finalize_auto();
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
 }
-
-void dswap_
+#ifdef BLIS_ENABLE_BLAS
+void sswap_
+     (
+       const f77_int* n,
+       float*   x, const f77_int* incx,
+       float*   y, const f77_int* incy
+     )
+{
+    sswap_blis_impl( n, x, incx, y, incy );
+}
+#endif 
+void dswap_blis_impl
      (
        const f77_int* n,
        double*   x, const f77_int* incx,
@@ -235,9 +255,9 @@ void dswap_
     }
 
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE) {
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE) {
 	    bli_dswapv_zen_int8
 		    (
 		     n0,
@@ -261,8 +281,17 @@ void dswap_
 //    bli_finalize_auto();
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
 }
+#ifdef BLIS_ENABLE_BLAS
+void dswap_
+     (
+       const f77_int* n,
+       double*   x, const f77_int* incx,
+       double*   y, const f77_int* incy
+     )
+{
+    dswap_blis_impl( n, x, incx, y, incy ); 
+}
+#endif
 
 INSERT_GENTFUNC_BLAS_CZ( swap, swapv )
 
-
-#endif

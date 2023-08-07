@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -40,15 +40,39 @@
 #include "lpgemm_config.h"
 #include "lpgemm_thrinfo_utils.h"
 
+// Kernel function prototypes
+typedef void (*lpgemm_rowvar_s16)
+     (
+       const dim_t,
+       const dim_t,
+       const dim_t,
+       const uint8_t*,
+       const dim_t,
+       const dim_t,
+       const dim_t,
+       const int8_t*,
+       const dim_t,
+       const dim_t,
+       int16_t*,
+       const dim_t,
+       const dim_t,
+       const int16_t,
+       const int16_t,
+       lpgemm_post_op*,
+       lpgemm_post_op_attr
+     );
+
 // B should always be packed.
 LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 {
-	const dim_t NC = lpgemm_get_block_size_NC_global_cntx( U8S8S16OS16 );
-	const dim_t KC = lpgemm_get_block_size_KC_global_cntx( U8S8S16OS16 );
-	const dim_t MC = lpgemm_get_block_size_MC_global_cntx( U8S8S16OS16 );
-	const dim_t NR = lpgemm_get_block_size_NR_global_cntx( U8S8S16OS16 );
-	const dim_t MR = lpgemm_get_block_size_MR_global_cntx( U8S8S16OS16 );
-	
+	dim_t NC = lcntx->blksz.NC;
+	dim_t KC = lcntx->blksz.KC;
+	dim_t MC = lcntx->blksz.MC;
+	const dim_t NR = lcntx->blksz.NR;
+	const dim_t MR = lcntx->blksz.MR;
+
+	lpgemm_mod_block_size_s16(m, n, k, &MC, &NC, &KC);
+
 	if (mtag_b == UNPACKED)
 	{
 		// Error: can only work with packed B now.
@@ -82,8 +106,21 @@ LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 	// Making multiple of 2 to suit k in vpmaddubsw
 	dim_t k_updated = make_multiple_of_n( k, 2 );
 
-	// Is required to decide whether to apply post ops or not.
+	// To decide whether to apply post ops or not.
 	bool is_last_k = FALSE;
+
+	// To decide whether to use original s8 C or temp buffer for beta scale.
+	bool is_first_k = FALSE;
+
+	lpgemm_post_op_attr post_ops_attr;
+	if ( c_downscale == TRUE )
+	{
+		post_ops_attr.buf_downscale = c;
+	}
+	else
+	{
+		post_ops_attr.buf_downscale = NULL;
+	}
 
 	// Generate thrinfo objects for jc and ic loops from lpgemm_thrinfo_t.
 	thrinfo_t thread_jc;
@@ -123,37 +160,24 @@ LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 		// Temp accumulaton buffer for C allocation.
 		else if ( c_downscale == TRUE )
 		{
-			mem_scale_c_size_req = sizeof( int16_t ) * nc0 * ( ic_end - ic_start );
-
-			lpgemm_alloc_mem_panel
-			(
-			  mem_scale_c_size_req, BLIS_BUFFER_FOR_C_PANEL,
-			  &mem_scale_c, rntm
-			);
-
-			temp_scal_c_buffer_u8s8s16o16 = bli_mem_buffer( &mem_scale_c );
-
-			c_use_jc = ( int16_t* )temp_scal_c_buffer_u8s8s16o16;
-
-			if ( beta != 0 )
+			// Buffer memory is only required if output needs to be
+			// persisted across iterations of the pc/KC loop.
+			// It was observed that the locks used while checking out
+			// a buffer from memory pool had an impact on performance
+			// and is better to not checkout if k <= KC.
+			if ( k > KC )
 			{
-				dim_t i_temp = 0;
-				dim_t j_temp = 0;
-				// Upscale out C to temporary C matrix.
-				for ( dim_t i_dscale = ic_start; i_dscale < ic_end; ++i_dscale )
-				{
-					j_temp = 0;
-					for ( dim_t j_dscale = jc; j_dscale < ( jc + nc0 ); ++j_dscale )
-					{
-						*( temp_scal_c_buffer_u8s8s16o16 +
-								( nc0 * i_temp ) + j_temp ) =
-								( int16_t )( *( ( ( int8_t* )c ) +
-								( rs_c * i_dscale ) + j_dscale ) );
+				mem_scale_c_size_req = sizeof( int16_t ) * nc0 * ( ic_end - ic_start );
 
-						j_temp++;
-					}
-					i_temp++;
-				}
+				lpgemm_alloc_mem_panel
+				(
+				  mem_scale_c_size_req, BLIS_BUFFER_FOR_C_PANEL,
+				  &mem_scale_c, rntm
+				);
+
+				temp_scal_c_buffer_u8s8s16o16 = bli_mem_buffer( &mem_scale_c );
+
+				c_use_jc = ( int16_t* )temp_scal_c_buffer_u8s8s16o16;
 			}
 
 			// The temp c buffer stride is modified as opposed to original C matrix.
@@ -165,7 +189,12 @@ LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 			int16_t beta0 = (pc == 0) ? beta : 1;
 			dim_t kc0 = bli_min((k - pc), KC);
 
+			// No parallelization in k dim, k always starts at 0.
+			is_first_k = ( pc == 0 ) ? ( TRUE ) : ( FALSE );
+			post_ops_attr.is_first_k = is_first_k;
+
 			is_last_k = ( ( pc + KC ) >= k ) ? ( TRUE ) : ( FALSE );
+			post_ops_attr.is_last_k = is_last_k;
 
 			// kc0 needs to be a multiple of 2 so that it can be
 			// used with vpmaddubsw instruction. Padding is added in
@@ -200,9 +229,11 @@ LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 
 				// All threads in work group should wait till chief thread has
 				// finished allocating the packing buffers.
-				bli_thrcomm_barrier(
-					bli_thread_ocomm_id(&thread_ic),
-					&thread->comm[jc_work_id]);
+				bli_thrcomm_barrier
+				(
+				  bli_thread_ocomm_id(&thread_ic),
+				  &thread->comm[jc_work_id]
+				);
 
 				pack_b_buffer_u8s8s16o16 =
 					(int8_t *)thread->comm[jc_work_id].sent_object;
@@ -224,9 +255,9 @@ LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 				if ((jc_packb_end > jc_packb_start) &&
 					(jc_packb_start < (jc + nc0)))
 				{
-					packb_nr32_u8s8s16o16
+					( ( packb_s16 )lcntx->packb_fun_ptr )
 					(
-						pack_b_buffer_u8s8s16o16 + 
+						pack_b_buffer_u8s8s16o16 +
 						 (jc_packb_start * kc0_updated),
 						(b + (rs_b * pc) + (cs_b * jc) +
 						 (cs_b * jc_packb_start)),
@@ -237,7 +268,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 				}
 				else
 				{
-					get_packb_nr32_u8s8s16o16_strides(&rs_b_use, &cs_b_use);
+					lpgemm_get_packb_strides( lcntx, &rs_b_use, &cs_b_use );
 				}
 
 				// All threads in work group should wait till B matrix packing
@@ -260,7 +291,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 						(n_sub_updated * pc) +
 						(jc_cur_loop_rem * kc0_updated);
 
-				get_packb_nr32_u8s8s16o16_strides(&rs_b_use, &cs_b_use);
+				lpgemm_get_packb_strides( lcntx, &rs_b_use, &cs_b_use );
 			}
 			else
 			{
@@ -292,15 +323,20 @@ LPGEMM_5LOOP(uint8_t,int8_t,int16_t,u8s8s16o16)
 				{
 					dim_t nr0 = bli_min((nc0 - jr), NR);
 
+					// Post ops meta attributes.
+					post_ops_attr.post_op_c_i = ic;
+					post_ops_attr.post_op_c_j = ( jc + jr );
+					post_ops_attr.rs_c_downscale = rs_c_downscale;
+
 					// Calls for reorder B
-					lpgemm_rowvar_u8s8s16o16_6x32
+					( ( lpgemm_rowvar_s16 )lcntx->kern_fun_ptr )
 					(
 						mc0, nr0, kc0,
 						a_use, rs_a_use, cs_a_use, a_block_stride,
 						(b_use + (jr * kc0_updated)), rs_b_use, cs_b_use,
 						(c_use_ic + jr), rs_c_use, 1,
 						alpha, beta0,
-					  	is_last_k, ic, ( jc + jr ), post_op_list, rs_c_downscale
+					  	post_op_list, post_ops_attr
 					);
 				}
 			}

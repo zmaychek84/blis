@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -33,10 +33,7 @@
 
 */
 // -- level-1m --
-PACKM_KER_PROT(double, d, packm_8xk_gen_zen)
-PACKM_KER_PROT(double, d, packm_6xk_gen_zen)
-PACKM_KER_PROT(double, d, packm_8xk_nn_zen)
-PACKM_KER_PROT(double, d, packm_6xk_nn_zen)
+// Removed - reference packm kernels are used
 
 
 // -- level-1v --
@@ -84,20 +81,26 @@ DOTXV_KER_PROT( scomplex, c, dotxv_zen_int )
 // scalv (intrinsics)
 SCALV_KER_PROT( float,    s, scalv_zen_int )
 SCALV_KER_PROT( double,   d, scalv_zen_int )
+SCALV_KER_PROT( dcomplex, z, scalv_zen_int )
 
 // scalv (intrinsics unrolled x10)
-SCALV_KER_PROT( float,    s, scalv_zen_int10 )
-SCALV_KER_PROT( double,   d, scalv_zen_int10 )
+SCALV_KER_PROT( float,      s, scalv_zen_int10 )
+SCALV_KER_PROT( double,     d, scalv_zen_int10 )
+SCALV_KER_PROT( dcomplex,   z, dscalv_zen_int10 )
 
 // swapv (intrinsics)
 SWAPV_KER_PROT(float,   s, swapv_zen_int8 )
 SWAPV_KER_PROT(double,  d, swapv_zen_int8 )
 
 // copyv (intrinsics)
-COPYV_KER_PROT( float,    s, copyv_zen_int )
-COPYV_KER_PROT( double,   d, copyv_zen_int )
+COPYV_KER_PROT( float,      s, copyv_zen_int )
+COPYV_KER_PROT( double,     d, copyv_zen_int )
+COPYV_KER_PROT( dcomplex,   z, copyv_zen_int )
 
-//
+// scal2v (intrinsics)
+SCAL2V_KER_PROT(dcomplex, z, scal2v_zen_int)
+
+// setv (intrinsics)
 SETV_KER_PROT(float,    s, setv_zen_int)
 SETV_KER_PROT(double,   d, setv_zen_int)
 
@@ -231,6 +234,17 @@ GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rv_zen_asm_1x4 )
 GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rv_zen_asm_2x2 )
 GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rv_zen_asm_1x2 )
 
+//gemmsup_rd
+
+GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rd_zen_asm_3x4m )
+GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rd_zen_asm_3x2m )
+GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rd_zen_asm_2x4 )
+GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rd_zen_asm_1x4 )
+GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rd_zen_asm_2x2 )
+GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rd_zen_asm_1x2 )
+GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rd_zen_asm_3x4n )
+GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rd_zen_asm_2x4n )
+
 // gemmsup_rv (mkernel in n dim)
 
 
@@ -289,7 +303,7 @@ err_t bli_zgemm_small_At
       cntl_t* cntl
     );
 
-void bli_dgemm_ref_k1_nn
+void bli_dgemm_8x6_avx2_k1_nn
     (
       dim_t m,
       dim_t n,
@@ -301,7 +315,7 @@ void bli_dgemm_ref_k1_nn
       double* c, const inc_t ldc
      );
 
-void bli_zgemm_ref_k1_nn
+void bli_zgemm_4x6_avx2_k1_nn
     (
       dim_t m,
       dim_t n,
@@ -320,7 +334,8 @@ err_t bli_trsm_small
        obj_t*  a,
        obj_t*  b,
        cntx_t* cntx,
-       cntl_t* cntl
+       cntl_t* cntl,
+       bool is_parallel
      );
 
 #ifdef BLIS_ENABLE_OPENMP
@@ -331,7 +346,8 @@ err_t bli_trsm_small_mt
        obj_t*  a,
        obj_t*  b,
        cntx_t* cntx,
-       cntl_t* cntl
+       cntl_t* cntl,
+      bool     is_parallel
      );
 
 void bli_multi_sgemv_4x2
@@ -379,11 +395,27 @@ bool bli_cntx_trsm_small_thresh_is_met_zen
         dim_t n
     );
 
+void bli_snorm2fv_unb_var1_avx2
+     (
+       dim_t    n,
+       float*   x, inc_t incx,
+       float* norm,
+       cntx_t*  cntx
+     );
+
 void bli_dnorm2fv_unb_var1_avx2
      (
        dim_t    n,
        double*   x, inc_t incx,
        double* norm,
+       cntx_t*  cntx
+     );
+
+void bli_scnorm2fv_unb_var1_avx2
+     (
+       dim_t    n,
+       scomplex*   x, inc_t incx,
+       float* norm,
        cntx_t*  cntx
      );
 
@@ -393,12 +425,4 @@ void bli_dznorm2fv_unb_var1_avx2
        dcomplex*   x, inc_t incx,
        double* norm,
        cntx_t*  cntx
-     );
-void bli_zdscalv_zen_int10
-     (
-       conj_t           conjalpha,
-       dim_t            n,
-       double* restrict alpha,
-       dcomplex* restrict x, inc_t incx,
-       cntx_t* restrict cntx
      );

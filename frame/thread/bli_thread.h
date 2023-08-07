@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2016, Hewlett Packard Enterprise Development LP
-   Copyright (C) 2018 - 21, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 23, Advanced Micro Devices, Inc. All rights reserved.
    
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -59,7 +59,9 @@
 
 // Initialization-related prototypes.
 void bli_thread_init( void );
+void bli_thread_update_tl( void );
 void bli_thread_finalize( void );
+void bli_thread_finalize_tl( void );
 
 // Thread range-related prototypes.
 
@@ -188,6 +190,14 @@ void bli_thread_partition_2x2_fast
        dim_t* restrict nt2
      );
 
+void bli_thread_vector_partition
+     (
+       dim_t  n_elem,
+       dim_t  t_count,
+       dim_t* start,
+       dim_t* compute_len,
+       dim_t  thread_id
+     );
 
 // -----------------------------------------------------------------------------
 
@@ -210,6 +220,8 @@ BLIS_EXPORT_BLIS void  bli_thread_set_ways( dim_t jc, dim_t pc, dim_t ic, dim_t 
 BLIS_EXPORT_BLIS void  bli_thread_set_num_threads( dim_t value );
 
 BLIS_EXPORT_BLIS void  bli_thread_init_rntm_from_env( rntm_t* rntm );
+
+BLIS_EXPORT_BLIS void  bli_thread_update_rntm_from_env( rntm_t* rntm );
 
 // -----------------------------------------------------------------------------
 

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -46,10 +46,11 @@ AOCL_GEMM_MATMUL(uint8_t,int8_t,int16_t,int16_t,u8s8s16os16)
 	trans_t blis_transa;
 	trans_t blis_transb;
 
-	// Check if avx ISA is supported, lpgemm u8s8s16os16 matmul only works with it.
-	if ( bli_cpuid_is_avx_supported() == FALSE )
+	// Check if AVX2 ISA is supported, lpgemm u8s8s16os16 matmul only works with it.
+	if ( bli_cpuid_is_avx2fma3_supported() == FALSE )
 	{
-		printf(" AVX2 ISA not supported by processor, cannot perform lpgemm.\n");
+		bli_print_msg(" AVX2 ISA not supported by processor, "
+				"cannot perform u8s8s16 gemm.", __FILE__, __LINE__ );
 		return; // Error.
 	}
 
@@ -141,6 +142,8 @@ AOCL_GEMM_MATMUL(uint8_t,int8_t,int16_t,int16_t,u8s8s16os16)
 	bli_rntm_init_from_global(&rntm_g);
 	bli_membrk_rntm_set_membrk(&rntm_g);
 
+	lpgemm_cntx_t* lcntx_g = lpgemm_get_global_cntx_obj( U8S8S16OS16 );
+
 #ifdef BLIS_ENABLE_OPENMP
 	lpgemm_u8s8s16o16_openmp_thread_decorator
 	(
@@ -149,7 +152,7 @@ AOCL_GEMM_MATMUL(uint8_t,int8_t,int16_t,int16_t,u8s8s16os16)
 	  b, rs_b, cs_b, mtag_b,
 	  c, rs_c, cs_c,
 	  alpha, beta,
-	  &rntm_g,
+	  &rntm_g, lcntx_g,
 	  post_op_list, FALSE
 	);
 #else
@@ -160,7 +163,7 @@ AOCL_GEMM_MATMUL(uint8_t,int8_t,int16_t,int16_t,u8s8s16os16)
 	  b, rs_b, cs_b, mtag_b,
 	  c, rs_c, cs_c,
 	  alpha, beta,
-	  &rntm_g,
+	  &rntm_g, lcntx_g,
 	  post_op_list, FALSE
 	);
 #endif

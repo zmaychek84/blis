@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -42,7 +42,7 @@
 #undef  GENTFUNCDOT
 #define GENTFUNCDOT( ftype, ch, chc, blis_conjx, blasname, blisname ) \
 \
-ftype PASTEF772(ch,blasname,chc) \
+ftype PASTEF772S(ch,blasname,chc) \
      ( \
        const f77_int* n, \
        const ftype*   x, const f77_int* incx, \
@@ -87,12 +87,22 @@ ftype PASTEF772(ch,blasname,chc) \
     bli_finalize_auto(); \
 \
     return rho; \
-}
+}\
+\
+IF_BLIS_ENABLE_BLAS(\
+ftype PASTEF772(ch,blasname,chc) \
+     ( \
+       const f77_int* n, \
+       const ftype*   x, const f77_int* incx, \
+       const ftype*   y, const f77_int* incy  \
+     ) \
+{ \
+  return PASTEF772S(ch,blasname,chc)( n, x, incx, y, incy );\
+} \
+)
 
-#ifdef BLIS_ENABLE_BLAS
 INSERT_GENTFUNCDOTR_BLAS( dot, dotv )
 
-#ifdef BLIS_ENABLE_BLAS
 #ifdef BLIS_DISABLE_COMPLEX_RETURN_INTEL
 INSERT_GENTFUNCDOTC_BLAS( dot, dotv )
 #else
@@ -100,7 +110,7 @@ INSERT_GENTFUNCDOTC_BLAS( dot, dotv )
 #undef  GENTFUNCDOT
 #define GENTFUNCDOT( ftype, ch, chc, blis_conjx, blasname, blisname ) \
 \
-void PASTEF772(ch,blasname,chc) \
+void PASTEF772S(ch,blasname,chc) \
      ( \
        ftype*         rhop, \
        const f77_int* n, \
@@ -146,18 +156,30 @@ void PASTEF772(ch,blasname,chc) \
         bli_finalize_auto(); \
 \
         *rhop = rho; \
-}
+}\
+\
+IF_BLIS_ENABLE_BLAS(\
+void PASTEF772(ch,blasname,chc) \
+     ( \
+       ftype*         rhop, \
+       const f77_int* n, \
+       const ftype*   x, const f77_int* incx, \
+       const ftype*   y, const f77_int* incy  \
+     ) \
+{ \
+  PASTEF772S(ch,blasname,chc)( rhop, n, x, incx, y, incy );\
+} \
+)
 
 INSERT_GENTFUNCDOTC_BLAS( dot, dotv )
 #endif // BLIS_DISABLE_COMPLEX_RETURN_INTEL
-#endif // BLIS_ENABLE_BLAS
 
 
 // -- "Black sheep" dot product function definitions --
 
 // Input vectors stored in single precision, computed in double precision,
 // with result returned in single precision.
-float PASTEF77(sd,sdot)
+float PASTEF77S(sd,sdot)
      (
        const f77_int* n,
        const float*   sb,
@@ -176,10 +198,22 @@ float PASTEF77(sd,sdot)
              )
            );
 }
+#ifdef BLIS_ENABLE_BLAS
+float PASTEF77(sd,sdot)
+     (
+       const f77_int* n,
+       const float*   sb,
+       const float*   x, const f77_int* incx,
+       const float*   y, const f77_int* incy
+     )
+{
+  return PASTEF77S(sd,sdot)( n, sb, x, incx, y, incy );
+}
+#endif // BLIS_ENABLE_BLAS
 
 // Input vectors stored in single precision, computed in double precision,
 // with result returned in double precision.
-double PASTEF77(d,sdot)
+double PASTEF77S(d,sdot)
      (
        const f77_int* n,
        const float*   x, const f77_int* incx,
@@ -223,5 +257,14 @@ double PASTEF77(d,sdot)
 
     return rho;
 }
-
+#ifdef BLIS_ENABLE_BLAS
+double PASTEF77(d,sdot)
+     (
+       const f77_int* n,
+       const float*   x, const f77_int* incx,
+       const float*   y, const f77_int* incy
+     )
+{
+  return PASTEF77S(d,sdot)( n, x, incx, y, incy );
+}
 #endif // BLIS_ENABLE_BLAS

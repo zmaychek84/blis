@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -73,7 +73,7 @@ void PASTEMAC(ch,varname) \
 	ctype   conjx_chi11; \
 	ctype   alpha_chi11; \
 	ctype   alpha11_temp; \
-	dim_t   i, k, j; \
+	siz_t   i, k, j; \
 	dim_t   b_fuse, f; \
 	dim_t   n_ahead; \
 	dim_t   f_ahead, f_behind; \
@@ -312,9 +312,9 @@ void bli_dhemv_unf_var3
 
 	PASTECH(d,dotxaxpyf_ker_ft) kfp_dotxaxpyf_ker;
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
 	{
 		kfp_dotxaxpyf_ker = bli_ddotxaxpyf_zen_int_8;
 		b_fuse = 8;

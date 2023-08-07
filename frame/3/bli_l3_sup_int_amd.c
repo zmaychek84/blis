@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2019-22, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019-23, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -66,6 +66,15 @@ err_t bli_gemmsup_int
 	                                     stor_id == BLIS_RRC ||
 	                                     stor_id == BLIS_RCR ||
 	                                     stor_id == BLIS_CRR );
+	const bool    is_rcc_crc_ccr_ccc = !is_rrr_rrc_rcr_crr;
+	const bool    row_pref = bli_cntx_l3_sup_ker_prefers_rows_dt( dt, stor_id, cntx );
+	const bool    col_pref = !row_pref;
+
+	// For row-preferred kernels, rrr_rrc_rcr_crr becomes primary
+	// For col-preferred kernels, rcc_crc_ccr_ccc becomes primary
+	const bool    is_primary = ( row_pref && is_rrr_rrc_rcr_crr ) ||
+		                   ( col_pref && is_rcc_crc_ccr_ccc );
+
 	#ifdef TRACEVAR
 	if ( bli_thread_am_ochief( thread ) )
 	  printf( "bli_l3_sup_int(): var2m primary\n" );
@@ -78,15 +87,14 @@ err_t bli_gemmsup_int
 		return BLIS_FAILURE;
 	}
 
-	if ( is_rrr_rrc_rcr_crr )
+	if ( is_primary )
 	{
 	  // This branch handles:
 	  //  - rrr rrc rcr crr for row-preferential kernels
 	  //  - rcc crc ccr ccc for column-preferential kernels
-	  //  - Currently only row-preferential kernels are only supported.
 
 	  // calculate number of micropanels in m and n dimensions and
-	  // recalculate the automatic thread factorization based on these number of  micropanels 
+	  // recalculate the automatic thread factorization based on these number of  micropanels
 	  const dim_t mu = m / MR;
 	  const dim_t nu = n / NR;
 
@@ -120,13 +128,18 @@ err_t bli_gemmsup_int
 	  if (bli_is_dcomplex(dt) && (n_threads == 1))
 	  {
 		  if ((m > 55) && (k > 55) && (n > 55))
-			  bli_rntm_set_pack_b(1, rntm);//packb
+		  {
+				if ( row_pref )
+					bli_rntm_set_pack_b(1, rntm);//packb
+		  }
 	  }
 
-	  //Enable packing of B matrix for double data type when dims at per 
-	  //thread level are above caches and enable packing of A when transA 
+#if defined(BLIS_FAMILY_ZEN3) || defined(BLIS_FAMILY_AMDZEN)
+
+	  //Enable packing of B matrix for double data type when dims at per
+	  //thread level are above caches and enable packing of A when transA
 	  //(RRC or CRC storage ids) to avoid rd kernels
-	  if(bli_is_double(dt))
+	  if(bli_is_double(dt) && (bli_arch_query_id() == BLIS_ARCH_ZEN3))
 	  {
 		  dim_t m_pt = (m/bli_rntm_ways_for( BLIS_MC, rntm ));
 		  dim_t n_pt = (n/bli_rntm_ways_for( BLIS_NC, rntm ));
@@ -137,12 +150,12 @@ err_t bli_gemmsup_int
 			  {
 				  bli_rntm_set_pack_b(1, rntm);//packb
 
-				  if(stor_id==BLIS_RRC || stor_id==BLIS_CRC) 
+				  if(( stor_id==BLIS_RRC ) || ( stor_id==BLIS_CRC ))
 					bli_rntm_set_pack_a(1, rntm);//packa
 			  }
 		  }
 	  }
-
+#endif
 	  // Using the 1n kernel (B broadcast) gave better performance for sgemm
 	  // in single-thread scenario, given the number of n panels are
 	  // sufficiently larger than m panels.
@@ -164,7 +177,6 @@ err_t bli_gemmsup_int
 	  // This branch handles:
 	  //  - rrr rrc rcr crr for column-preferential kernels
 	  //  - rcc crc ccr ccc for row-preferential kernels
-          //  - Currently only row-preferential kernels are only supported.
 	  const dim_t mu = n / MR; // the n becomes m after a transposition
 	  const dim_t nu = m / NR; // the m becomes n after a transposition
 
@@ -183,40 +195,45 @@ err_t bli_gemmsup_int
 	      bli_l3_sup_thrinfo_update_root( rntm, thread );
 	  }
 
-	  /* Enable packing for B matrix for higher sizes. Note that pack A 
+	  /* Enable packing for B matrix for higher sizes. Note that pack A
 	   * becomes pack B inside var2m because this is transpose case*/
 	  if(bli_is_float(dt) && (n_threads==1)) {
               if((m > 240) &&  (k > 240) && (n > 240))
 	          bli_rntm_set_pack_a( 1, rntm );//packb
 	  }
 
-	  /*Enable packing of A matrix for complex data type*/
+	  //Enable packing of A matrix for complex data type
 	  if (bli_is_dcomplex(dt) && (n_threads == 1))
 	  {
 		  if ((m > 55) && (k > 55) && (n > 55))
-			  bli_rntm_set_pack_a(1, rntm);//packb
+		  {
+				if ( row_pref )
+					bli_rntm_set_pack_a(1, rntm);//packb
+		  }
 	  }
 
-	  //Enable packing of B matrix for double data type when dims at per 
-	  //thread level are above caches and enable packing of A when transA 
+#if defined(BLIS_FAMILY_ZEN3) || defined(BLIS_FAMILY_AMDZEN)
+
+	  //Enable packing of B matrix for double data type when dims at per
+	  //thread level are above caches and enable packing of A when transA
 	  //(RRC or CRC storage ids) to avoid rd kernels
-	  if(bli_is_double(dt))
+	  if(bli_is_double(dt) && (bli_arch_query_id() == BLIS_ARCH_ZEN3))
 	  {
 		  dim_t m_pt = (m/bli_rntm_ways_for( BLIS_NC, rntm ));
 		  dim_t n_pt = (n/bli_rntm_ways_for( BLIS_MC, rntm ));
 
 		  if(k > 120)
 		  {
-			  if(((m_pt > 320) && (n_pt > 120)) || ((m_pt > 120) && (n_pt > 320))) 
+			  if(((m_pt > 320) && (n_pt > 120)) || ((m_pt > 120) && (n_pt > 320)))
 			  {
 				  bli_rntm_set_pack_a(1, rntm);//packb
 
-				  if(stor_id==BLIS_RRC || stor_id==BLIS_CRC) 
+				  if(( stor_id==BLIS_RRC ) || ( stor_id==BLIS_CRC ))
 					bli_rntm_set_pack_b(1, rntm);//packa
 			  }
 		  }
 	  }
- 
+#endif
 	  if ( bli_is_float( dt ) && ( n_threads == 1 ) && ( use_pb == TRUE ) )
 	  {
 		bli_gemmsup_ref_var1n( BLIS_TRANSPOSE,
@@ -327,16 +344,15 @@ err_t bli_gemmtsup_int
 			// new ways of parallelism value for the jc loop.
 			bli_rntm_set_ways_only( jc_new, 1, ic_new, 1, 1, rntm );
 			bli_l3_sup_thrinfo_update_root( rntm, thread );
-			/* Enable packing for B matrix for higher sizes. Note that pack B
-			 * * becomes pack A inside var2m because this is transpose case*/
-			if(bli_is_double(dt) && ((n_threads==1)))
-			{
-				if((m > 320) &&  (k > 50))
-					bli_rntm_set_pack_b( 1, rntm );
-			}
-
 		}
 
+		/* Enable packing for B matrix for higher sizes. Note that pack B
+		 * * becomes pack A inside var2m because this is transpose case*/
+		if(bli_is_double(dt) && ((n_threads==1)))
+		{
+			if((m > 320) &&  (k > 50))
+				bli_rntm_set_pack_b( 1, rntm );
+		}
 
 		if ( use_bp )
 		{
@@ -401,14 +417,14 @@ err_t bli_gemmtsup_int
 			// new ways of parallelism value for the jc loop.
 			bli_rntm_set_ways_only( jc_new, 1, ic_new, 1, 1, rntm );
 			bli_l3_sup_thrinfo_update_root( rntm, thread );
+		}
 
-			/* Enable packing for A matrix for higher sizes. Note that pack A
-			 * * becomes pack B inside var2m because this is transpose case*/
-			if(bli_is_double(dt) && (n_threads==1))
-			{
-				if((m > 320) &&  (k > 50))
-					bli_rntm_set_pack_a( 1, rntm );
-			}
+		/* Enable packing for A matrix for higher sizes. Note that pack A
+		 * * becomes pack B inside var2m because this is transpose case*/
+		if(bli_is_double(dt) && (n_threads==1))
+		{
+			if((m > 320) &&  (k > 50))
+				bli_rntm_set_pack_a( 1, rntm );
 		}
 
 

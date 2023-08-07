@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -307,55 +307,113 @@ void PASTEMAC(ch,varname) \
 }
 
 //INSERT_GENTFUNCR_BASIC( normfv_unb_var1, sumsqv_unb_var1 )
-GENTFUNCR( scomplex, float,  c, s, normfv_unb_var1, sumsqv_unb_var1 )
+//GENTFUNCR( scomplex, float,  c, s, normfv_unb_var1, sumsqv_unb_var1 )
+void bli_cnormfv_unb_var1
+    (
+        dim_t    n,
+        scomplex*   x,
+        inc_t incx,
+        float* norm,
+        cntx_t*  cntx,
+        rntm_t*  rntm
+    )
+{
+    arch_t id = bli_arch_query_id();
+    switch (id)
+    {
+        case BLIS_ARCH_ZEN4:
+        case BLIS_ARCH_ZEN3:
+        case BLIS_ARCH_ZEN2:
+        case BLIS_ARCH_ZEN:
+#ifdef BLIS_KERNELS_ZEN
+            bli_scnorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
+            break;
+#endif
+        default:;
+            float* zero       = bli_s0;
+            float* one        = bli_s1;
+            float  scale;
+            float  sumsq;
+            float  sqrt_sumsq;
+
+            // Initialize scale and sumsq to begin the summation.
+            bli_scopys( *zero, scale );
+            bli_scopys( *one,  sumsq );
+
+            // Compute the sum of the squares of the vector.
+
+            bli_csumsqv_unb_var1
+            (
+                n,
+                x,
+                incx,
+                &scale,
+                &sumsq,
+                cntx,
+                rntm
+            );
+
+            // Compute: norm = scale * sqrt( sumsq )
+            bli_ssqrt2s( sumsq, sqrt_sumsq );
+            bli_sscals( scale, sqrt_sumsq );
+
+            // Store the final value to the output variable.
+            bli_scopys( sqrt_sumsq, *norm );
+    }
+}
 
 void bli_znormfv_unb_var1
-    ( 
-        dim_t    n, 
-        dcomplex*   x, 
-        inc_t incx, 
-        double* norm, 
-        cntx_t*  cntx, 
-        rntm_t*  rntm  
-    ) 
-{ 
-   
-   if ( bli_cpuid_is_avx_supported() == TRUE )
-   {
-        bli_dznorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
-   }
-   else
-   {
-        double* zero       = bli_d0;
-        double* one        = bli_d1;
-        double  scale; 
-        double  sumsq; 
-        double  sqrt_sumsq; 
+    (
+        dim_t    n,
+        dcomplex*   x,
+        inc_t incx,
+        double* norm,
+        cntx_t*  cntx,
+        rntm_t*  rntm
+    )
+{
+    arch_t id = bli_arch_query_id();
+    switch (id)
+    {
+        case BLIS_ARCH_ZEN4:
+        case BLIS_ARCH_ZEN3:
+        case BLIS_ARCH_ZEN2:
+        case BLIS_ARCH_ZEN:
+#ifdef BLIS_KERNELS_ZEN
+            bli_dznorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
+            break;
+#endif
+        default:;
+            double* zero       = bli_d0;
+            double* one        = bli_d1;
+            double  scale;
+            double  sumsq;
+            double  sqrt_sumsq;
 
-        // Initialize scale and sumsq to begin the summation.
-        bli_dcopys( *zero, scale ); 
-        bli_dcopys( *one,  sumsq ); 
+            // Initialize scale and sumsq to begin the summation.
+            bli_dcopys( *zero, scale );
+            bli_dcopys( *one,  sumsq );
 
-        // Compute the sum of the squares of the vector.
+            // Compute the sum of the squares of the vector.
 
-        bli_zsumsqv_unb_var1 
-        ( 
-            n,
-            x, 
-            incx,
-            &scale,
-            &sumsq,
-            cntx,
-            rntm
-        );
+            bli_zsumsqv_unb_var1
+            (
+                n,
+                x,
+                incx,
+                &scale,
+                &sumsq,
+                cntx,
+                rntm
+            );
 
-        // Compute: norm = scale * sqrt( sumsq ) 
-        bli_dsqrt2s( sumsq, sqrt_sumsq ); 
-        bli_dscals( scale, sqrt_sumsq ); 
+            // Compute: norm = scale * sqrt( sumsq )
+            bli_dsqrt2s( sumsq, sqrt_sumsq );
+            bli_dscals( scale, sqrt_sumsq );
 
-        // Store the final value to the output variable.
-        bli_dcopys( sqrt_sumsq, *norm );
-   }
+            // Store the final value to the output variable.
+            bli_dcopys( sqrt_sumsq, *norm );
+    }
 }
 
 #undef  GENTFUNCR
@@ -487,55 +545,113 @@ void PASTEMAC(ch,varname) \
     PASTEMAC(chr,copys)( sqrt_sumsq, *norm ); \
 }
 #endif
-GENTFUNCR( float,   float,  s, s, normfv_unb_var1, sumsqv_unb_var1 )
+//GENTFUNCR( float,   float,  s, s, normfv_unb_var1, sumsqv_unb_var1 )
 
-void bli_dnormfv_unb_var1
-    ( 
-        dim_t    n, 
-        double*   x, 
-        inc_t incx, 
-        double* norm, 
-        cntx_t*  cntx, 
-        rntm_t*  rntm  
-    ) 
-{ 
-   
-   if( bli_cpuid_is_avx_supported() == TRUE )
-   {
-        bli_dnorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
-   }
-   else
-   {
-        double* zero       = bli_d0;
-        double* one        = bli_d1;
-        double  scale; 
-        double  sumsq; 
-        double  sqrt_sumsq; 
+void bli_snormfv_unb_var1
+    (
+        dim_t    n,
+        float*   x,
+        inc_t incx,
+        float* norm,
+        cntx_t*  cntx,
+        rntm_t*  rntm
+    )
+{
+    // Early return if n=1.
+    if ( n == 1 )
+    {
+        *norm = bli_fabs(*x);
+        return;
+    }
+    /* Disable AVX2 codepath.
+    if( bli_cpuid_is_avx2fma3_supported() == TRUE )
+    {
+        bli_snorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
+    }
+    else*/
+    {
+        float* zero       = bli_s0;
+        float* one        = bli_s1;
+        float  scale;
+        float  sumsq;
+        float  sqrt_sumsq;
 
         // Initialize scale and sumsq to begin the summation.
-        bli_ddcopys( *zero, scale ); 
-        bli_ddcopys( *one,  sumsq ); 
+        bli_sscopys( *zero, scale );
+        bli_sscopys( *one,  sumsq );
 
         // Compute the sum of the squares of the vector.
-
-        bli_dsumsqv_unb_var1 
-        ( 
-        n,
-        x, 
-        incx,
-        &scale,
-        &sumsq,
-        cntx,
-        rntm
+        bli_ssumsqv_unb_var1
+        (
+            n,
+            x,
+            incx,
+            &scale,
+            &sumsq,
+            cntx,
+            rntm
         );
 
-        // Compute: norm = scale * sqrt( sumsq ) 
-        bli_dsqrt2s( sumsq, sqrt_sumsq ); 
-        bli_dscals( scale, sqrt_sumsq ); 
+        // Compute: norm = scale * sqrt( sumsq )
+        bli_ssqrt2s( sumsq, sqrt_sumsq );
+        bli_sscals( scale, sqrt_sumsq );
 
         // Store the final value to the output variable.
-        bli_dcopys( sqrt_sumsq, *norm );
-   }
+        bli_scopys( sqrt_sumsq, *norm );
+    }
+}
+
+void bli_dnormfv_unb_var1
+    (
+        dim_t    n,
+        double*   x,
+        inc_t incx,
+        double* norm,
+        cntx_t*  cntx,
+        rntm_t*  rntm
+    )
+{
+    arch_t id = bli_arch_query_id();
+    switch (id)
+    {
+        case BLIS_ARCH_ZEN4:
+        case BLIS_ARCH_ZEN3:
+        case BLIS_ARCH_ZEN2:
+        case BLIS_ARCH_ZEN:
+#ifdef BLIS_KERNELS_ZEN
+            bli_dnorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
+            break;
+#endif
+        default:;
+            double* zero       = bli_d0;
+            double* one        = bli_d1;
+            double  scale;
+            double  sumsq;
+            double  sqrt_sumsq;
+
+            // Initialize scale and sumsq to begin the summation.
+            bli_ddcopys( *zero, scale );
+            bli_ddcopys( *one,  sumsq );
+
+            // Compute the sum of the squares of the vector.
+            bli_dsumsqv_unb_var1 
+            (
+                n,
+                x,
+                incx,
+                &scale,
+                &sumsq,
+                cntx,
+                rntm
+            );
+
+            // Compute: norm = scale * sqrt( sumsq )
+            bli_dsqrt2s( sumsq, sqrt_sumsq );
+            bli_dscals( scale, sqrt_sumsq );
+
+            // Store the final value to the output variable.
+            bli_dcopys( sqrt_sumsq, *norm );
+    }
 }
 
 #undef  GENTFUNCR
@@ -1233,79 +1349,115 @@ void PASTEMAC(ch,varname) \
        rntm_t*  rntm  \
      ) \
 { \
-    const ctype_r zero_r = *PASTEMAC(chr,0); \
-    const ctype_r one_r  = *PASTEMAC(chr,1); \
+	ctype_r zero_r = *PASTEMAC(chr,0); \
+	ctype_r one_r  = *PASTEMAC(chr,1); \
 \
-    ctype*        chi1; \
-    ctype_r       chi1_r; \
-    ctype_r       chi1_i; \
-    ctype_r       scale_r; \
-    ctype_r       sumsq_r; \
-    ctype_r       abs_chi1_r; \
-    dim_t         i; \
+	ctype*  chi1; \
+	ctype_r chi1_r; \
+	ctype_r chi1_i; \
+	ctype_r scale_r; \
+	ctype_r sumsq_r; \
+	ctype_r abs_chi1_r; \
+	ctype_r abs_chi1_i; \
+	dim_t   i; \
 \
-    /* NOTE: This function attempts to mimic the algorithm for computing
-       the Frobenius norm in netlib LAPACK's ?lassq(). */ \
+	/* NOTE: This function attempts to mimic the algorithm for computing
+	   the Frobenius norm in netlib LAPACK's ?lassq(). */ \
 \
-    /* Copy scale and sumsq to local variables. */ \
-    PASTEMAC(chr,copys)( *scale, scale_r ); \
-    PASTEMAC(chr,copys)( *sumsq, sumsq_r ); \
+	/* Copy scale and sumsq to local variables. */ \
+	PASTEMAC(chr,copys)( *scale, scale_r ); \
+	PASTEMAC(chr,copys)( *sumsq, sumsq_r ); \
 \
-    chi1 = x; \
+	chi1 = x; \
 \
-    for ( i = 0; i < n; ++i ) \
-    { \
-        /* Get the real and imaginary components of chi1. */ \
-        PASTEMAC2(ch,chr,gets)( *chi1, chi1_r, chi1_i ); \
+	for ( i = 0; i < n; ++i ) \
+	{ \
+		/* Get the real and imaginary components of chi1. */ \
+		PASTEMAC2(ch,chr,gets)( *chi1, chi1_r, chi1_i ); \
 \
-        abs_chi1_r = bli_fabs( chi1_r ); \
+		abs_chi1_r = bli_fabs( chi1_r ); \
+		abs_chi1_i = bli_fabs( chi1_i ); \
 \
-        /* Accumulate real component into sumsq, adjusting scale if
-           needed. */ \
-        if ( abs_chi1_r > zero_r || bli_isnan( abs_chi1_r) ) \
-        { \
-            if ( scale_r < abs_chi1_r ) \
-            { \
-                sumsq_r = one_r + \
-                          sumsq_r * ( scale_r / abs_chi1_r ) * \
-                                    ( scale_r / abs_chi1_r );  \
+		if ( bli_isnan( abs_chi1_r ) ) \
+		{ \
+			sumsq_r = abs_chi1_r; \
+			scale_r = one_r; \
+		} \
 \
-                PASTEMAC(chr,copys)( abs_chi1_r, scale_r ); \
-            } \
-            else \
-            { \
-                sumsq_r = sumsq_r + ( abs_chi1_r / scale_r ) * \
-                                    ( abs_chi1_r / scale_r );  \
-            } \
-        } \
+		if ( bli_isnan( abs_chi1_i ) ) \
+		{ \
+			sumsq_r = abs_chi1_i; \
+			scale_r = one_r; \
+		} \
 \
-        abs_chi1_r = bli_fabs( chi1_i ); \
+		if ( bli_isnan( sumsq_r ) ) \
+		{ \
+			chi1 += incx; \
+			continue; \
+		} \
 \
-        /* Accumulate imaginary component into sumsq, adjusting scale if
-           needed. */ \
-        if ( abs_chi1_r > zero_r || bli_isnan( abs_chi1_r) ) \
-        { \
-            if ( scale_r < abs_chi1_r ) \
-            { \
-                sumsq_r = one_r + \
-                          sumsq_r * ( scale_r / abs_chi1_r ) * \
-                                    ( scale_r / abs_chi1_r );  \
+		if ( bli_isinf( abs_chi1_r ) ) \
+		{ \
+			sumsq_r = abs_chi1_r; \
+			scale_r = one_r; \
+		} \
 \
-                PASTEMAC(chr,copys)( abs_chi1_r, scale_r ); \
-            } \
-            else \
-            { \
-                sumsq_r = sumsq_r + ( abs_chi1_r / scale_r ) * \
-                                    ( abs_chi1_r / scale_r );  \
-            } \
-        } \
+		if ( bli_isinf( abs_chi1_i ) ) \
+		{ \
+			sumsq_r = abs_chi1_i; \
+			scale_r = one_r; \
+		} \
 \
-        chi1 += incx; \
-    } \
+		if ( bli_isinf( sumsq_r ) ) \
+		{ \
+			chi1 += incx; \
+			continue; \
+		} \
 \
-    /* Store final values of scale and sumsq to output variables. */ \
-    PASTEMAC(chr,copys)( scale_r, *scale ); \
-    PASTEMAC(chr,copys)( sumsq_r, *sumsq ); \
+		/* Accumulate real component into sumsq, adjusting scale if
+		   needed. */ \
+		if ( abs_chi1_r > zero_r ) \
+		{ \
+			if ( scale_r < abs_chi1_r ) \
+			{ \
+				sumsq_r = one_r + \
+				          sumsq_r * ( scale_r / abs_chi1_r ) * \
+				                    ( scale_r / abs_chi1_r );  \
+\
+				PASTEMAC(chr,copys)( abs_chi1_r, scale_r ); \
+			} \
+			else \
+			{ \
+				sumsq_r = sumsq_r + ( abs_chi1_r / scale_r ) * \
+				                    ( abs_chi1_r / scale_r );  \
+			} \
+		} \
+\
+		/* Accumulate imaginary component into sumsq, adjusting scale if
+		   needed. */ \
+		if ( abs_chi1_i > zero_r ) \
+		{ \
+			if ( scale_r < abs_chi1_i ) \
+			{ \
+				sumsq_r = one_r + \
+				          sumsq_r * ( scale_r / abs_chi1_i ) * \
+				                    ( scale_r / abs_chi1_i );  \
+\
+				PASTEMAC(chr,copys)( abs_chi1_i, scale_r ); \
+			} \
+			else \
+			{ \
+				sumsq_r = sumsq_r + ( abs_chi1_i / scale_r ) * \
+				                    ( abs_chi1_i / scale_r );  \
+			} \
+		} \
+\
+		chi1 += incx; \
+	} \
+\
+	/* Store final values of scale and sumsq to output variables. */ \
+	PASTEMAC(chr,copys)( scale_r, *scale ); \
+	PASTEMAC(chr,copys)( sumsq_r, *sumsq ); \
 }
 
 INSERT_GENTFUNCR_BASIC0( sumsqv_unb_var1 )

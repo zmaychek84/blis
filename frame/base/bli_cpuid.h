@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2022, Advanced Micro Devices, Inc.
+   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -53,6 +53,13 @@
 
 arch_t bli_cpuid_query_id( void );
 
+model_t bli_cpuid_query_model_id( arch_t id );
+
+uint32_t bli_cpuid_query_l1d_cache_size( void );
+uint32_t bli_cpuid_query_l1i_cache_size( void );
+uint32_t bli_cpuid_query_l2_cache_size( void );
+uint32_t bli_cpuid_query_l3_cache_size( void );
+
 // Intel
 bool bli_cpuid_is_skx( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_knl( uint32_t family, uint32_t model, uint32_t features );
@@ -62,6 +69,7 @@ bool bli_cpuid_is_penryn( uint32_t family, uint32_t model, uint32_t features );
 
 // AMD
 bool bli_cpuid_is_zen4( uint32_t family, uint32_t model, uint32_t features );
+bool bli_cpuid_is_avx512_fallback( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_zen3( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_zen2( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_zen( uint32_t family, uint32_t model, uint32_t features );
@@ -69,6 +77,9 @@ bool bli_cpuid_is_excavator( uint32_t family, uint32_t model, uint32_t features 
 bool bli_cpuid_is_steamroller( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_piledriver( uint32_t family, uint32_t model, uint32_t features );
 bool bli_cpuid_is_bulldozer( uint32_t family, uint32_t model, uint32_t features );
+
+model_t bli_cpuid_get_zen4_cpuid_model( uint32_t family, uint32_t model, uint32_t features );
+model_t bli_cpuid_get_zen3_cpuid_model( uint32_t family, uint32_t model, uint32_t features );
 
 // ARM
 bool bli_cpuid_is_thunderx2( uint32_t model, uint32_t part, uint32_t features );
@@ -78,6 +89,8 @@ bool bli_cpuid_is_cortexa15( uint32_t model, uint32_t part, uint32_t features );
 bool bli_cpuid_is_cortexa9( uint32_t model, uint32_t part, uint32_t features );
 
 uint32_t bli_cpuid_query( uint32_t* family, uint32_t* model, uint32_t* features );
+
+void bli_cpuid_check_cache( uint32_t vendor );
 
 // -----------------------------------------------------------------------------
 
@@ -133,9 +146,16 @@ BLIS_INLINE bool bli_cpuid_has_features( uint32_t have, uint32_t want )
 
 void get_cpu_name( char *cpu_name );
 int  vpu_count( void );
-bool bli_cpuid_is_avx_supported(void);
+
+bool bli_cpuid_is_avx2fma3_supported(void);
+bool bli_cpuid_is_avx512_supported(void);
 bool bli_cpuid_is_avx512vnni_supported(void);
-bool bli_cpuid_is_avx512_bf16_supported(void);
+bool bli_cpuid_is_avx512bf16_supported(void);
+
+void bli_cpuid_check_avx2fma3_support( uint32_t family, uint32_t model, uint32_t features );
+void bli_cpuid_check_avx512_support( uint32_t family, uint32_t model, uint32_t features );
+void bli_cpuid_check_avx512vnni_support( uint32_t family, uint32_t model, uint32_t features );
+void bli_cpuid_check_avx512bf16_support( uint32_t family, uint32_t model, uint32_t features );
 
 enum
 {

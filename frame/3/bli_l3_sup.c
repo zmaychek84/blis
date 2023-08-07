@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2019-22, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019-23, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -73,6 +73,7 @@ err_t bli_gemmsup
     trans_t transa = bli_obj_conjtrans_status( a );
     trans_t transb = bli_obj_conjtrans_status( b );
 
+
     //Don't use sup for currently unsupported storage types in cgemmsup
     if(bli_obj_is_scomplex(c) &&
     (((stor_id == BLIS_RRC)||(stor_id == BLIS_CRC))
@@ -86,9 +87,8 @@ err_t bli_gemmsup
 
     //Don't use sup for currently unsupported storage types  in zgemmsup
     if(bli_obj_is_dcomplex(c) &&
-    (((stor_id == BLIS_RRC)||(stor_id == BLIS_CRC))
-    || ((transa == BLIS_CONJ_NO_TRANSPOSE) || (transa == BLIS_CONJ_TRANSPOSE))
-    || ((transb == BLIS_CONJ_NO_TRANSPOSE) || (transb == BLIS_CONJ_TRANSPOSE))
+    (((transa == BLIS_CONJ_NO_TRANSPOSE) || (transa == BLIS_CONJ_TRANSPOSE)) ||
+     ((transb == BLIS_CONJ_NO_TRANSPOSE) || (transb == BLIS_CONJ_TRANSPOSE))
     )){
 	//printf(" gemmsup: Returning with for un-supported storage types and conjugate property in zgemmsup \n");
 	AOCL_DTL_TRACE_EXIT_ERR(AOCL_DTL_LEVEL_TRACE_2, "SUP - Unsuppported storage type for zgemm.");
@@ -96,7 +96,7 @@ err_t bli_gemmsup
     }
 
 
-    // Obtain a valid (native) context from the gks if necessary.
+    // Obtain a valid context from the gks if necessary.
     // NOTE: This must be done before calling the _check() function, since
     // that function assumes the context pointer is valid.
     if ( cntx == NULL ) cntx = bli_gks_query_cntx();
@@ -106,6 +106,21 @@ err_t bli_gemmsup
     rntm_t rntm_l;
     if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); rntm = &rntm_l; }
     else                { rntm_l = *rntm;                       rntm = &rntm_l; }
+
+#if defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN)
+
+    if((bli_arch_query_id() == BLIS_ARCH_ZEN4))
+    {
+        if(( bli_obj_dt(a) == BLIS_DOUBLE ) || ( bli_obj_dt(a) == BLIS_DCOMPLEX))
+        {
+            // Pack A to avoid RD kernels.
+            if((stor_id == BLIS_CRC || stor_id == BLIS_RRC))
+            {
+                bli_rntm_set_pack_a(1, rntm);//packa
+            }
+        }
+    }
+#endif
 
 #ifdef AOCL_DYNAMIC
     // Calculating optimal nt and corresponding factorization (ic,jc) here, so
@@ -235,6 +250,8 @@ err_t bli_gemmtsup
     // that function assumes the context pointer is valid.
     if ( cntx == NULL ) cntx = bli_gks_query_cntx();
 
+    cntx_t cntx_gemmt = *cntx;
+
     thresh_func_ft func_fp;
 
     func_fp = bli_cntx_get_l3_thresh_func(BLIS_GEMMT, cntx);
@@ -251,6 +268,19 @@ err_t bli_gemmtsup
     if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); rntm = &rntm_l; }
     else                { rntm_l = *rntm;                       rntm = &rntm_l; }
 
+#if defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN)
+
+    if((bli_arch_query_id() == BLIS_ARCH_ZEN4))
+    {
+        if( bli_obj_dt(a) != BLIS_SCOMPLEX )
+        {
+            // override the existing blocksizes with AVX-2 specific ones.
+            // Since gemmt has a triangular matrix as output, near-to-square
+            // shaped kernel perform better than skewed/rectangular shaped kernel.
+            bli_zen4_override_gemmt_blkszs(&cntx_gemmt);
+        }
+    }
+#endif
 #ifdef AOCL_DYNAMIC
 	// If dynamic-threading is enabled, calculate optimum number
 	// of threads and update in rntm
@@ -292,7 +322,7 @@ printf( "dims: %d %d %d (threshs: %d %d %d)\n",
       b,
       beta,
       c,
-      cntx,
+      &cntx_gemmt,
       rntm
     );
 
@@ -368,6 +398,8 @@ err_t bli_syrksup
     // that function assumes the context pointer is valid.
     if ( cntx == NULL ) cntx = bli_gks_query_cntx();
 
+    cntx_t cntx_syrk = *cntx;
+
     thresh_func_ft func_fp = bli_cntx_get_l3_thresh_func(BLIS_SYRK, cntx);
     if( !func_fp( a, &at_local, c, cntx))
     {
@@ -380,6 +412,20 @@ err_t bli_syrksup
     rntm_t rntm_l;
     if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); rntm = &rntm_l; }
     else                { rntm_l = *rntm;                       rntm = &rntm_l; }
+
+#if defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN)
+
+    if((bli_arch_query_id() == BLIS_ARCH_ZEN4))
+    {
+        if( bli_obj_dt(a) != BLIS_SCOMPLEX )
+        {
+            // override the existing blocksizes with AVX-2 specific ones.
+            // Since gemmt has a triangular matrix as output, near-to-square
+            // shaped kernel perform better than skewed/rectangular shaped kernel.
+            bli_zen4_override_gemmt_blkszs(&cntx_syrk);
+        }
+    }
+#endif
 
 #ifdef AOCL_DYNAMIC // Will change this name later to BLIS_SMART_THREAD
   // If dynamic-threading is enabled, calculate optimum
@@ -421,7 +467,7 @@ printf( "dims: %d %d %d (threshs: %d %d %d)\n",
       &at_local,
       beta,
       c,
-      cntx,
+      &cntx_syrk,
       rntm
     );
 

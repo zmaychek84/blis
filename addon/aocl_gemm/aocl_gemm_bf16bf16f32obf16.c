@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -46,10 +46,24 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 	trans_t blis_transa;
 	trans_t blis_transb;
 
-	// Check if avx512_vnni ISA is supported, lpgemm matmul only works with it.
-	if ( bli_cpuid_is_avx512_bf16_supported() == FALSE )
+	// There is this use case where lpgemm will be compiled using gcc9.4
+	// (where bf16 ISA is not supported), but deployed on a zen4+ sustem
+	// (which supports bf16 ISA). Here the bf16 kernels will be concealed
+	// and not compiled, and subsequently this api should error out and
+	// return early, even if bf16 ISA is supported by machine.
+#if defined( BLIS_GCC ) && ( __GNUC__ < 10 )
 	{
-		printf(" AVX512_BF16 ISA not supported by processor, cannot perform lpgemm.\n");
+		bli_print_msg("bf16bf16f32obf16 compiled using a compiler not "
+				"supporting BF16 ISA.", __FILE__, __LINE__ );
+		return; // Error.
+	}
+#endif
+
+	// Check if avx512_vnni ISA is supported, lpgemm matmul only works with it.
+	if ( bli_cpuid_is_avx512bf16_supported() == FALSE )
+	{
+		bli_print_msg(" AVX512_BF16 ISA not supported by processor, "
+				"cannot perform bf16bf16f32 gemm.", __FILE__, __LINE__ );
 		return; // Error.
 	}
 
@@ -158,6 +172,8 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 	bli_rntm_init_from_global( &rntm_g );
 	bli_membrk_rntm_set_membrk( &rntm_g );
 
+	lpgemm_cntx_t* lcntx_g = lpgemm_get_global_cntx_obj( BF16BF16F32OF32 );
+
 #ifdef BLIS_ENABLE_OPENMP
 	// Swapping inputs to induce row major computation for column major inputs.
 	if ( is_column_major == TRUE )
@@ -169,7 +185,7 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 		  a, rs_a, cs_a, mtag_a,
 		  ( float* )c, rs_c, cs_c,
 		  alpha, beta,
-		  &rntm_g,
+		  &rntm_g, lcntx_g,
 		  post_op_list, TRUE
 		);
 	}
@@ -182,7 +198,7 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 		  b, rs_b, cs_b, mtag_b,
 		  ( float* )c, rs_c, cs_c,
 		  alpha, beta,
-		  &rntm_g,
+		  &rntm_g, lcntx_g,
 		  post_op_list, TRUE
 		);
 	}
@@ -197,7 +213,7 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 		  a, rs_a, cs_a, mtag_a,
 		  ( float* )c, rs_c, cs_c,
 		  alpha, beta,
-		  &rntm_g,
+		  &rntm_g, lcntx_g,
 		  post_op_list, TRUE
 		);
 	}
@@ -210,7 +226,7 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 		  b, rs_b, cs_b, mtag_b,
 		  ( float* )c, rs_c, cs_c,
 		  alpha, beta,
-		  &rntm_g,
+		  &rntm_g, lcntx_g,
 		  post_op_list, TRUE
 		);
 	}

@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2018, The University of Texas at Austin
-   Copyright (C) 2019-22, Advanced Micro Devices, Inc.
+   Copyright (C) 2019-23, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -884,6 +884,7 @@
 #define VADDSUBPS(_0, _1, _2) INSTR_(vaddsubps, _0, _1, _2)
 #define VADDSUBPD(_0, _1, _2) INSTR_(vaddsubpd, _0, _1, _2)
 #define VHADDPD(_0, _1, _2) INSTR_(vhaddpd, _0, _1, _2)
+#define VHSUBPD(_0, _1, _2) INSTR_(vhsubpd, _0, _1, _2)
 #define VHADDPS(_0, _1, _2) INSTR_(vhaddps, _0, _1, _2)
 #define VADDPS(_0, _1, _2) INSTR_(vaddps, _0, _1, _2)
 #define VADDPD(_0, _1, _2) INSTR_(vaddpd, _0, _1, _2)
@@ -1014,6 +1015,7 @@
 #define vaddsubps(_0, _1, _2) VADDSUBPS(_0, _1, _2)
 #define vaddsubpd(_0, _1, _2) VADDSUBPD(_0, _1, _2)
 #define vhaddpd(_0, _1, _2) VHADDPD(_0, _1, _2)
+#define vhsubpd(_0, _1, _2) VHSUBPD(_0, _1, _2)
 #define vhaddps(_0, _1, _2) VHADDPS(_0, _1, _2)
 #define vaddps(_0, _1, _2) VADDPS(_0, _1, _2)
 #define vaddpd(_0, _1, _2) VADDPD(_0, _1, _2)
@@ -1201,7 +1203,7 @@
 #define VEXTRACTF128(_0, _1, _2) INSTR_(vextractf128, _0, _1, _2)
 #define VEXTRACTF32X4(_0, _1, _2) INSTR_(vextractf32x4, _0, _1, _2)
 #define VEXTRACTF32X8(_0, _1, _2) INSTR_(vextractf32x8, _0, _1, _2)
-#define VEXTRACTF64X2(_0, _1, _2) INSTR_(vextractf64x4, _0, _1, _2)
+#define VEXTRACTF64X2(_0, _1, _2) INSTR_(vextractf64x2, _0, _1, _2)
 #define VEXTRACTF64X4(_0, _1, _2) INSTR_(vextractf64x4, _0, _1, _2)
 #define VBLENDPS(_0, _1, _2, _3) INSTR_(vblendps, _0, _1, _2, _3)
 #define VBLENDPD(_0, _1, _2, _3) INSTR_(vblendpd, _0, _1, _2, _3)
@@ -1218,18 +1220,18 @@
 #define vunpckhps(_0, _1, _2) VUNPCKHPS(_0, _1, _2)
 #define vunpcklpd(_0, _1, _2) VUNPCKLPD(_0, _1, _2)
 #define vunpckhpd(_0, _1, _2) VUNPCKHPD(_0, _1, _2)
-#define vshuff32x4(_0, _1, _2, _3) VSHUFF32x4(_0, _1, _2, _3)
-#define vshuff64x2(_0, _1, _2, _3) VSHUFF64x2(_0, _1, _2, _3)
+#define vshuff32x4(_0, _1, _2, _3) VSHUFF32X4(_0, _1, _2, _3)
+#define vshuff64x2(_0, _1, _2, _3) VSHUFF64X2(_0, _1, _2, _3)
 #define vinsertf128(_0, _1, _2, _3) VINSERTF128(_0, _1, _2, _3)
-#define vinsertf32x4(_0, _1, _2, _3) VINSERTF32x4(_0, _1, _2, _3)
-#define vinsertf32x8(_0, _1, _2, _3) VINSERTF32x8(_0, _1, _2, _3)
-#define vinsertf64x2(_0, _1, _2, _3) VINSERTF64x2(_0, _1, _2, _3)
-#define vinsertf64x4(_0, _1, _2, _3) VINSERTF64x4(_0, _1, _2, _3)
+#define vinsertf32x4(_0, _1, _2, _3) VINSERTF32X4(_0, _1, _2, _3)
+#define vinsertf32x8(_0, _1, _2, _3) VINSERTF32X8(_0, _1, _2, _3)
+#define vinsertf64x2(_0, _1, _2, _3) VINSERTF64X2(_0, _1, _2, _3)
+#define vinsertf64x4(_0, _1, _2, _3) VINSERTF64X4(_0, _1, _2, _3)
 #define vextractf128(_0, _1, _2) VEXTRACTF128(_0, _1, _2)
-#define vextractf32x4(_0, _1, _2) VEXTRACTF32x4(_0, _1, _2)
-#define vextractf32x8(_0, _1, _2) VEXTRACTF32x8(_0, _1, _2)
-#define vextractf64x2(_0, _1, _2) VEXTRACTF64x2(_0, _1, _2)
-#define vextractf64x4(_0, _1, _2) VEXTRACTF64x4(_0, _1, _2)
+#define vextractf32x4(_0, _1, _2) VEXTRACTF32X4(_0, _1, _2)
+#define vextractf32x8(_0, _1, _2) VEXTRACTF32X8(_0, _1, _2)
+#define vextractf64x2(_0, _1, _2) VEXTRACTF64X2(_0, _1, _2)
+#define vextractf64x4(_0, _1, _2) VEXTRACTF64X4(_0, _1, _2)
 #define vblendps(_0, _1, _2, _3) VBLENDPS(_0, _1, _2, _3)
 #define vblendpd(_0, _1, _2, _3) VBLENDPD(_0, _1, _2, _3)
 #define vblendmps(_0, _1, _2) VBLENDMSD(_0, _1, _2)

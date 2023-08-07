@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2021, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,14 +35,13 @@
 
 #include "blis.h"
 
-#ifdef BLIS_ENABLE_BLAS
-
 /* ctbsv.f -- translated by f2c (version 19991025).
    You must link the resulting object file with the libraries:
 	-lf2c -lm   (in that order)
 */
 
-/* Subroutine */ int PASTEF77(c,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_scomplex *a, const bla_integer *lda, bla_scomplex *x, const bla_integer *incx)
+/* Subroutine */ 
+int PASTEF77S(c,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_scomplex *a, const bla_integer *lda, bla_scomplex *x, const bla_integer *incx)
 {
     /* System generated locals */
     bla_integer a_dim1, a_offset, i__1, i__2, i__3, i__4, i__5;
@@ -55,9 +54,9 @@
     bla_integer info;
     bla_scomplex temp;
     bla_integer i__, j, l;
-    //extern bla_logical PASTEF770(lsame)(bla_character *, bla_character *, ftnlen, ftnlen);
+    //extern bla_logical PASTE_LSAME(bla_character *, bla_character *, ftnlen, ftnlen);
     bla_integer kplus1, ix, jx, kx = 0;
-    //extern /* Subroutine */ int PASTEF770(xerbla)(bla_character *, bla_integer *, ftnlen);
+    //extern /* Subroutine */ int PASTE_XERBLA(bla_character *, bla_integer *, ftnlen);
     bla_logical noconj, nounit;
 
 /*     .. Scalar Arguments .. */
@@ -214,14 +213,14 @@
 
     /* Function Body */
     info = 0;
-    if (! PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(uplo, "L", (
+    if (! PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(uplo, "L", (
 	    ftnlen)1, (ftnlen)1)) {
 	info = 1;
-    } else if (! PASTEF770(lsame)(trans, "N", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(trans, 
-	    "T", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(trans, "C", (ftnlen)1, (
+    } else if (! PASTE_LSAME(trans, "N", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(trans, 
+	    "T", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(trans, "C", (ftnlen)1, (
 	    ftnlen)1)) {
 	info = 2;
-    } else if (! PASTEF770(lsame)(diag, "U", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(diag, 
+    } else if (! PASTE_LSAME(diag, "U", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(diag, 
 	    "N", (ftnlen)1, (ftnlen)1)) {
 	info = 3;
     } else if (*n < 0) {
@@ -234,7 +233,7 @@
 	info = 9;
     }
     if (info != 0) {
-	PASTEF770(xerbla)("CTBSV ", &info, (ftnlen)6);
+	PASTE_XERBLA("CTBSV ", &info, (ftnlen)6);
 	return 0;
     }
 
@@ -244,8 +243,8 @@
 	return 0;
     }
 
-    noconj = PASTEF770(lsame)(trans, "T", (ftnlen)1, (ftnlen)1);
-    nounit = PASTEF770(lsame)(diag, "N", (ftnlen)1, (ftnlen)1);
+    noconj = PASTE_LSAME(trans, "T", (ftnlen)1, (ftnlen)1);
+    nounit = PASTE_LSAME(diag, "N", (ftnlen)1, (ftnlen)1);
 
 /*     Set up the start point in X if the increment is not unity. This */
 /*     will be  ( N - 1 )*INCX  too small for descending loops. */
@@ -259,11 +258,11 @@
 /*     Start the operations. In this version the elements of A are */
 /*     accessed by sequentially with one pass through A. */
 
-    if (PASTEF770(lsame)(trans, "N", (ftnlen)1, (ftnlen)1)) {
+    if (PASTE_LSAME(trans, "N", (ftnlen)1, (ftnlen)1)) {
 
 /*        Form  x := inv( A )*x. */
 
-	if (PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1)) {
+	if (PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1)) {
 	    kplus1 = *k + 1;
 	    if (*incx == 1) {
 		for (j = *n; j >= 1; --j) {
@@ -412,7 +411,7 @@
 
 /*        Form  x := inv( A' )*x  or  x := inv( conjg( A') )*x. */
 
-	if (PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1)) {
+	if (PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1)) {
 	    kplus1 = *k + 1;
 	    if (*incx == 1) {
 		i__1 = *n;
@@ -622,7 +621,8 @@
 	-lf2c -lm   (in that order)
 */
 
-/* Subroutine */ int PASTEF77(d,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_double *a, const bla_integer *lda, bla_double *x, const bla_integer *incx)
+/* Subroutine */ 
+int PASTEF77S(d,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_double *a, const bla_integer *lda, bla_double *x, const bla_integer *incx)
 {
     /* System generated locals */
     bla_integer a_dim1, a_offset, i__1, i__2, i__3, i__4;
@@ -631,9 +631,9 @@
     bla_integer info;
     bla_double temp;
     bla_integer i__, j, l;
-    //extern bla_logical PASTEF770(lsame)(bla_character *, bla_character *, ftnlen, ftnlen);
+    //extern bla_logical PASTE_LSAME(bla_character *, bla_character *, ftnlen, ftnlen);
     bla_integer kplus1, ix, jx, kx = 0;
-    //extern /* Subroutine */ int PASTEF770(xerbla)(bla_character *, bla_integer *, ftnlen);
+    //extern /* Subroutine */ int PASTE_XERBLA(bla_character *, bla_integer *, ftnlen);
     bla_logical nounit;
 
 /*     .. Scalar Arguments .. */
@@ -790,14 +790,14 @@
 
     /* Function Body */
     info = 0;
-    if (! PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(uplo, "L", (
+    if (! PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(uplo, "L", (
 	    ftnlen)1, (ftnlen)1)) {
 	info = 1;
-    } else if (! PASTEF770(lsame)(trans, "N", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(trans, 
-	    "T", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(trans, "C", (ftnlen)1, (
+    } else if (! PASTE_LSAME(trans, "N", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(trans, 
+	    "T", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(trans, "C", (ftnlen)1, (
 	    ftnlen)1)) {
 	info = 2;
-    } else if (! PASTEF770(lsame)(diag, "U", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(diag, 
+    } else if (! PASTE_LSAME(diag, "U", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(diag, 
 	    "N", (ftnlen)1, (ftnlen)1)) {
 	info = 3;
     } else if (*n < 0) {
@@ -810,7 +810,7 @@
 	info = 9;
     }
     if (info != 0) {
-	PASTEF770(xerbla)("DTBSV ", &info, (ftnlen)6);
+	PASTE_XERBLA("DTBSV ", &info, (ftnlen)6);
 	return 0;
     }
 
@@ -820,7 +820,7 @@
 	return 0;
     }
 
-    nounit = PASTEF770(lsame)(diag, "N", (ftnlen)1, (ftnlen)1);
+    nounit = PASTE_LSAME(diag, "N", (ftnlen)1, (ftnlen)1);
 
 /*     Set up the start point in X if the increment is not unity. This */
 /*     will be  ( N - 1 )*INCX  too small for descending loops. */
@@ -834,11 +834,11 @@
 /*     Start the operations. In this version the elements of A are */
 /*     accessed by sequentially with one pass through A. */
 
-    if (PASTEF770(lsame)(trans, "N", (ftnlen)1, (ftnlen)1)) {
+    if (PASTE_LSAME(trans, "N", (ftnlen)1, (ftnlen)1)) {
 
 /*        Form  x := inv( A )*x. */
 
-	if (PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1)) {
+	if (PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1)) {
 	    kplus1 = *k + 1;
 	    if (*incx == 1) {
 		for (j = *n; j >= 1; --j) {
@@ -949,7 +949,7 @@
 
 /*        Form  x := inv( A')*x. */
 
-	if (PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1)) {
+	if (PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1)) {
 	    kplus1 = *k + 1;
 	    if (*incx == 1) {
 		i__1 = *n;
@@ -1053,7 +1053,8 @@
 	-lf2c -lm   (in that order)
 */
 
-/* Subroutine */ int PASTEF77(s,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_real *a, const bla_integer *lda, bla_real *x, const bla_integer *incx)
+/* Subroutine */ 
+int PASTEF77S(s,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_real *a, const bla_integer *lda, bla_real *x, const bla_integer *incx)
 {
     /* System generated locals */
     bla_integer a_dim1, a_offset, i__1, i__2, i__3, i__4;
@@ -1062,9 +1063,9 @@
     bla_integer info;
     bla_real temp;
     bla_integer i__, j, l;
-    //extern bla_logical PASTEF770(lsame)(bla_character *, bla_character *, ftnlen, ftnlen);
+    //extern bla_logical PASTE_LSAME(bla_character *, bla_character *, ftnlen, ftnlen);
     bla_integer kplus1, ix, jx, kx = 0;
-    //extern /* Subroutine */ int PASTEF770(xerbla)(bla_character *, bla_integer *, ftnlen);
+    //extern /* Subroutine */ int PASTE_XERBLA(bla_character *, bla_integer *, ftnlen);
     bla_logical nounit;
 
 /*     .. Scalar Arguments .. */
@@ -1221,14 +1222,14 @@
 
     /* Function Body */
     info = 0;
-    if (! PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(uplo, "L", (
+    if (! PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(uplo, "L", (
 	    ftnlen)1, (ftnlen)1)) {
 	info = 1;
-    } else if (! PASTEF770(lsame)(trans, "N", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(trans, 
-	    "T", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(trans, "C", (ftnlen)1, (
+    } else if (! PASTE_LSAME(trans, "N", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(trans, 
+	    "T", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(trans, "C", (ftnlen)1, (
 	    ftnlen)1)) {
 	info = 2;
-    } else if (! PASTEF770(lsame)(diag, "U", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(diag, 
+    } else if (! PASTE_LSAME(diag, "U", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(diag, 
 	    "N", (ftnlen)1, (ftnlen)1)) {
 	info = 3;
     } else if (*n < 0) {
@@ -1241,7 +1242,7 @@
 	info = 9;
     }
     if (info != 0) {
-	PASTEF770(xerbla)("STBSV ", &info, (ftnlen)6);
+	PASTE_XERBLA("STBSV ", &info, (ftnlen)6);
 	return 0;
     }
 
@@ -1251,7 +1252,7 @@
 	return 0;
     }
 
-    nounit = PASTEF770(lsame)(diag, "N", (ftnlen)1, (ftnlen)1);
+    nounit = PASTE_LSAME(diag, "N", (ftnlen)1, (ftnlen)1);
 
 /*     Set up the start point in X if the increment is not unity. This */
 /*     will be  ( N - 1 )*INCX  too small for descending loops. */
@@ -1265,11 +1266,11 @@
 /*     Start the operations. In this version the elements of A are */
 /*     accessed by sequentially with one pass through A. */
 
-    if (PASTEF770(lsame)(trans, "N", (ftnlen)1, (ftnlen)1)) {
+    if (PASTE_LSAME(trans, "N", (ftnlen)1, (ftnlen)1)) {
 
 /*        Form  x := inv( A )*x. */
 
-	if (PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1)) {
+	if (PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1)) {
 	    kplus1 = *k + 1;
 	    if (*incx == 1) {
 		for (j = *n; j >= 1; --j) {
@@ -1380,7 +1381,7 @@
 
 /*        Form  x := inv( A')*x. */
 
-	if (PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1)) {
+	if (PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1)) {
 	    kplus1 = *k + 1;
 	    if (*incx == 1) {
 		i__1 = *n;
@@ -1484,7 +1485,8 @@
 	-lf2c -lm   (in that order)
 */
 
-/* Subroutine */ int PASTEF77(z,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_dcomplex *a, const bla_integer *lda, bla_dcomplex *x, const bla_integer *incx)
+/* Subroutine */ 
+int PASTEF77S(z,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_dcomplex *a, const bla_integer *lda, bla_dcomplex *x, const bla_integer *incx)
 {
     /* System generated locals */
     bla_integer a_dim1, a_offset, i__1, i__2, i__3, i__4, i__5;
@@ -1498,9 +1500,9 @@
     bla_integer info;
     bla_dcomplex temp;
     bla_integer i__, j, l;
-    //extern bla_logical PASTEF770(lsame)(bla_character *, bla_character *, ftnlen, ftnlen);
+    //extern bla_logical PASTE_LSAME(bla_character *, bla_character *, ftnlen, ftnlen);
     bla_integer kplus1, ix, jx, kx = 0;
-    //extern /* Subroutine */ int PASTEF770(xerbla)(bla_character *, bla_integer *, ftnlen);
+    //extern /* Subroutine */ int PASTE_XERBLA(bla_character *, bla_integer *, ftnlen);
     bla_logical noconj, nounit;
 
 /*     .. Scalar Arguments .. */
@@ -1657,14 +1659,14 @@
 
     /* Function Body */
     info = 0;
-    if (! PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(uplo, "L", (
+    if (! PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(uplo, "L", (
 	    ftnlen)1, (ftnlen)1)) {
 	info = 1;
-    } else if (! PASTEF770(lsame)(trans, "N", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(trans, 
-	    "T", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(trans, "C", (ftnlen)1, (
+    } else if (! PASTE_LSAME(trans, "N", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(trans, 
+	    "T", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(trans, "C", (ftnlen)1, (
 	    ftnlen)1)) {
 	info = 2;
-    } else if (! PASTEF770(lsame)(diag, "U", (ftnlen)1, (ftnlen)1) && ! PASTEF770(lsame)(diag, 
+    } else if (! PASTE_LSAME(diag, "U", (ftnlen)1, (ftnlen)1) && ! PASTE_LSAME(diag, 
 	    "N", (ftnlen)1, (ftnlen)1)) {
 	info = 3;
     } else if (*n < 0) {
@@ -1677,7 +1679,7 @@
 	info = 9;
     }
     if (info != 0) {
-	PASTEF770(xerbla)("ZTBSV ", &info, (ftnlen)6);
+	PASTE_XERBLA("ZTBSV ", &info, (ftnlen)6);
 	return 0;
     }
 
@@ -1687,8 +1689,8 @@
 	return 0;
     }
 
-    noconj = PASTEF770(lsame)(trans, "T", (ftnlen)1, (ftnlen)1);
-    nounit = PASTEF770(lsame)(diag, "N", (ftnlen)1, (ftnlen)1);
+    noconj = PASTE_LSAME(trans, "T", (ftnlen)1, (ftnlen)1);
+    nounit = PASTE_LSAME(diag, "N", (ftnlen)1, (ftnlen)1);
 
 /*     Set up the start point in X if the increment is not unity. This */
 /*     will be  ( N - 1 )*INCX  too small for descending loops. */
@@ -1702,11 +1704,11 @@
 /*     Start the operations. In this version the elements of A are */
 /*     accessed by sequentially with one pass through A. */
 
-    if (PASTEF770(lsame)(trans, "N", (ftnlen)1, (ftnlen)1)) {
+    if (PASTE_LSAME(trans, "N", (ftnlen)1, (ftnlen)1)) {
 
 /*        Form  x := inv( A )*x. */
 
-	if (PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1)) {
+	if (PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1)) {
 	    kplus1 = *k + 1;
 	    if (*incx == 1) {
 		for (j = *n; j >= 1; --j) {
@@ -1853,7 +1855,7 @@
 
 /*        Form  x := inv( A' )*x  or  x := inv( conjg( A') )*x. */
 
-	if (PASTEF770(lsame)(uplo, "U", (ftnlen)1, (ftnlen)1)) {
+	if (PASTE_LSAME(uplo, "U", (ftnlen)1, (ftnlen)1)) {
 	    kplus1 = *k + 1;
 	    if (*incx == 1) {
 		i__1 = *n;
@@ -2057,6 +2059,28 @@
 /*     End of ZTBSV . */
 
 } /* ztbsv_ */
+
+#ifdef BLIS_ENABLE_BLAS
+
+int PASTEF77(s,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_real *a, const bla_integer *lda, bla_real *x, const bla_integer *incx)
+{
+  return PASTEF77S(s,tbsv)( uplo, trans, diag, n, k, a, lda, x, incx );
+}
+
+int PASTEF77(d,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_double *a, const bla_integer *lda, bla_double *x, const bla_integer *incx)
+{
+  return PASTEF77S(d,tbsv)( uplo, trans, diag, n, k, a, lda, x, incx );
+}
+
+int PASTEF77(c,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_scomplex *a, const bla_integer *lda, bla_scomplex *x, const bla_integer *incx)
+{
+  return PASTEF77S(c,tbsv)( uplo, trans, diag, n, k, a, lda, x, incx );
+}
+
+int PASTEF77(z,tbsv)(const bla_character *uplo, const bla_character *trans, const bla_character *diag, const bla_integer *n, const bla_integer *k, const bla_dcomplex *a, const bla_integer *lda, bla_dcomplex *x, const bla_integer *incx)
+{
+  return PASTEF77S(z,tbsv)( uplo, trans, diag, n, k, a, lda, x, incx );
+}
 
 #endif
 

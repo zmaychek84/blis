@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -34,6 +34,7 @@
 
 #include "blis.h"
 #include "aocl_gemm_interface_apis.h"
+#include "lpgemm_config.h"
 #include "lpgemm_utils.h"
 
 AOCL_GEMM_GET_REORDER_BUF_SIZE(f32f32f32of32)
@@ -43,15 +44,19 @@ AOCL_GEMM_GET_REORDER_BUF_SIZE(f32f32f32of32)
 		return 0; // Error.
 	}
 
-	// Check if avx ISA is supported, lpgemm fp32 matmul only works with it.
-	if ( bli_cpuid_is_avx_supported() == FALSE )
+	// Check if AVX2 ISA is supported, lpgemm fp32 matmul only works with it.
+	if ( bli_cpuid_is_avx2fma3_supported() == FALSE )
 	{
-		printf(" AVX2 ISA not supported by processor, cannot perform lpgemm.\n");
+		bli_print_msg(" AVX2 ISA not supported by processor, "
+				"cannot perform f32f32f32 gemm.", __FILE__, __LINE__ );
 		return 0; // Error.
 	}
 
 	/* Initialize BLIS. */
 	bli_init_auto();
+
+	// Initialize lpgemm context.
+	aocl_lpgemm_init_global_cntx();
 
 	// Query the global cntx.
 	cntx_t* cntx = bli_gks_query_cntx();
@@ -85,15 +90,19 @@ AOCL_GEMM_REORDER(float,f32f32f32of32)
 		return; // Error.
 	}
 
-	// Check if avx ISA is supported, lpgemm fp32 matmul only works with it.
-	if ( bli_cpuid_is_avx_supported() == FALSE )
+	// Check if AVX2 ISA is supported, lpgemm fp32 matmul only works with it.
+	if ( bli_cpuid_is_avx2fma3_supported() == FALSE )
 	{
-		printf(" AVX2 ISA not supported by processor, cannot perform lpgemm.\n");
+		bli_print_msg(" AVX2 ISA not supported by processor, "
+				"cannot perform f32f32f32 gemm.", __FILE__, __LINE__ );
 		return; // Error.
 	}
 
 	/* Initialize BLIS. */
 	bli_init_auto();
+
+	// Initialize lpgemm context.
+	aocl_lpgemm_init_global_cntx();
 
 	// Query the global cntx.
 	cntx_t* cntx = bli_gks_query_cntx();
@@ -122,7 +131,7 @@ AOCL_GEMM_REORDER(float,f32f32f32of32)
 	float* restrict kappa_cast = &one_local;
 
 	// Set the schema to "row stored column panels" to indicate packing to
-	// conventional column-stored row panels.
+	// conventional row-stored column panels.
 	pack_t schema = BLIS_PACKED_COL_PANELS;
 	trans_t transc = BLIS_NO_TRANSPOSE;
 	conj_t conjc = bli_extract_conj( transc );

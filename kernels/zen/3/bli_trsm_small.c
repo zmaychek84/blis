@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2018-2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,6 +35,7 @@
 #include "blis.h"
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
 #include "immintrin.h"
+#include "bli_trsm_small_ref.h"
 
 #define BLIS_ENABLE_PREFETCH_IN_TRSM_SMALL
 
@@ -107,18 +108,6 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
     cntl_t* cntl
 );
 
-//AX = B; A is lower triangular; transpose;
-//double precision; non-unit diagonal
-BLIS_INLINE err_t dtrsm_AltXB_ref
-(
-    double *A,
-    double *B,
-    dim_t M,
-    dim_t N,
-    dim_t lda,
-    dim_t ldb,
-    bool is_unitdiag
-);
 /*
  * ZTRSM kernel declaration
  */
@@ -255,41 +244,6 @@ BLIS_INLINE  err_t bli_strsm_small_XAltB_XAuB
 */
 //A'X = B;  A is upper triangular; transpose;
 //non-unitDiagonal double precision
-BLIS_INLINE err_t dtrsm_AutXB_ref
-(
-    double *A,
-    double *B,
-    dim_t M,
-    dim_t N,
-    dim_t lda,
-    dim_t ldb,
-    bool unitDiagonal
-)
-{
-    dim_t i, j, k;
-    for (k = 0; k < M; k++)
-    {
-        double lkk_inv = 1.0;
-        if(!unitDiagonal) lkk_inv = DIAG_ELE_INV_OPS(lkk_inv,A[k+k*lda]);
-        for (j = 0; j < N; j++)
-        {
-            B[k + j*ldb] = DIAG_ELE_EVAL_OPS(B[k + j*ldb] , lkk_inv);
-            for (i = k+1; i < M; i++)
-            {
-                B[i + j*ldb] -= A[i*lda + k] * B[k + j*ldb];
-            }
-        }
-    }// k -loop
-    return BLIS_SUCCESS;
-}// end of function
-
-/*
- * Reference implementations
- * ToDo: We can combine all these reference implementation
-         into a macro
-*/
-//A'X = B;  A is upper triangular; transpose;
-//non-unitDiagonal double precision
 BLIS_INLINE err_t strsm_AutXB_ref
 (
     float *A,
@@ -318,37 +272,6 @@ BLIS_INLINE err_t strsm_AutXB_ref
     return BLIS_SUCCESS;
 }// end of function
 
-/* TRSM scalar code for the case AX = alpha * B
- * A is upper-triangular, non-unit-diagonal
- * Dimensions:  A: mxm   X: mxn B:mxn
- */
-BLIS_INLINE err_t dtrsm_AuXB_ref
-(
-    double *A,
-    double *B,
-    dim_t M,
-    dim_t N,
-    dim_t lda,
-    dim_t ldb,
-    bool is_unitdiag
-)
-{
-    dim_t i, j, k;
-    for (k = M-1; k >= 0; k--)
-    {
-        double lkk_inv = 1.0;
-        if(!is_unitdiag) lkk_inv = DIAG_ELE_INV_OPS(lkk_inv,A[k+k*lda]);
-        for (j = N -1; j >= 0; j--)
-        {
-            B[k + j*ldb] = DIAG_ELE_EVAL_OPS(B[k + j*ldb],lkk_inv);
-            for (i = k-1; i >=0; i--)
-            {
-                B[i + j*ldb] -= A[i + k*lda] * B[k + j*ldb];
-            }
-        }
-    }// k -loop
-    return BLIS_SUCCESS;
-}// end of function
 
 /* TRSM scalar code for the case AX = alpha * B
  * A is upper-triangular, non-unit-diagonal
@@ -382,37 +305,6 @@ BLIS_INLINE err_t strsm_AuXB_ref
     return BLIS_SUCCESS;
 }// end of function
 
-/* TRSM scalar code for the case AX = alpha * B
- * A is lower-triangular, non-unit-diagonal, no transpose
- * Dimensions:  A: mxm   X: mxn B:mxn
- */
-BLIS_INLINE err_t dtrsm_AlXB_ref
-(
-    double *A,
-    double *B,
-    dim_t M,
-    dim_t N,
-    dim_t lda,
-    dim_t ldb,
-    bool is_unitdiag
-)
-{
-    dim_t i, j, k;
-    for (k = 0; k < M; k++)
-    {
-        double lkk_inv = 1.0;
-        if(!is_unitdiag) lkk_inv = DIAG_ELE_INV_OPS(lkk_inv,A[k+k*lda]);
-        for (j = 0; j < N; j++)
-        {
-            B[k + j*ldb] = DIAG_ELE_EVAL_OPS(B[k + j*ldb],lkk_inv);
-            for (i = k+1; i < M; i++)
-            {
-                B[i + j*ldb] -= A[i + k*lda] * B[k + j*ldb];
-            }
-        }
-    }// k -loop
-    return BLIS_SUCCESS;
-}// end of function
 
 /* TRSM scalar code for the case AX = alpha * B
  * A is lower-triangular, non-unit-diagonal, no transpose
@@ -440,38 +332,6 @@ BLIS_INLINE err_t strsm_AlXB_ref
             for (i = k+1; i < M; i++)
             {
                 B[i + j*ldb] -= A[i + k*lda] * B[k + j*ldb];
-            }
-        }
-    }// k -loop
-    return BLIS_SUCCESS;
-}// end of function
-
-/* TRSM scalar code for the case AX = alpha * B
- * A is lower-triangular, non-unit-diagonal, transpose
- * Dimensions:  A: mxm   X: mxn B:mxn
- */
-BLIS_INLINE err_t dtrsm_AltXB_ref
-(
-    double *A,
-    double *B,
-    dim_t M,
-    dim_t N,
-    dim_t lda,
-    dim_t ldb,
-    bool is_unitdiag
-)
-{
-    dim_t i, j, k;
-    for (k = M-1; k >= 0; k--)
-    {
-        double lkk_inv = 1.0;
-        if(!is_unitdiag) lkk_inv = DIAG_ELE_INV_OPS(lkk_inv,A[k+k*lda]);
-        for (j = N -1; j >= 0; j--)
-        {
-            B[k + j*ldb] = DIAG_ELE_EVAL_OPS(B[k + j*ldb],lkk_inv);
-            for (i = k-1; i >=0; i--)
-            {
-                B[i + j*ldb] -= A[i*lda + k] * B[k + j*ldb];
             }
         }
     }// k -loop
@@ -1439,8 +1299,8 @@ BLIS_INLINE err_t dtrsm_XAltB_ref
 
 /*
    Load b11 of size 6x8 and multiply with alpha
-   Add the GEMM output and perform inregister transose of b11
-   to peform DTRSM operation for left cases.
+   Add the GEMM output and perform in register transpose of b11
+   to perform DTRSM operation for left cases.
 */
 #define BLIS_DTRSM_SMALL_NREG_TRANSPOSE_6x8(b11,cs_b,AlphaVal) \
         ymm16 = _mm256_broadcast_sd((double const *)(&AlphaVal));\
@@ -4684,8 +4544,8 @@ BLIS_INLINE err_t dtrsm_XAltB_ref
 
 /*
    Load b11 of size 6x8 and multiply with alpha
-   Add the GEMM output and perform inregister transose of b11
-   to peform DTRSM operation for left cases.
+   Add the GEMM output and perform in register transpose of b11
+   to perform DTRSM operation for left cases.
 */
 #define BLIS_STRSM_SMALL_NREG_TRANSPOSE_6x16(b11,cs_b,AlphaVal) \
         ymm16 = _mm256_broadcast_ss((float const *)(&AlphaVal));\
@@ -5119,7 +4979,7 @@ BLIS_INLINE void bli_dtrsm_small_pack
 }
 /*
     Pack diagonal elements of A block (8 or 6) into an array
-    a. This helps in utilze cache line efficiently in TRSM operation
+    a. This helps to utilize cache line efficiently in TRSM operation
     b. store ones when input is unit diagonal
 */
 BLIS_INLINE void dtrsm_small_pack_diag_element
@@ -5244,7 +5104,8 @@ err_t bli_trsm_small
     obj_t*  a,
     obj_t*  b,
     cntx_t* cntx,
-    cntl_t* cntl
+    cntl_t* cntl,
+    bool is_parallel
 )
 {
     err_t err;
@@ -5263,25 +5124,19 @@ err_t bli_trsm_small
    {
         case BLIS_DOUBLE:
         {
-            bool nt = bli_thread_get_is_parallel();
-            if((nt == 0) && (m > 1000 || n > 1000)) {
-                return BLIS_NOT_YET_IMPLEMENTED;
-            }
             break;
         }
         case BLIS_FLOAT:
         case BLIS_SCOMPLEX:
         {
-            bool nt = bli_thread_get_is_parallel();
-            if((nt == 0) && (m > 1000 || n > 1000)) {
+            if((!is_parallel) && (m > 1000 || n > 1000)) {
                return BLIS_NOT_YET_IMPLEMENTED;
             }
             break;
         }
         case BLIS_DCOMPLEX:
         {
-            bool nt = bli_thread_get_is_parallel();
-            if((nt == 0) && (m > 500 || n > 500)) {
+            if((!is_parallel) && (m > 500 || n > 500)) {
                 return BLIS_NOT_YET_IMPLEMENTED;
             }
             break;
@@ -5347,7 +5202,8 @@ err_t bli_trsm_small_mt
     obj_t*  a,
     obj_t*  b,
     cntx_t* cntx,
-    cntl_t* cntl
+    cntl_t* cntl,
+    bool    is_parallel
 )
 {
     gint_t m = bli_obj_length( b ); // number of rows of matrix b
@@ -5397,65 +5253,92 @@ err_t bli_trsm_small_mt
     {
         // Query the thread's id from OpenMP.
         const dim_t tid = omp_get_thread_num();
+        const dim_t nt_real = omp_get_num_threads();
 
-        obj_t      b_t;
-        dim_t start; // Each thread start Index
-        dim_t end;   // Each thread end Index
-        thrinfo_t thread;
-
-        thread.n_way    = n_threads;
-        thread.work_id  = tid;
-        thread.ocomm_id = tid;
-
-
-        // Compute start and end indexes of matrix partitioning for each thread
-        if ( bli_is_right( side ) )
+        if(nt_real != n_threads)
         {
-            bli_thread_range_sub (  &thread,
+            if(tid == 0)
+            {
+                bli_trsm_small
+                (
+                  side,
+                  alpha,
+                  a,
+                  b,
+                  cntx,
+                  cntl,
+                  is_parallel
+                );
+            }
+        }
+        else
+        {
+            obj_t     b_t;
+            dim_t     start; // Each thread start Index
+            dim_t     end;   // Each thread end Index
+            thrinfo_t thread;
+
+            thread.n_way    = n_threads;
+            thread.work_id  = tid;
+            thread.ocomm_id = tid;
+
+
+            // Compute start and end indexes of matrix partitioning for each thread
+            if ( bli_is_right( side ) )
+            {
+                bli_thread_range_sub 
+                (  
+                  &thread,
                   m,
                   d_mr,// Need to decide based on type
                   FALSE,
                   &start,
                   &end
-                   );
-            // For each thread acquire matrix block on which they operate
-            // Data-based parallelism
+                );
+                // For each thread acquire matrix block on which they operate
+                // Data-based parallelism
 
-            bli_acquire_mpart_mdim(BLIS_FWD, BLIS_SUBPART1, start, end-start, b, &b_t);
+                bli_acquire_mpart_mdim(BLIS_FWD, BLIS_SUBPART1, start, end-start, b, &b_t);
+            }
+            else
+            {
+                bli_thread_range_sub
+                ( 
+                  &thread,
+                  n,
+                  d_nr,// Need to decide based on type
+                  FALSE,
+                  &start,
+                  &end
+                );
+                // For each thread acquire matrix block on which they operate
+                // Data-based parallelism
+
+                bli_acquire_mpart_ndim(BLIS_FWD, BLIS_SUBPART1, start, end-start, b, &b_t);
+            }
+
+            // Parallelism is only across m-dimension/n-dimension - therefore matrix a is common to
+            // all threads
+            err_t status_l = BLIS_SUCCESS;
+
+            status_l = bli_trsm_small
+                        (
+                          side,
+                          alpha,
+                          a,
+                          &b_t,
+                          NULL,
+                          NULL,
+                          is_parallel
+                        );
+	        // To capture the error populated from any of the threads
+            if ( status_l != BLIS_SUCCESS )
+            {
+                _Pragma("omp critical")
+                status = (status != BLIS_NOT_YET_IMPLEMENTED) ? status_l : status;
+            }
         }
-        else
-        {
-            bli_thread_range_sub (  &thread,
-                   n,
-                   d_nr,// Need to decide based on type
-                   FALSE,
-                   &start,
-                   &end
-                    );
-            // For each thread acquire matrix block on which they operate
-            // Data-based parallelism
-
-            bli_acquire_mpart_ndim(BLIS_FWD, BLIS_SUBPART1, start, end-start, b, &b_t);
-        }
-
-        // Parallelism is only across m-dimension/n-dimension - therefore matrix a is common to
-        // all threads
-        err_t status_l = BLIS_SUCCESS;
-
-        status_l = bli_trsm_small
-                   (
-		     side,
-                     alpha,
-                     a,
-                     &b_t,
-                     NULL,
-                     NULL
-                   );
-	// To capture the error populated from any of the threads
-        _Pragma( "omp critical" )
-	status = (status != BLIS_NOT_YET_IMPLEMENTED)?status_l:status;
     }
-
     return status;
 }// End of function
 #endif
@@ -7771,8 +7654,8 @@ BLIS_INLINE err_t ztrsm_AuXB_ref
 
 /*
  * Load b11 of size 3x4 and multiply with alpha
- * Add the GEMM output and perform inregister transose of b11
- * to peform ZTRSM operation for left cases.
+ * Add the GEMM output and perform in register transpose of b11
+ * to perform ZTRSM operation for left cases.
  */
 #define BLIS_ZTRSM_SMALL_NREG_TRANSPOSE_3x4(b11,cs_b,AlphaVal) {\
     ymm16 = _mm256_broadcast_pd(( __m128d const *)(&AlphaVal));\
@@ -8305,6 +8188,16 @@ BLIS_INLINE void ztrsm_small_pack_diag_element
     dim_t size
 )
 {
+    if ( is_unitdiag )
+    {
+        dcomplex ones = {1.0, 0.0};
+        for( dim_t i = 0; i < size; i++)
+        {
+            d11_pack[i].real = ones.real;
+            d11_pack[i].imag = ones.imag;
+        }
+        return;
+    }
 #ifdef BLIS_ENABLE_TRSM_PREINVERSION
     // If Preinversion is enabled, inverse the diaganol
     // elements from A and pack into diagonal buffer.
@@ -8382,7 +8275,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
     bool transa = bli_obj_has_trans(a);
     dim_t cs_a, rs_a;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -8402,7 +8295,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
     bool is_unitdiag = bli_obj_has_unit_diag(a);
 
     double AlphaVal = *(double *)AlphaObj->buffer;    //value of Alpha
-    double* restrict L = a->buffer;      //pointer to matrix A
+    double* restrict L = bli_obj_buffer_at_off(a);      //pointer to matrix A
     double *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     double *a01, *a11, *b10, *b11;   //pointers for GEMM and TRSM blocks
@@ -8447,6 +8340,13 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
 
     xmm5 = _mm_setzero_pd();
 
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm5 = _mm256_setzero_pd();
+    ymm0 = _mm256_setzero_pd();
+
+
+
     /*
     Performs solving TRSM for 6 rows at a time from  0 to n/6 in steps of d_nr
     a. Load and pack A (a01 block), the size of packing 6x6 to 6x (n-6)
@@ -8479,7 +8379,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
 
             /*
                Pack 6 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
 
@@ -8512,8 +8412,8 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
             BLIS_SET_YMM_REG_ZEROS
 
             /*
-            Peform GEMM between a01 and b10 blocks
-            For first itteration there will be no GEMM operation
+            Perform GEMM between a01 and b10 blocks
+            For first iteration there will be no GEMM operation
             where k_iter are zero
             */
             BLIS_DTRSM_SMALL_GEMM_6nx8m(a01,b10,cs_b,p_lda,k_iter)
@@ -8521,7 +8421,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAltB_XAuB
             /*
             Load b11 of size 8x6 and multiply with alpha
             Add the GEMM output to b11
-            and peform TRSM operation.
+            and perform TRSM operation.
             */
 
             BLIS_PRE_DTRSM_SMALL_6x8(AlphaVal,b11,cs_b)
@@ -10784,7 +10684,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
     dim_t cs_a, rs_a;
     dim_t d_mr = 8,d_nr = 6;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -10805,7 +10705,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
     bool is_unitdiag = bli_obj_has_unit_diag(a);
 
     double AlphaVal = *(double *)AlphaObj->buffer;    //value of Alpha
-    double* restrict L = a->buffer;      //pointer to matrix A
+    double* restrict L = bli_obj_buffer_at_off(a);      //pointer to matrix A
     double *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     double *a01, *a11, *b10, *b11;   //pointers for GEMM and TRSM blocks
@@ -10850,6 +10750,12 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
 
     xmm5 = _mm_setzero_pd();
 
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_pd();
+    ymm6 = _mm256_setzero_pd();
+
+
     /*
     Performs solving TRSM for 6 rows at a time from  0 to n/6 in steps of d_nr
     a. Load and pack A (a01 block), the size of packing 6x6 to 6x (n-6)
@@ -10882,7 +10788,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
 
             /*
                Pack 6 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
             dtrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_nr);
@@ -10914,8 +10820,8 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
             BLIS_SET_YMM_REG_ZEROS
 
             /*
-            Peform GEMM between a01 and b10 blocks
-            For first itteration there will be no GEMM operation
+            Perform GEMM between a01 and b10 blocks
+            For first iteration there will be no GEMM operation
             where k_iter are zero
             */
 
@@ -10924,7 +10830,7 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
             /*
             Load b11 of size 8x6 and multiply with alpha
             Add the GEMM output to b11
-            and peform TRSM operation.
+            and perform TRSM operation.
             */
 
             BLIS_PRE_DTRSM_SMALL_6x8(AlphaVal,b11,cs_b)
@@ -13104,7 +13010,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AltXB_AuXB
     dim_t cs_a, rs_a;
     dim_t d_mr = 8,d_nr = 6;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -13121,7 +13027,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AltXB_AuXB
     dim_t k_iter;                         //number of times GEMM to be performed
 
     double AlphaVal = *(double *)AlphaObj->buffer;    //value of alpha
-    double *L =  a->buffer;               //pointer to  matrix A
+    double *L =  bli_obj_buffer_at_off(a);               //pointer to  matrix A
     double *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     //pointers that point to blocks for GEMM and TRSM
@@ -13139,6 +13045,14 @@ BLIS_INLINE err_t bli_dtrsm_small_AltXB_AuXB
     __m256d ymm20;
 
     __m128d xmm5;
+
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_pd();
+    ymm1 = _mm256_setzero_pd();
+    ymm2 = _mm256_setzero_pd();
+    ymm3 = _mm256_setzero_pd();
+
 
     xmm5 = _mm_setzero_pd();
 
@@ -13173,7 +13087,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AltXB_AuXB
     }
 
     /*
-        Performs solving TRSM for 8 colmns at a time from  0 to m/d_mr in steps of d_mr
+        Performs solving TRSM for 8 columns at a time from 0 to m/d_mr in steps of d_mr
         a. Load, transpose, Pack A (a10 block), the size of packing 8x6 to 8x (m-d_mr)
            First there will be no GEMM and no packing of a10 because it is only TRSM
         b. Using packed a10 block and b01 block perform GEMM operation
@@ -13195,15 +13109,15 @@ BLIS_INLINE err_t bli_dtrsm_small_AltXB_AuXB
             /*
               Load, transpose and pack current A block (a10) into packed buffer memory D_A_pack
               a. This a10 block is used in GEMM portion only and this
-                 a10 block size will be increasing by d_mr for every next itteration
-                 untill it reaches 8x(m-8) which is the maximum GEMM alone block size in A
+                 a10 block size will be increasing by d_mr for every next iteration
+                 until it reaches 8x(m-8) which is the maximum GEMM alone block size in A
               b. This packed buffer is reused to calculate all n rows of B matrix
             */
             bli_dtrsm_small_pack('L', (m-i-d_mr), 1, a10, cs_a, D_A_pack,p_lda,d_mr);
 
                /*
                Pack 8 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
             dtrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_mr);
@@ -13220,7 +13134,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AltXB_AuXB
             c. This loop GEMM+TRSM loops operates with 8x6 block size
                along n dimension for every d_nr rows of b01 where
                packed A buffer is reused in computing all n rows of B.
-            d. Same approch is used in remaining fringe cases.
+            d. Same approach is used in remaining fringe cases.
         */
         for(j = (n - d_nr); (j + 1) > 0; j -= d_nr)
         {
@@ -13234,16 +13148,16 @@ BLIS_INLINE err_t bli_dtrsm_small_AltXB_AuXB
             BLIS_SET_YMM_REG_ZEROS
 
             /*
-                Peform GEMM between a10 and b01 blocks
-                For first itteration there will be no GEMM operation
+                Perform GEMM between a10 and b01 blocks
+                For first iteration there will be no GEMM operation
                 where k_iter are zero
             */
             BLIS_DTRSM_SMALL_GEMM_8mx6n(a10,b01,cs_b,p_lda,k_iter)
 
             /*
                Load b11 of size 6x8 and multiply with alpha
-               Add the GEMM output and perform inregister transose of b11
-               to peform TRSM operation.
+               Add the GEMM output and perform in register transpose of b11
+               to perform TRSM operation.
             */
             BLIS_DTRSM_SMALL_NREG_TRANSPOSE_6x8(b11,cs_b,AlphaVal)
 
@@ -15109,7 +15023,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
     dim_t cs_a, rs_a;
     dim_t d_mr = 8,d_nr = 6;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -15126,7 +15040,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
     dim_t k_iter;     //number of times GEMM to be performed
 
     double AlphaVal = *(double *)AlphaObj->buffer;    //value of alpha
-    double *L =  a->buffer;       //pointer to  matrix A
+    double *L =  bli_obj_buffer_at_off(a);       //pointer to  matrix A
     double *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     double *a10, *a11, *b01, *b11;    //pointers that point to blocks for GEMM and TRSM
@@ -15143,6 +15057,14 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
     __m256d ymm20;
 
     __m128d xmm5;
+
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_pd();
+    ymm1 = _mm256_setzero_pd();
+    ymm2 = _mm256_setzero_pd();
+    ymm3 = _mm256_setzero_pd();
+
 
     xmm5 = _mm_setzero_pd();
 
@@ -15177,7 +15099,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
     }
 
     /*
-        Performs solving TRSM for 8 colmns at a time from  0 to m/8 in steps of d_mr
+        Performs solving TRSM for 8 columns at a time from 0 to m/8 in steps of d_mr
         a. Load, transpose, Pack A (a10 block), the size of packing 8x6 to 8x (m-8)
            First there will be no GEMM and no packing of a10 because it is only TRSM
         b. Using packed a10 block and b01 block perform GEMM operation
@@ -15193,17 +15115,17 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
         if(transa)
         {
             /*
-              Load, tranpose and pack current A block (a10) into packed buffer memory D_A_pack
+              Load, transpose and pack current A block (a10) into packed buffer memory D_A_pack
               a. This a10 block is used in GEMM portion only and this
-                 a10 block size will be increasing by d_mr for every next itteration
-                 untill it reaches 8x(m-8) which is the maximum GEMM alone block size in A
+                 a10 block size will be increasing by d_mr for every next iteration
+                 until it reaches 8x(m-8) which is the maximum GEMM alone block size in A
               b. This packed buffer is reused to calculate all n rows of B matrix
             */
             bli_dtrsm_small_pack('L', i, 1, a10, cs_a, D_A_pack, p_lda,d_mr);
 
             /*
                Pack 8 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
             dtrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_mr);
@@ -15220,7 +15142,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
             c. This loop GEMM+TRSM loops operates with 8x6 block size
                along n dimension for every d_nr rows of b01 where
                packed A buffer is reused in computing all n rows of B.
-            d. Same approch is used in remaining fringe cases.
+            d. Same approach is used in remaining fringe cases.
         */
         dim_t temp = n - d_nr + 1;
         for(j = 0; j < temp; j += d_nr)   //loop along 'N' dimension
@@ -15236,16 +15158,16 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
             BLIS_SET_YMM_REG_ZEROS
 
             /*
-              Peform GEMM between a10 and b01 blocks
-              For first itteration there will be no GEMM operation
+              Perform GEMM between a10 and b01 blocks
+              For first iteration there will be no GEMM operation
               where k_iter are zero
             */
             BLIS_DTRSM_SMALL_GEMM_8mx6n(a10,b01,cs_b,p_lda,k_iter)
 
             /*
                Load b11 of size 6x8 and multiply with alpha
-               Add the GEMM output and perform inregister transose of b11
-               to peform TRSM operation.
+               Add the GEMM output and perform in register transpose of b11
+               to perform TRSM operation.
             */
             BLIS_DTRSM_SMALL_NREG_TRANSPOSE_6x8(b11,cs_b,AlphaVal)
 
@@ -17147,7 +17069,7 @@ BLIS_INLINE err_t bli_dtrsm_small_AutXB_AlXB
 
 /*
     Pack diagonal elements of A block (16 or 6) into an array
-    a. This helps in utilze cache line efficiently in TRSM operation
+    a. This helps to utilize cache line efficiently in TRSM operation
     b. store ones when input is unit diagonal
 */
 BLIS_INLINE void strsm_small_pack_diag_element
@@ -17708,7 +17630,7 @@ BLIS_INLINE  err_t bli_strsm_small_XAutB_XAlB
     dim_t cs_a, rs_a;
     dim_t d_mr = 16,d_nr = 6;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -17729,8 +17651,8 @@ BLIS_INLINE  err_t bli_strsm_small_XAutB_XAlB
     bool is_unitdiag = bli_obj_has_unit_diag(a);
 
     float AlphaVal = *(float *)AlphaObj->buffer;    //value of Alpha
-    float* restrict L = a->buffer;      //pointer to matrix A
-    float* restrict B = b->buffer;      //pointer to matrix B
+    float* restrict L = bli_obj_buffer_at_off(a);      //pointer to matrix A
+    float* restrict B = bli_obj_buffer_at_off(b);      //pointer to matrix B
 
     float *a01, *a11, *b10, *b11;   //pointers for GEMM and TRSM blocks
 
@@ -17774,6 +17696,10 @@ BLIS_INLINE  err_t bli_strsm_small_XAutB_XAlB
 
     xmm5 = _mm_setzero_ps();
 
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_ps();
+
     /*
     Performs solving TRSM for 6 rows at a time from  0 to n/6 in steps of d_nr
     a. Load and pack A (a01 block), the size of packing 6x6 to 6x (n-6)
@@ -17804,7 +17730,7 @@ BLIS_INLINE  err_t bli_strsm_small_XAutB_XAlB
 
             /*
                Pack 6 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
             strsm_small_pack_diag_element('R',is_unitdiag,a11,cs_a,d11_pack,d_nr);
@@ -17836,8 +17762,8 @@ BLIS_INLINE  err_t bli_strsm_small_XAutB_XAlB
             BLIS_SET_S_YMM_REG_ZEROS
 
             /*
-            Peform GEMM between a01 and b10 blocks
-            For first itteration there will be no GEMM operation
+            Perform GEMM between a01 and b10 blocks
+            For first iteration there will be no GEMM operation
             where k_iter are zero
             */
             BLIS_STRSM_SMALL_GEMM_6nx16m(a01,b10,cs_b,p_lda,k_iter)
@@ -17845,7 +17771,7 @@ BLIS_INLINE  err_t bli_strsm_small_XAutB_XAlB
             /*
             Load b11 of size 16x6 and multiply with alpha
             Add the GEMM output to b11
-            and peform TRSM operation.
+            and perform TRSM operation.
             */
 
             BLIS_PRE_STRSM_SMALL_6x16(AlphaVal,b11,cs_b)
@@ -21373,7 +21299,7 @@ BLIS_INLINE  err_t bli_strsm_small_XAltB_XAuB
     bool transa = bli_obj_has_trans(a);
     dim_t cs_a, rs_a;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -21394,8 +21320,8 @@ BLIS_INLINE  err_t bli_strsm_small_XAltB_XAuB
     bool is_unitdiag = bli_obj_has_unit_diag(a);
 
     float AlphaVal = *(float *)AlphaObj->buffer;    //value of Alpha
-    float* restrict L = a->buffer;      //pointer to matrix A
-    float* restrict B = b->buffer;      //pointer to matrix B
+    float* restrict L = bli_obj_buffer_at_off(a);      //pointer to matrix A
+    float* restrict B = bli_obj_buffer_at_off(b);      //pointer to matrix B
 
     float *a01, *a11, *b10, *b11;   //pointers for GEMM and TRSM blocks
 
@@ -21438,6 +21364,10 @@ BLIS_INLINE  err_t bli_strsm_small_XAltB_XAuB
     __m128 xmm5;
 
     xmm5 = _mm_setzero_ps();
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_ps();
+
 
     /*
     Performs solving TRSM for 6 rows at a time from  0 to n/6 in steps of d_nr
@@ -21471,7 +21401,7 @@ BLIS_INLINE  err_t bli_strsm_small_XAltB_XAuB
 
             /*
                Pack 6 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
 
@@ -21504,8 +21434,8 @@ BLIS_INLINE  err_t bli_strsm_small_XAltB_XAuB
             BLIS_SET_S_YMM_REG_ZEROS
 
             /*
-            Peform GEMM between a01 and b10 blocks
-            For first itteration there will be no GEMM operation
+            Perform GEMM between a01 and b10 blocks
+            For first iteration there will be no GEMM operation
             where k_iter are zero
             */
             BLIS_STRSM_SMALL_GEMM_6nx16m(a01,b10,cs_b,p_lda,k_iter)
@@ -21513,7 +21443,7 @@ BLIS_INLINE  err_t bli_strsm_small_XAltB_XAuB
             /*
             Load b11 of size 16x6 and multiply with alpha
             Add the GEMM output to b11
-            and peform TRSM operation.
+            and perform TRSM operation.
             */
 
             BLIS_PRE_STRSM_SMALL_6x16(AlphaVal,b11,cs_b)
@@ -25216,7 +25146,7 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
     dim_t cs_a, rs_a;
     dim_t d_mr = 16,d_nr = 6;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -25233,8 +25163,8 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
     dim_t k_iter;     //number of times GEMM to be performed
 
     float AlphaVal = *(float *)AlphaObj->buffer;    //value of alpha
-    float *L =  a->buffer;       //pointer to  matrix A
-    float *B =  b->buffer;       //pointer to matrix B
+    float *L =  bli_obj_buffer_at_off(a);       //pointer to  matrix A
+    float *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     float *a10, *a11, *b01, *b11;    //pointers that point to blocks for GEMM and TRSM
 
@@ -25250,6 +25180,20 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
     __m256 ymm12, ymm13, ymm14, ymm15;
     __m256 ymm16, ymm17, ymm18, ymm19;
     __m256 ymm20,ymm21,ymm22;
+
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_ps();
+    ymm1 = _mm256_setzero_ps();
+    ymm2 = _mm256_setzero_ps();
+    ymm3 = _mm256_setzero_ps();
+    ymm17 = _mm256_setzero_ps();
+    ymm18 = _mm256_setzero_ps();
+    ymm19 = _mm256_setzero_ps();
+    ymm20 = _mm256_setzero_ps();
+    ymm21 = _mm256_setzero_ps();
+    ymm22 = _mm256_setzero_ps();
+
 
     gint_t required_packing_A = 1;
     mem_t local_mem_buf_A_s = {0};
@@ -25282,7 +25226,7 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
     }
 
     /*
-        Performs solving TRSM for 16 colmns at a time from  0 to m/16 in steps of d_mr
+        Performs solving TRSM for 16 columns at a time from  0 to m/16 in steps of d_mr
         a. Load, transpose, Pack A (a10 block), the size of packing 16x6 to 16x (m-16)
            First there will be no GEMM and no packing of a10 because it is only TRSM
         b. Using packed a10 block and b01 block perform GEMM operation
@@ -25298,17 +25242,17 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
         if(transa)
         {
             /*
-              Load, tranpose and pack current A block (a10) into packed buffer memory D_A_pack
+              Load, transpose and pack current A block (a10) into packed buffer memory D_A_pack
               a. This a10 block is used in GEMM portion only and this
-                 a10 block size will be increasing by d_mr for every next itteration
-                 untill it reaches 16x(m-16) which is the maximum GEMM alone block size in A
+                 a10 block size will be increasing by d_mr for every next iteration
+                 until it reaches 16x(m-16) which is the maximum GEMM alone block size in A
               b. This packed buffer is reused to calculate all n rows of B matrix
             */
             bli_strsm_small_pack('L', i, 1, a10, cs_a, D_A_pack, p_lda,d_mr);
 
             /*
                Pack 16 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
             strsm_small_pack_diag_element('L',is_unitdiag,a11,cs_a,d11_pack,d_mr);
@@ -25325,7 +25269,7 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
             c. This loop GEMM+TRSM loops operates with 16x6 block size
                along n dimension for every d_nr rows of b01 where
                packed A buffer is reused in computing all n rows of B.
-            d. Same approch is used in remaining fringe cases.
+            d. Same approach is used in remaining fringe cases.
         */
         dim_t temp = n - d_nr + 1;
         for(j = 0; j < temp; j += d_nr)   //loop along 'N' dimension
@@ -25341,16 +25285,16 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
             BLIS_SET_S_YMM_REG_ZEROS
 
             /*
-              Peform GEMM between a10 and b01 blocks
-              For first itteration there will be no GEMM operation
+              Perform GEMM between a10 and b01 blocks
+              For first iteration there will be no GEMM operation
               where k_iter are zero
             */
             BLIS_STRSM_SMALL_GEMM_16mx6n(a10,b01,cs_b,p_lda,k_iter)
 
             /*
                Load b11 of size 6x16 and multiply with alpha
-               Add the GEMM output and perform inregister transose of b11
-               to peform TRSM operation.
+               Add the GEMM output and perform in register transpose of b11
+               to perform TRSM operation.
             */
             BLIS_STRSM_SMALL_NREG_TRANSPOSE_6x16(b11,cs_b,AlphaVal)
 
@@ -25876,8 +25820,8 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
 
             /*
                Load b11 of size 6x16 and multiply with alpha
-               Add the GEMM output and perform inregister transose of b11
-               to peform TRSM operation.
+               Add the GEMM output and perform in register transpose of b11
+               to perform TRSM operation.
             */
             ymm16 = _mm256_broadcast_ss((float const *)(&AlphaVal));
             ymm0 = _mm256_broadcast_ss((float const *)(&zero));
@@ -26458,7 +26402,7 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
 
             a11 += rs_a;
 
-            // N-register tranpose and store
+            // N-register transpose and store
 
             ymm0 = _mm256_unpacklo_ps(ymm10, ymm11);
             ymm1 = _mm256_unpacklo_ps(ymm17, ymm18);
@@ -26555,8 +26499,8 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
 
                 /*
                 Load b11 of size 6x16 and multiply with alpha
-                Add the GEMM output and perform inregister transose of b11
-                to peform TRSM operation.
+                Add the GEMM output and perform in register transpose of b11
+                to perform TRSM operation.
                 */
                 ymm16 = _mm256_broadcast_ss((float const *)(&AlphaVal));
                 ymm0 = _mm256_broadcast_ss((float const *)(&zero));
@@ -26640,8 +26584,8 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
 
                 /*
                 Load b11 of size 6x16 and multiply with alpha
-                Add the GEMM output and perform inregister transose of b11
-                to peform TRSM operation.
+                Add the GEMM output and perform in register transpose of b11
+                to perform TRSM operation.
                 */
                 ymm16 = _mm256_broadcast_ss((float const *)(&AlphaVal));
                 ymm0 = _mm256_broadcast_ss((float const *)(&zero));
@@ -26723,8 +26667,8 @@ BLIS_INLINE err_t bli_strsm_small_AutXB_AlXB
 
                 /*
                 Load b11 of size 6x16 and multiply with alpha
-                Add the GEMM output and perform inregister transose of b11
-                to peform TRSM operation.
+                Add the GEMM output and perform in register transpose of b11
+                to perform TRSM operation.
                 */
                 ymm16 = _mm256_broadcast_ss((float const *)(&AlphaVal));
                 ymm0 = _mm256_broadcast_ss((float const *)(&zero));
@@ -29582,7 +29526,7 @@ BLIS_INLINE err_t bli_strsm_small_AltXB_AuXB
     dim_t cs_a, rs_a;
     dim_t d_mr = 16,d_nr = 6;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -29599,8 +29543,8 @@ BLIS_INLINE err_t bli_strsm_small_AltXB_AuXB
     dim_t k_iter;                         //number of times GEMM to be performed
 
     float AlphaVal = *(float *)AlphaObj->buffer;    //value of alpha
-    float *L =  a->buffer;               //pointer to  matrix A
-    float *B =  b->buffer;               //pointer to matrix B
+    float *L =  bli_obj_buffer_at_off(a);               //pointer to  matrix A
+    float *B =  bli_obj_buffer_at_off(b);               //pointer to matrix B
 
     //pointers that point to blocks for GEMM and TRSM
     float *a10, *a11, *b01, *b11;
@@ -29616,6 +29560,20 @@ BLIS_INLINE err_t bli_strsm_small_AltXB_AuXB
     __m256 ymm12, ymm13, ymm14, ymm15;
     __m256 ymm16, ymm17, ymm18, ymm19;
     __m256 ymm20, ymm21, ymm22;
+
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_ps();
+    ymm1 = _mm256_setzero_ps();
+    ymm2 = _mm256_setzero_ps();
+    ymm17 = _mm256_setzero_ps();
+    ymm18 = _mm256_setzero_ps();
+    ymm19 = _mm256_setzero_ps();
+    ymm20 = _mm256_setzero_ps();
+    ymm21 = _mm256_setzero_ps();
+    ymm22 = _mm256_setzero_ps();
+
+
 
     gint_t required_packing_A = 1;
     mem_t local_mem_buf_A_s = {0};
@@ -29670,15 +29628,15 @@ BLIS_INLINE err_t bli_strsm_small_AltXB_AuXB
             /*
               Load, transpose and pack current A block (a10) into packed buffer memory D_A_pack
               a. This a10 block is used in GEMM portion only and this
-                 a10 block size will be increasing by d_mr for every next itteration
-                 untill it reaches 16x(m-16) which is the maximum GEMM alone block size in A
+                 a10 block size will be increasing by d_mr for every next iteration
+                 until it reaches 16x(m-16) which is the maximum GEMM alone block size in A
               b. This packed buffer is reused to calculate all n rows of B matrix
             */
             bli_strsm_small_pack('L', (m-i-d_mr), 1, a10, cs_a, D_A_pack,p_lda,d_mr);
 
                /*
                Pack 8 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
             strsm_small_pack_diag_element('L',is_unitdiag,a11,cs_a,d11_pack,d_mr);
@@ -29709,16 +29667,16 @@ BLIS_INLINE err_t bli_strsm_small_AltXB_AuXB
             BLIS_SET_S_YMM_REG_ZEROS
 
             /*
-                Peform GEMM between a10 and b01 blocks
-                For first itteration there will be no GEMM operation
+                Perform GEMM between a10 and b01 blocks
+                For first iteration there will be no GEMM operation
                 where k_iter are zero
             */
             BLIS_STRSM_SMALL_GEMM_16mx6n(a10,b01,cs_b,p_lda,k_iter)
 
             /*
                Load b11 of size 6x16 and multiply with alpha
-               Add the GEMM output and perform inregister transose of b11
-               to peform TRSM operation.
+               Add the GEMM output and perform in register transpose of b11
+               to perform TRSM operation.
             */
             BLIS_STRSM_SMALL_NREG_TRANSPOSE_6x16(b11,cs_b,AlphaVal)
 
@@ -31829,8 +31787,8 @@ BLIS_INLINE err_t bli_strsm_small_AltXB_AuXB
 
             /*
                Load b11 of size 6x8 and multiply with alpha
-               Add the GEMM output and perform inregister transose of b11
-               to peform TRSM operation.
+               Add the GEMM output and perform in register transpose of b11
+               to perform TRSM operation.
             */
             ymm16 = _mm256_broadcast_ss((float const *)(&AlphaVal));
 
@@ -33723,7 +33681,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
     dim_t cs_a, rs_a;
     dim_t d_mr = 4,d_nr = 3;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -33740,8 +33698,8 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
     dim_t k_iter;     //number of times GEMM to be performed
 
     dcomplex AlphaVal = *(dcomplex *)AlphaObj->buffer;    //value of alpha
-    dcomplex *L =  a->buffer;       //pointer to  matrix A
-    dcomplex *B =  b->buffer;       //pointer to matrix B
+    dcomplex *L =  bli_obj_buffer_at_off(a);       //pointer to  matrix A
+    dcomplex *B =  bli_obj_buffer_at_off(b);       //pointer to matrix B
 
     dcomplex *a10, *a11, *b01, *b11;    //pointers that point to blocks for GEMM and TRSM
 
@@ -33759,6 +33717,15 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
 
     xmm4 = _mm_setzero_pd();
     xmm5 = _mm_setzero_pd();
+
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_pd();
+    ymm1 = _mm256_setzero_pd();
+    ymm2 = _mm256_setzero_pd();
+    ymm10 = _mm256_setzero_pd();
+    ymm11 = _mm256_setzero_pd();
+
 
     gint_t required_packing_A = 1;
     mem_t local_mem_buf_A_s = {0};
@@ -33791,7 +33758,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
     }
 
     /*
-        Performs solving TRSM for 4 colmns at a time from  0 to m/4 in steps of d_mr
+        Performs solving TRSM for 4 columns at a time from  0 to m/4 in steps of d_mr
         a. Load, transpose, Pack A (a10 block), the size of packing 4x3 to 4x (m-4)
            First there will be no GEMM and no packing of a10 because it is only TRSM
         b. Using packed a10 block and b01 block perform GEMM operation
@@ -33807,19 +33774,19 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
         if(transa)
         {
             /*
-              Load, tranpose and pack current A block (a10) into packed buffer memory
-          D_A_pack
+              Load, transpose and pack current A block (a10) into packed buffer memory
+              D_A_pack
               a. This a10 block is used in GEMM portion only and this
-                 a10 block size will be increasing by d_mr for every next itteration
-                 untill it reaches 4x(m-4) which is the maximum GEMM alone block size
-         in A
+                 a10 block size will be increasing by d_mr for every next iteration
+                 until it reaches 4x(m-4) which is the maximum GEMM alone block size
+                 in A
               b. This packed buffer is reused to calculate all n rows of B matrix
             */
             bli_ztrsm_small_pack('L', i, 1, a10, cs_a, D_A_pack, p_lda,d_mr);
 
             /*
                Pack 4 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
             ztrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_mr);
@@ -33835,7 +33802,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
             c. This loop GEMM+TRSM loops operates with 4x3 block size
                along n dimension for every d_nr rows of b01 where
                packed A buffer is reused in computing all n rows of B.
-            d. Same approch is used in remaining fringe cases.
+            d. Same approach is used in remaining fringe cases.
         */
         dim_t temp = n - d_nr + 1;
         for(j = 0; j < temp; j += d_nr)   //loop along 'N' dimension
@@ -33851,16 +33818,16 @@ BLIS_INLINE err_t bli_ztrsm_small_AutXB_AlXB
             BLIS_SET_YMM_REG_ZEROS
 
             /*
-              Peform GEMM between a10 and b01 blocks
-              For first itteration there will be no GEMM operation
+              Perform GEMM between a10 and b01 blocks
+              For first iteration there will be no GEMM operation
               where k_iter are zero
             */
             BLIS_ZTRSM_SMALL_GEMM_4mx3n(a10,b01,cs_b,p_lda,k_iter)
 
             /*
                Load b11 of size 3x4 and multiply with alpha
-               Add the GEMM output and perform inregister transose of b11
-               to peform TRSM operation.
+               Add the GEMM output and perform in register transpose of b11
+               to perform TRSM operation.
             */
             BLIS_ZTRSM_SMALL_NREG_TRANSPOSE_3x4(b11,cs_b,AlphaVal)
         /*
@@ -34956,7 +34923,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
     dim_t cs_a, rs_a;
     dim_t d_mr = 4,d_nr = 3;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -34973,8 +34940,8 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
     dim_t k_iter;                         //number of times GEMM to be performed
 
     dcomplex AlphaVal = *(dcomplex *)AlphaObj->buffer;    //value of alpha
-    dcomplex *L =  a->buffer;               //pointer to  matrix A
-    dcomplex *B =  b->buffer;               //pointer to matrix B
+    dcomplex *L =  bli_obj_buffer_at_off(a);               //pointer to  matrix A
+    dcomplex *B =  bli_obj_buffer_at_off(b);               //pointer to matrix B
 
     //pointers that point to blocks for GEMM and TRSM
     dcomplex *a10, *a11, *b01, *b11;
@@ -34993,6 +34960,14 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
 
     xmm4 = _mm_setzero_pd();
     xmm5 = _mm_setzero_pd();
+
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm0 = _mm256_setzero_pd();
+    ymm1 = _mm256_setzero_pd();
+    ymm2 = _mm256_setzero_pd();
+    ymm10 = _mm256_setzero_pd();
+    ymm11 = _mm256_setzero_pd();
 
     gint_t required_packing_A = 1;
     mem_t local_mem_buf_A_s = {0};
@@ -35025,7 +35000,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
     }
 
     /*
-        Performs solving TRSM for 4 colmns at a time from  0 to m/d_mr in steps of d_mr
+        Performs solving TRSM for 4 columns at a time from  0 to m/d_mr in steps of d_mr
         a. Load, transpose, Pack A (a10 block), the size of packing 8x6 to 8x (m-d_mr)
            First there will be no GEMM and no packing of a10 because it is only TRSM
         b. Using packed a10 block and b01 block perform GEMM operation
@@ -35046,18 +35021,18 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
         {
             /*
               Load, transpose and pack current A block (a10) into packed buffer memory
-          D_A_pack
+              D_A_pack
               a. This a10 block is used in GEMM portion only and this
-                 a10 block size will be increasing by d_mr for every next itteration
-                 untill it reaches 4x(m-4) which is the maximum GEMM alone block size
-         in A
+                 a10 block size will be increasing by d_mr for every next iteration
+                 until it reaches 4x(m-4) which is the maximum GEMM alone block size
+                 in A
               b. This packed buffer is reused to calculate all n rows of B matrix
             */
             bli_ztrsm_small_pack('L', (m-i-d_mr), 1, a10, cs_a, D_A_pack,p_lda,d_mr);
 
                /*
                Pack 8 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM operation
+               a. This helps to utilize cache line efficiently in TRSM operation
                b. store ones when input is unit diagonal
             */
             ztrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_mr);
@@ -35074,7 +35049,7 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
             c. This loop GEMM+TRSM loops operates with 8x6 block size
                along n dimension for every d_nr rows of b01 where
                packed A buffer is reused in computing all n rows of B.
-            d. Same approch is used in remaining fringe cases.
+            d. Same approach is used in remaining fringe cases.
         */
         for(j = (n - d_nr); (j + 1) > 0; j -= d_nr)
         {
@@ -35088,16 +35063,16 @@ BLIS_INLINE err_t bli_ztrsm_small_AltXB_AuXB
             BLIS_SET_YMM_REG_ZEROS
 
             /*
-                Peform GEMM between a10 and b01 blocks
-                For first itteration there will be no GEMM operation
+                Perform GEMM between a10 and b01 blocks
+                For first iteration there will be no GEMM operation
                 where k_iter are zero
             */
             BLIS_ZTRSM_SMALL_GEMM_4mx3n(a10,b01,cs_b,p_lda,k_iter)
 
             /*
                Load b11 of size 6x8 and multiply with alpha
-               Add the GEMM output and perform inregister transose of b11
-               to peform TRSM operation.
+               Add the GEMM output and perform in register transpose of b11
+               to perform TRSM operation.
             */
             BLIS_ZTRSM_SMALL_NREG_TRANSPOSE_3x4(b11,cs_b,AlphaVal)
 
@@ -36180,7 +36155,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
     dim_t cs_a, rs_a;
     dim_t d_mr = 4,d_nr = 3;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -36201,8 +36176,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
     bool is_unitdiag = bli_obj_has_unit_diag(a);
 
     dcomplex AlphaVal = *(dcomplex *)AlphaObj->buffer;    //value of Alpha
-    dcomplex* restrict L = a->buffer;      //pointer to matrix A
-    dcomplex* restrict B = b->buffer;      //pointer to matrix B
+    dcomplex* restrict L = bli_obj_buffer_at_off(a);      //pointer to matrix A
+    dcomplex* restrict B = bli_obj_buffer_at_off(b);      //pointer to matrix B
 
     dcomplex *a01, *a11, *b10, *b11;   //pointers for GEMM and TRSM blocks
 
@@ -36246,6 +36221,10 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
     __m128d xmm5;
 
     xmm5 = _mm_setzero_pd();
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm1= _mm256_setzero_pd();
+
 
     for(j = (n-d_nr); (j+1) > 0; j -= d_nr)     //loop along 'N' direction
     {
@@ -36271,7 +36250,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
 
             /*
                Pack 3 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM
+               a. This helps to utilize cache line efficiently in TRSM
                operation
                b. store ones when input is unit diagonal
                */
@@ -36307,8 +36286,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
             BLIS_SET_YMM_REG_ZEROS
 
             /*
-               Peform GEMM between a01 and b10 blocks
-               For first itteration there will be no GEMM operation
+               Perform GEMM between a01 and b10 blocks
+               For first iteration there will be no GEMM operation
                where k_iter are zero
                */
 
@@ -36317,7 +36296,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
             /*
                Load b11 multiply with alpha
                Add the GEMM output to b11
-               and peform TRSM operation.
+               and perform TRSM operation.
                */
 
             BLIS_PRE_ZTRSM_SMALL_3x4(AlphaVal,b11,cs_b)
@@ -36490,8 +36469,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
                  * accumulations */
                 BLIS_SET_YMM_REG_ZEROS
                 /*
-                   Peform GEMM between a01 and b10 blocks
-                   For first itteration there will be no GEMM operation
+                   Perform GEMM between a01 and b10 blocks
+                   For first iteration there will be no GEMM operation
                    where k_iter are zero
                    */
 
@@ -36500,7 +36479,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
                 /*
                    Load b11 multiply with alpha
                    Add the GEMM output to b11
-                   and peform TRSM operation.
+                   and perform TRSM operation.
                    */
 
                 BLIS_PRE_ZTRSM_SMALL_3x3(AlphaVal,b11,cs_b)
@@ -36683,8 +36662,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
                  * accumulations */
                 BLIS_SET_YMM_REG_ZEROS
                 /*
-                   Peform GEMM between a01 and b10 blocks
-                   For first itteration there will be no GEMM operation
+                   Perform GEMM between a01 and b10 blocks
+                   For first iteration there will be no GEMM operation
                    where k_iter are zero
                    */
 
@@ -36693,7 +36672,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
                 /*
                    Load b11 of size 8x6 and multiply with alpha
                    Add the GEMM output to b11
-                   and peform TRSM operation.
+                   and perform TRSM operation.
                    */
 
                 BLIS_PRE_ZTRSM_SMALL_3x2(AlphaVal,b11,cs_b)
@@ -36831,8 +36810,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
                  * accumulations */
                 BLIS_SET_YMM_REG_ZEROS
                 /*
-                   Peform GEMM between a01 and b10 blocks
-                   For first itteration there will be no GEMM operation
+                   Perform GEMM between a01 and b10 blocks
+                   For first iteration there will be no GEMM operation
                    where k_iter are zero
                    */
 
@@ -36841,7 +36820,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
                 /*
                    Load b11 and multiply with alpha
                    Add the GEMM output to b11
-                   and peform TRSM operation.
+                   and perform TRSM operation.
                    */
 
                 BLIS_PRE_ZTRSM_SMALL_3x1(AlphaVal,b11,cs_b)
@@ -37165,8 +37144,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
             /*Fill zeros into ymm registers used in gemm accumulations */
             BLIS_SET_YMM_REG_ZEROS
             /*
-               Peform GEMM between a01 and b10 blocks
-               For first itteration there will be no GEMM operation
+               Perform GEMM between a01 and b10 blocks
+               For first iteration there will be no GEMM operation
                where k_iter are zero
                */
             //BLIS_ZTRSM_SMALL_GEMM_3nx3m(a01,b10,cs_b,p_lda,k_iter)
@@ -37254,8 +37233,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
             /*Fill zeros into ymm registers used in gemm accumulations */
             BLIS_SET_YMM_REG_ZEROS
             /*
-               Peform GEMM between a01 and b10 blocks
-               For first itteration there will be no GEMM operation
+               Perform GEMM between a01 and b10 blocks
+               For first iteration there will be no GEMM operation
                where k_iter are zero
                */
             BLIS_ZTRSM_SMALL_GEMM_2nx2m(a01,b10,cs_b,p_lda,k_iter)
@@ -37325,8 +37304,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAutB_XAlB
             /*Fill zeros into ymm registers used in gemm accumulations */
             BLIS_SET_YMM_REG_ZEROS
             /*
-               Peform GEMM between a01 and b10 blocks
-               For first itteration there will be no GEMM operation
+               Perform GEMM between a01 and b10 blocks
+               For first iteration there will be no GEMM operation
                where k_iter are zero
                */
             BLIS_ZTRSM_SMALL_GEMM_2nx1m(a01,b10,cs_b,p_lda,k_iter)
@@ -37643,7 +37622,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
     dim_t cs_a, rs_a;
     dim_t d_mr = 4,d_nr = 3;
 
-    // Swap rs_a & cs_a in case of non-tranpose.
+    // Swap rs_a & cs_a in case of non-transpose.
     if(transa)
     {
         cs_a = bli_obj_col_stride(a); // column stride of A
@@ -37664,8 +37643,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
     bool is_unitdiag = bli_obj_has_unit_diag(a);
 
     dcomplex AlphaVal = *(dcomplex *)AlphaObj->buffer;    //value of Alpha
-    dcomplex* restrict L = a->buffer;      //pointer to matrix A
-    dcomplex* restrict B = b->buffer;      //pointer to matrix B
+    dcomplex* restrict L = bli_obj_buffer_at_off(a);      //pointer to matrix A
+    dcomplex* restrict B = bli_obj_buffer_at_off(b);      //pointer to matrix B
 
     dcomplex *a01, *a11, *b10, *b11;   //pointers for GEMM and TRSM blocks
 
@@ -37710,6 +37689,9 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
 
     xmm5 = _mm_setzero_pd();
 
+    //gcc12 throws a unitialized warning,
+    //To avoid that these variable are set to zero.
+    ymm1 = _mm256_setzero_pd();
     for(j = 0; (j+d_nr-1) < n; j += d_nr)     //loop along 'N' direction
     {
         a01 = L + j*rs_a;//pointer to block of A to be used in GEMM
@@ -37733,7 +37715,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
 
             /*
                Pack 3 diagonal elements of A block into an array
-               a. This helps in utilze cache line efficiently in TRSM
+               a. This helps to utilize cache line efficiently in TRSM
                operation
                b. store ones when input is unit diagonal
                */
@@ -37768,8 +37750,8 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
             BLIS_SET_YMM_REG_ZEROS
 
             /*
-               Peform GEMM between a01 and b10 blocks
-               For first itteration there will be no GEMM operation
+               Perform GEMM between a01 and b10 blocks
+               For first iteration there will be no GEMM operation
                where k_iter are zero
                */
 
@@ -37778,7 +37760,7 @@ BLIS_INLINE err_t bli_ztrsm_small_XAltB_XAuB
             /*
                Load b11 of size 4x3 and multiply with alpha
                Add the GEMM output to b11
-               and peform TRSM operation.
+               and perform TRSM operation.
                */
 
             BLIS_PRE_ZTRSM_SMALL_3x4(AlphaVal,b11,cs_b)
@@ -39506,6 +39488,16 @@ BLIS_INLINE void ctrsm_small_pack_diag_element
 	dim_t size
 )
 {
+    if ( is_unitdiag )
+    {
+        scomplex ones = {1.0, 0.0};
+        for( dim_t i = 0; i < size; i++)
+        {
+            d11_pack[i].real = ones.real;
+            d11_pack[i].imag = ones.imag;
+        }
+        return;
+    }
 #ifdef BLIS_ENABLE_TRSM_PREINVERSION
 	// If Preinversion is disabled, inverse the diaganol
 	// elements from A and pack into diagonal buffer.
@@ -42230,7 +42222,7 @@ BLIS_INLINE err_t bli_ctrsm_small_AutXB_AlXB
 	dim_t cs_a, rs_a;
 	dim_t d_mr = 8,d_nr = 3;
 
-	// Swap rs_a & cs_a in case of non-tranpose.
+	// Swap rs_a & cs_a in case of non-transpose.
 	if(transa)
 	{
 		cs_a = bli_obj_col_stride(a); // column stride of A
@@ -42275,6 +42267,11 @@ BLIS_INLINE err_t bli_ctrsm_small_AutXB_AlXB
 	xmm3 = _mm_setzero_ps();
 	xmm4 = _mm_setzero_ps();
 	xmm5 = _mm_setzero_ps();
+	//gcc12 throws a unitialized warning,
+	//To avoid that these variable are set to zero.
+	ymm0= _mm256_setzero_ps();
+	ymm1= _mm256_setzero_ps();
+	ymm2= _mm256_setzero_ps();
     
         gint_t required_packing_A = 1;
 	mem_t local_mem_buf_A_s = {0};
@@ -42307,7 +42304,7 @@ BLIS_INLINE err_t bli_ctrsm_small_AutXB_AlXB
 	}
     
     /*
-	   Performs solving TRSM for 4 colmns at a time from  0 to m/4 in steps of d_mr
+	   Performs solving TRSM for 4 columns at a time from  0 to m/4 in steps of d_mr
 	   a. Load, transpose, Pack A (a10 block), the size of packing 4x3 to 4x (m-4)
 	   First there will be no GEMM and no packing of a10 because it is only TRSM
 	   b. Using packed a10 block and b01 block perform GEMM operation
@@ -42323,11 +42320,11 @@ BLIS_INLINE err_t bli_ctrsm_small_AutXB_AlXB
 		if(transa)
 		{
 			/*
-			   Load, tranpose and pack current A block (a10) into packed buffer memory
+			   Load, transpose and pack current A block (a10) into packed buffer memory
 			   D_A_pack
 			   a. This a10 block is used in GEMM portion only and this
-			   a10 block size will be increasing by d_mr for every next itteration
-			   untill it reaches 4x(m-4) which is the maximum GEMM alone block size
+			   a10 block size will be increasing by d_mr for every next iteration
+			   until it reaches 4x(m-4) which is the maximum GEMM alone block size
 			   in A
 			   b. This packed buffer is reused to calculate all n rows of B matrix
 			   */
@@ -42335,7 +42332,7 @@ BLIS_INLINE err_t bli_ctrsm_small_AutXB_AlXB
 
 			/*
 			   Pack 4 diagonal elements of A block into an array
-			   a. This helps in utilze cache line efficiently in TRSM operation
+			   a. This helps to utilize cache line efficiently in TRSM operation
 			   b. store ones when input is unit diagonal
 			   */
 			ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_mr);
@@ -42351,7 +42348,7 @@ BLIS_INLINE err_t bli_ctrsm_small_AutXB_AlXB
 		   c. This loop GEMM+TRSM loops operates with 4x3 block size
 		   along n dimension for every d_nr rows of b01 where
 		   packed A buffer is reused in computing all n rows of B.
-		   d. Same approch is used in remaining fringe cases.
+		   d. Same approach is used in remaining fringe cases.
 		   */
 		dim_t temp = n - d_nr + 1;
 		for(j = 0; j < temp; j += d_nr)   //loop along 'N' dimension
@@ -42367,16 +42364,16 @@ BLIS_INLINE err_t bli_ctrsm_small_AutXB_AlXB
 			BLIS_SET_S_YMM_REG_ZEROS
 
 			/*
-			   Peform GEMM between a10 and b01 blocks
-			   For first itteration there will be no GEMM operation
+			   Perform GEMM between a10 and b01 blocks
+			   For first iteration there will be no GEMM operation
 			   where k_iter are zero
 			   */
 			BLIS_CTRSM_SMALL_GEMM_8mx3n(a10,b01,cs_b,p_lda,k_iter)
 
 			/*
 			   Load b11 of size 3x4 and multiply with alpha
-			   Add the GEMM output and perform inregister transose of b11
-			   to peform TRSM operation.
+			   Add the GEMM output and perform in register transpose of b11
+			   to perform TRSM operation.
 			   */
 			BLIS_CTRSM_SMALL_NREG_TRANSPOSE_3x8(b11,cs_b,AlphaVal)
 			/*
@@ -44762,7 +44759,7 @@ BLIS_INLINE err_t bli_ctrsm_small_AltXB_AuXB
 	dim_t cs_a, rs_a;
 	dim_t d_mr = 8,d_nr = 3;
 
-	// Swap rs_a & cs_a in case of non-tranpose.
+	// Swap rs_a & cs_a in case of non-transpose.
 	if(transa)
 	{
 		cs_a = bli_obj_col_stride(a); // column stride of A
@@ -44808,6 +44805,12 @@ BLIS_INLINE err_t bli_ctrsm_small_AltXB_AuXB
 	xmm4 = _mm_setzero_ps();
 	xmm5 = _mm_setzero_ps();
 
+	//gcc12 throws a unitialized warning,
+	//To avoid that these variable are set to zero.
+	ymm0 = _mm256_setzero_ps();
+	ymm1 = _mm256_setzero_ps();
+	ymm2 = _mm256_setzero_ps();
+
 	gint_t required_packing_A = 1;
 	mem_t local_mem_buf_A_s = {0};
 	scomplex *D_A_pack = NULL;
@@ -44839,7 +44842,7 @@ BLIS_INLINE err_t bli_ctrsm_small_AltXB_AuXB
 	}
 
 	/*
-	   Performs solving TRSM for 4 colmns at a time from  0 to m/4 in steps of d_mr
+	   Performs solving TRSM for 4 columns at a time from  0 to m/4 in steps of d_mr
 	   a. Load, transpose, Pack A (a10 block), the size of packing 4x3 to 4x (m-4)
 	   First there will be no GEMM and no packing of a10 because it is only TRSM
 	   b. Using packed a10 block and b01 block perform GEMM operation
@@ -44857,11 +44860,11 @@ BLIS_INLINE err_t bli_ctrsm_small_AltXB_AuXB
 		if(transa)
 		{
 			/*
-			   Load, tranpose and pack current A block (a10) into packed buffer memory
+			   Load, transpose and pack current A block (a10) into packed buffer memory
 			   D_A_pack
 			   a. This a10 block is used in GEMM portion only and this
-			   a10 block size will be increasing by d_mr for every next itteration
-			   untill it reaches 4x(m-4) which is the maximum GEMM alone block size
+			   a10 block size will be increasing by d_mr for every next iteration
+			   until it reaches 4x(m-4) which is the maximum GEMM alone block size
 			   in A
 			   b. This packed buffer is reused to calculate all n rows of B matrix
 			   */
@@ -44869,7 +44872,7 @@ BLIS_INLINE err_t bli_ctrsm_small_AltXB_AuXB
 
 			/*
 			   Pack 4 diagonal elements of A block into an array
-			   a. This helps in utilze cache line efficiently in TRSM operation
+			   a. This helps to utilize cache line efficiently in TRSM operation
 			   b. store ones when input is unit diagonal
 			   */
 			ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_mr);
@@ -44885,7 +44888,7 @@ BLIS_INLINE err_t bli_ctrsm_small_AltXB_AuXB
 		   c. This loop GEMM+TRSM loops operates with 4x3 block size
 		   along n dimension for every d_nr rows of b01 where
 		   packed A buffer is reused in computing all n rows of B.
-		   d. Same approch is used in remaining fringe cases.
+		   d. Same approach is used in remaining fringe cases.
 		   */
 
 		for(j = (n - d_nr); (j + 1) > 0; j -= d_nr)   //loop along 'N' dimension
@@ -44901,16 +44904,16 @@ BLIS_INLINE err_t bli_ctrsm_small_AltXB_AuXB
 			BLIS_SET_S_YMM_REG_ZEROS
 
 			/*
-			   Peform GEMM between a10 and b01 blocks
-			   For first itteration there will be no GEMM operation
+			   Perform GEMM between a10 and b01 blocks
+			   For first iteration there will be no GEMM operation
 			   where k_iter are zero
 			   */
 			BLIS_CTRSM_SMALL_GEMM_8mx3n(a10,b01,cs_b,p_lda,k_iter)
 
 			/*
 			   Load b11 of size 3x4 and multiply with alpha
-			   Add the GEMM output and perform inregister transose of b11
-			   to peform TRSM operation.
+			   Add the GEMM output and perform in register transpose of b11
+			   to perform TRSM operation.
 			   */
 			BLIS_CTRSM_SMALL_NREG_TRANSPOSE_3x8(b11,cs_b,AlphaVal)
 			/*
@@ -47543,7 +47546,7 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 	dim_t cs_a, rs_a;
 	dim_t d_mr = 8,d_nr = 3;
 
-	// Swap rs_a & cs_a in case of non-tranpose.
+	// Swap rs_a & cs_a in case of non-transpose.
 	if(transa)
 	{
 		cs_a = bli_obj_col_stride(a); // column stride of A
@@ -47579,12 +47582,15 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 	__m256 ymm16, ymm17, ymm18, ymm19;
 
 	__m128 xmm0, xmm1, xmm2;
-    	__m128 xmm5;
+	__m128 xmm5;
 
         xmm0 = _mm_setzero_ps();
 	xmm1 = _mm_setzero_ps();
 	xmm2 = _mm_setzero_ps();
 	xmm5 = _mm_setzero_ps();
+	//gcc12 throws a unitialized warning,
+	//To avoid that these variable are set to zero.
+	ymm0 = _mm256_setzero_ps();
 
 	gint_t required_packing_A = 1;
 	mem_t local_mem_buf_A_s = {0};
@@ -47617,7 +47623,7 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 	}
 
 	/*
-	   Performs solving TRSM for 4 colmns at a time from  0 to m/4 in steps of d_mr
+	   Performs solving TRSM for 4 columns at a time from  0 to m/4 in steps of d_mr
 	   a. Load, transpose, Pack A (a10 block), the size of packing 4x3 to 4x (m-4)
 	   First there will be no GEMM and no packing of a10 because it is only TRSM
 	   b. Using packed a10 block and b01 block perform GEMM operation
@@ -47633,11 +47639,11 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 		if(transa)
 		{
 			/*
-			   Load, tranpose and pack current A block (a10) into packed buffer memory
+			   Load, transpose and pack current A block (a10) into packed buffer memory
 			   D_A_pack
 			   a. This a10 block is used in GEMM portion only and this
-			   a10 block size will be increasing by d_mr for every next itteration
-			   untill it reaches 4x(m-4) which is the maximum GEMM alone block size
+			   a10 block size will be increasing by d_mr for every next iteration
+			   until it reaches 4x(m-4) which is the maximum GEMM alone block size
 			   in A
 			   b. This packed buffer is reused to calculate all n rows of B matrix
 			   */
@@ -47645,7 +47651,7 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 
 			/*
 			   Pack 4 diagonal elements of A block into an array
-			   a. This helps in utilze cache line efficiently in TRSM operation
+			   a. This helps to utilize cache line efficiently in TRSM operation
 			   b. store ones when input is unit diagonal
 			   */
 			ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_nr);
@@ -47661,7 +47667,7 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 		   c. This loop GEMM+TRSM loops operates with 4x3 block size
 		   along n dimension for every d_nr rows of b01 where
 		   packed A buffer is reused in computing all n rows of B.
-		   d. Same approch is used in remaining fringe cases.
+		   d. Same approach is used in remaining fringe cases.
 		   */
 		for(i = (m-d_mr); (i+1) > 0; i -= d_mr)     //loop along 'M' direction
 		{
@@ -47677,16 +47683,16 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAutB_XAlB
 			BLIS_SET_S_YMM_REG_ZEROS
 
 			/*
-			   Peform GEMM between a10 and b01 blocks
-			   For first itteration there will be no GEMM operation
+			   Perform GEMM between a10 and b01 blocks
+			   For first iteration there will be no GEMM operation
 			   where k_iter are zero
 			   */
 			BLIS_CTRSM_SMALL_GEMM_3nx8m(a01,b10,cs_b,p_lda,k_iter)
 
 			/*
 			   Load b11 of size 3x4 and multiply with alpha
-			   Add the GEMM output and perform inregister transose of b11
-			   to peform TRSM operation.
+			   Add the GEMM output and perform in register transpose of b11
+			   to perform TRSM operation.
 			   */
 			BLIS_PRE_CTRSM_SMALL_3x8(AlphaVal, b11, cs_b)
 			/*
@@ -49163,7 +49169,7 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 	dim_t cs_a, rs_a;
 	dim_t d_mr = 8,d_nr = 3;
 
-	// Swap rs_a & cs_a in case of non-tranpose.
+	// Swap rs_a & cs_a in case of non-transpose.
 	if(transa)
 	{
 		cs_a = bli_obj_col_stride(a); // column stride of A
@@ -49205,6 +49211,10 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 	xmm2 = _mm_setzero_ps();
 	xmm5 = _mm_setzero_ps();
 
+	//gcc12 throws a unitialized warning,
+	//To avoid that these variable are set to zero.
+	ymm0 = _mm256_setzero_ps();
+
 	gint_t required_packing_A = 1;
 	mem_t local_mem_buf_A_s = {0};
 	scomplex *D_A_pack = NULL;
@@ -49236,7 +49246,7 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 	}
 
 	/*
-	   Performs solving TRSM for 4 colmns at a time from  0 to m/4 in steps of d_mr
+	   Performs solving TRSM for 4 columns at a time from  0 to m/4 in steps of d_mr
 	   a. Load, transpose, Pack A (a10 block), the size of packing 4x3 to 4x (m-4)
 	   First there will be no GEMM and no packing of a10 because it is only TRSM
 	   b. Using packed a10 block and b01 block perform GEMM operation
@@ -49253,11 +49263,11 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 		if(transa)
 		{
 			/*
-			   Load, tranpose and pack current A block (a10) into packed buffer memory
+			   Load, transpose and pack current A block (a10) into packed buffer memory
 			   D_A_pack
 			   a. This a10 block is used in GEMM portion only and this
-			   a10 block size will be increasing by d_mr for every next itteration
-			   untill it reaches 4x(m-4) which is the maximum GEMM alone block size
+			   a10 block size will be increasing by d_mr for every next iteration
+			   until it reaches 4x(m-4) which is the maximum GEMM alone block size
 			   in A
 			   b. This packed buffer is reused to calculate all n rows of B matrix
 			   */
@@ -49265,7 +49275,7 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 
 			/*
 			   Pack 4 diagonal elements of A block into an array
-			   a. This helps in utilze cache line efficiently in TRSM operation
+			   a. This helps to utilize cache line efficiently in TRSM operation
 			   b. store ones when input is unit diagonal
 			   */
 			ctrsm_small_pack_diag_element(is_unitdiag,a11,cs_a,d11_pack,d_nr);
@@ -49281,7 +49291,7 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 		   c. This loop GEMM+TRSM loops operates with 4x3 block size
 		   along n dimension for every d_nr rows of b01 where
 		   packed A buffer is reused in computing all n rows of B.
-		   d. Same approch is used in remaining fringe cases.
+		   d. Same approach is used in remaining fringe cases.
 		   */
 		for(i = 0; (i+d_mr-1) < m; i += d_mr)     //loop along 'M' direction
 		{
@@ -49297,16 +49307,16 @@ BLIS_INLINE  err_t bli_ctrsm_small_XAltB_XAuB
 			BLIS_SET_S_YMM_REG_ZEROS
 
 			/*
-			   Peform GEMM between a10 and b01 blocks
-			   For first itteration there will be no GEMM operation
+			   Perform GEMM between a10 and b01 blocks
+			   For first iteration there will be no GEMM operation
 			   where k_iter are zero
 			   */
 			BLIS_CTRSM_SMALL_GEMM_3nx8m(a01,b10,cs_b,p_lda,k_iter)
 
 			/*
 			   Load b11 of size 3x4 and multiply with alpha
-			   Add the GEMM output and perform inregister transose of b11
-			   to peform TRSM operation.
+			   Add the GEMM output and perform in register transpose of b11
+			   to perform TRSM operation.
 			   */
 			BLIS_PRE_CTRSM_SMALL_3x8(AlphaVal, b11, cs_b)
 			/*

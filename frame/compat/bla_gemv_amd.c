@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 22, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -42,7 +42,7 @@
 #undef  GENTFUNC
 #define GENTFUNC( ftype, ch, blasname, blisname ) \
 \
-void PASTEF77(ch,blasname) \
+void PASTEF77S(ch,blasname) \
      ( \
        const f77_char* transa, \
        const f77_int*  m, \
@@ -143,11 +143,26 @@ void PASTEF77(ch,blasname) \
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1); \
     /* Finalize BLIS. */ \
     bli_finalize_auto(); \
-}
+}\
+IF_BLIS_ENABLE_BLAS(\
+void PASTEF77(ch,blasname) \
+     ( \
+       const f77_char* transa, \
+       const f77_int*  m, \
+       const f77_int*  n, \
+       const ftype*    alpha, \
+       const ftype*    a, const f77_int* lda, \
+       const ftype*    x, const f77_int* incx, \
+       const ftype*    beta, \
+             ftype*    y, const f77_int* incy  \
+     ) \
+{ \
+  PASTEF77S(ch,blasname) \
+   ( transa, m, n, alpha, a, lda, x, incx, beta, y, incy ); \
+} \
+)
 
-
-#ifdef BLIS_ENABLE_BLAS
-void dgemv_
+void dgemv_blis_impl
      (
        const f77_char* transa,
        const f77_int*  m,
@@ -268,9 +283,9 @@ void dgemv_
     rs_a = 1;
     cs_a = *lda;
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         /* Call BLIS interface. */
         PASTEMAC2(d,gemv,BLIS_TAPI_EX_SUF)
@@ -331,8 +346,24 @@ void dgemv_
 
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
 }
-
-void sgemv_
+#ifdef BLIS_ENABLE_BLAS
+void dgemv_
+     (
+       const f77_char* transa,
+       const f77_int*  m,
+       const f77_int*  n,
+       const double*    alpha,
+       const double*    a, const f77_int* lda,
+       const double*    x, const f77_int* incx,
+       const double*    beta,
+             double*    y, const f77_int* incy
+     )
+{
+  dgemv_blis_impl( transa, m, n, alpha, a, lda,
+                        x, incx, beta, y, incy );
+}
+#endif
+void sgemv_blis_impl
      (
        const f77_char* transa,
        const f77_int*  m,
@@ -451,9 +482,9 @@ void sgemv_
     rs_a = 1;
     cs_a = *lda;
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
       /* Call BLIS interface. */
       PASTEMAC2(s,gemv,BLIS_TAPI_EX_SUF)
@@ -510,9 +541,24 @@ void sgemv_
 
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
 }
-
-
-void cgemv_
+#ifdef BLIS_ENABLE_BLAS
+void sgemv_
+     (
+       const f77_char* transa,
+       const f77_int*  m,
+       const f77_int*  n,
+       const float*    alpha,
+       const float*    a, const f77_int* lda,
+       const float*    x, const f77_int* incx,
+       const float*    beta,
+             float*    y, const f77_int* incy
+     )
+{
+  sgemv_blis_impl( transa, m, n, alpha, a, lda, 
+                        x, incx, beta, y, incy ); 
+}
+#endif
+void cgemv_blis_impl
      (
        const f77_char* transa,
        const f77_int*  m,
@@ -627,7 +673,7 @@ void cgemv_
     {
         conj_t conja = bli_extract_conj(blis_transa);
         scomplex rho;
-        if (bli_cpuid_is_avx_supported() == TRUE)
+        if (bli_cpuid_is_avx2fma3_supported() == TRUE)
         {
             bli_cdotv_zen_int5
             (
@@ -676,7 +722,7 @@ void cgemv_
         return;
     }
 
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         /* Call BLIS interface. */
         PASTEMAC2(c,gemv,BLIS_TAPI_EX_SUF)
@@ -733,9 +779,24 @@ void cgemv_
 
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
 }
-
-
-void zgemv_
+#ifdef BLIS_ENABLE_BLAS
+void cgemv_
+     (
+       const f77_char* transa,
+       const f77_int*  m,
+       const f77_int*  n,
+       const scomplex* alpha,
+       const scomplex* a, const f77_int* lda,
+       const scomplex* x, const f77_int* incx,
+       const scomplex* beta,
+             scomplex* y, const f77_int* incy
+     )
+{
+  cgemv_blis_impl( transa, m, n, alpha, a, lda, 
+                        x, incx, beta, y, incy ); 
+}
+#endif
+void zgemv_blis_impl
      (
        const f77_char* transa,
        const f77_int*  m,
@@ -851,7 +912,7 @@ void zgemv_
         conj_t conja = bli_extract_conj(blis_transa);
         dcomplex rho;
 
-        if (bli_cpuid_is_avx_supported() == TRUE)
+        if (bli_cpuid_is_avx2fma3_supported() == TRUE)
         {
             bli_zdotv_zen_int5
             (
@@ -900,7 +961,7 @@ void zgemv_
         return;
     }
 
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         /* Call BLIS interface. */
         PASTEMAC2(z,gemv,BLIS_TAPI_EX_SUF)
@@ -957,7 +1018,22 @@ void zgemv_
 
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
 }
-
+#ifdef BLIS_ENABLE_BLAS
+void zgemv_
+     (
+       const f77_char* transa,
+       const f77_int*  m,
+       const f77_int*  n,
+       const dcomplex* alpha,
+       const dcomplex* a, const f77_int* lda,
+       const dcomplex* x, const f77_int* incx,
+       const dcomplex* beta,
+             dcomplex* y, const f77_int* incy
+     )
+{
+  zgemv_blis_impl( transa, m, n, alpha, a, lda, 
+                        x, incx, beta, y, incy ); 
+}
 
 
 #endif

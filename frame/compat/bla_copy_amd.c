@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -42,7 +42,7 @@
 #undef  GENTFUNC
 #define GENTFUNC( ftype, ch, blasname, blisname ) \
 \
-void PASTEF77(ch,blasname) \
+void PASTEF77S(ch,blasname) \
      ( \
        const f77_int* n, \
        const ftype*   x, const f77_int* incx, \
@@ -85,11 +85,21 @@ void PASTEF77(ch,blasname) \
 \
 	   /* Finalize BLIS. */ \
 	   bli_finalize_auto(); \
-}
+}\
+\
+IF_BLIS_ENABLE_BLAS(\
+void PASTEF77(ch,blasname) \
+     ( \
+       const f77_int* n, \
+       const ftype*   x, const f77_int* incx, \
+             ftype*   y, const f77_int* incy  \
+     ) \
+{ \
+  PASTEF77S(ch,blasname)( n, x, incx, y, incy ); \
+} \
+)
 
-#ifdef BLIS_ENABLE_BLAS
-
-void scopy_
+void scopy_blis_impl
 (
 	const f77_int* n,
 	const float*   x, const f77_int* incx,
@@ -152,9 +162,9 @@ void scopy_
 		incy0 = (inc_t)(*incy);
 	}
 
-	// This function is invoked on all architectures including ‘generic’.
-	// Non-AVX platforms will use the kernels derived from the context.
-	if (bli_cpuid_is_avx_supported() == TRUE)
+	// This function is invoked on all architectures including 'generic'.
+	// Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+	if (bli_cpuid_is_avx2fma3_supported() == TRUE)
 	{
 		/* Call BLIS kernel */
 		bli_scopyv_zen_int
@@ -183,8 +193,18 @@ void scopy_
 	/* Finalize BLIS. */
 //    bli_finalize_auto();
 }
-
-void dcopy_
+#ifdef BLIS_ENABLE_BLAS
+void scopy_
+(
+	const f77_int* n,
+	const float*   x, const f77_int* incx,
+	float*   y, const f77_int* incy
+)
+{
+  scopy_blis_impl( n, x, incx, y, incy );
+}
+#endif
+void dcopy_blis_impl
 (
 	const f77_int* n,
 	const double*   x, const f77_int* incx,
@@ -247,9 +267,9 @@ void dcopy_
 		incy0 = (inc_t)(*incy);
 	}
 
-	// This function is invoked on all architectures including ‘generic’.
-	// Non-AVX platforms will use the kernels derived from the context.
-	if (bli_cpuid_is_avx_supported() == TRUE)
+	// This function is invoked on all architectures including 'generic'.
+	// Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+	if (bli_cpuid_is_avx2fma3_supported() == TRUE)
 	{
 		/* Call BLIS kernel */
 		bli_dcopyv_zen_int
@@ -279,7 +299,16 @@ void dcopy_
 	/* Finalize BLIS. */
 //    bli_finalize_auto();
 }
-
+#ifdef BLIS_ENABLE_BLAS
+void dcopy_
+(
+	const f77_int* n,
+	const double*   x, const f77_int* incx,
+	double*   y, const f77_int* incy
+)
+{
+  dcopy_blis_impl( n, x, incx, y, incy );
+}
+#endif
 INSERT_GENTFUNC_BLAS_CZ(copy, copyv)
 
-#endif

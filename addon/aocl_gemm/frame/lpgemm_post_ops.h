@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-23, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -41,8 +41,11 @@ typedef enum
 	POST_OPS_BIAS = 1,
 	POST_OPS_RELU = 2,
 	POST_OPS_RELU_SCALE = 3,
-	POST_OPS_DOWNSCALE = 4,
-	POST_OPS_SUM = 5,
+	POST_OPS_GELU_TANH = 4,
+	POST_OPS_GELU_ERF = 5,
+	POST_OPS_CLIP = 6,
+	POST_OPS_DOWNSCALE = 7,
+	POST_OPS_SUM = 8,
 } LPGEMM_POST_OP_CODE;
 
 // Used as an internal structure.
@@ -57,6 +60,21 @@ typedef struct lpgemm_post_op_t
 	struct lpgemm_post_op_t* next;
 } lpgemm_post_op;
 
+// Used as an internal structure.
+typedef struct lpgemm_post_op_attr_t
+{
+	dim_t post_op_c_i;
+	dim_t post_op_c_j;
+	dim_t rs_c_downscale;
+	dim_t cs_c_downscale;
+	void* buf_downscale;
+	bool is_first_k;
+	bool is_last_k;
+	dim_t b_sum_offset;
+	int32_t* b_col_sum_vec;
+	int16_t* b_col_sum_vec_s16;
+} lpgemm_post_op_attr;
+
 void lpgemm_translate_to_post_ops_list
      (
        aocl_post_op*   post_op_unparsed,
@@ -66,7 +84,7 @@ void lpgemm_translate_to_post_ops_list
      );
 
 #define POST_OP_LABEL_LASTK_SAFE_JUMP \
-		if ( ( is_last_k == TRUE ) && ( post_ops_list_temp != NULL ) ) \
+		if ( ( post_ops_attr.is_last_k == TRUE ) && ( post_ops_list_temp != NULL ) ) \
 		{ \
 			goto *post_ops_labels[post_ops_list_temp->op_code]; \
 		} \

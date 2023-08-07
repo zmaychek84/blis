@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -132,6 +132,16 @@
 #endif
 #endif
 
+// If the CBLAS compatibility layer was enabled while the BLAS layer
+// was not enabled, we must enable the BLAS layer here. Also undefine
+// BLIS_DISABLE_BLAS to ensure consistency.
+#ifdef BLIS_ENABLE_CBLAS
+#ifndef BLIS_ENABLE_BLAS
+#define BLIS_ENABLE_BLAS
+#endif
+#undef BLIS_DISABLE_BLAS
+#endif // BLIS_ENABLE_CBLAS
+
 #ifndef BLIS_ENABLE_MIXED_DT
 #ifndef BLIS_DISABLE_MIXED_DT
 #if @enable_mixed_dt@
@@ -196,8 +206,10 @@
 
 #if @disable_blis_arch_type@
 #define DISABLE_BLIS_ARCH_TYPE
+#define DISABLE_BLIS_MODEL_TYPE
 #endif
 
 #define __blis_arch_type_name "@rename_blis_arch_type@"
+#define __blis_model_type_name "@rename_blis_model_type@"
 
 #endif

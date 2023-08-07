@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019 - 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -45,7 +45,7 @@
 #undef  GENTFUNC
 #define GENTFUNC( ftype, ch, blasname, blisname ) \
 \
-void PASTEF77(ch,blasname) \
+void PASTEF77S(ch,blasname) \
      ( \
        const f77_char* side, \
        const f77_char* uploa, \
@@ -111,6 +111,24 @@ void PASTEF77(ch,blasname) \
     rs_b = 1; \
     cs_b = *ldb; \
 \
+	/* If alpha is zero, set B to zero and return early */ \
+	if( PASTEMAC(ch,eq0)( *alpha ) ) \
+	{ \
+		PASTEMAC2(ch,setm,_ex)( BLIS_NO_CONJUGATE, \
+								0, \
+								BLIS_NONUNIT_DIAG, \
+								BLIS_DENSE, \
+								m0, n0, \
+								(ftype*) alpha, \
+								(ftype*) b, rs_b, cs_b, \
+								NULL, NULL \
+							  ); \
+		 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
+		/* Finalize BLIS. */ \
+		bli_finalize_auto(); \
+		return; \
+	} \
+\
     /* Call BLIS interface. */ \
     PASTEMAC2(ch,blisname,BLIS_TAPI_EX_SUF) \
     ( \
@@ -130,14 +148,30 @@ void PASTEF77(ch,blasname) \
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO) \
     /* Finalize BLIS. */ \
     bli_finalize_auto(); \
-}
-
+} \
+IF_BLIS_ENABLE_BLAS(\
+void PASTEF77(ch,blasname) \
+     ( \
+       const f77_char* side, \
+       const f77_char* uploa, \
+       const f77_char* transa, \
+       const f77_char* diaga, \
+       const f77_int*  m, \
+       const f77_int*  n, \
+       const ftype*    alpha, \
+       const ftype*    a, const f77_int* lda, \
+             ftype*    b, const f77_int* ldb  \
+     ) \
+{ \
+    PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
+} \
+)
 #else
 
 #undef  GENTFUNC
 #define GENTFUNC( ftype, ch, blasname, blisname ) \
 \
-void PASTEF77(ch,blasname) \
+void PASTEF77S(ch,blasname) \
      ( \
        const f77_char* side, \
        const f77_char* uploa, \
@@ -204,6 +238,24 @@ void PASTEF77(ch,blasname) \
     const inc_t rs_b = 1; \
     const inc_t cs_b = *ldb; \
     const num_t dt = PASTEMAC(ch,type); \
+\
+	/* If alpha is zero, set B to zero and return early */ \
+	if( PASTEMAC(ch,eq0)( *alpha ) ) \
+	{ \
+		PASTEMAC2(ch,setm,_ex)( BLIS_NO_CONJUGATE, \
+								0, \
+								BLIS_NONUNIT_DIAG, \
+								BLIS_DENSE, \
+								m0, n0, \
+								(ftype*) alpha, \
+								(ftype*) b, rs_b, cs_b, \
+								NULL, NULL \
+							  ); \
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
+		/* Finalize BLIS. */ \
+		bli_finalize_auto(); \
+		return; \
+	} \
 \
     /* ----------------------------------------------------------- */ \
     /*    TRSM API: AX = B, where X = B                            */ \
@@ -393,13 +445,27 @@ void PASTEF77(ch,blasname) \
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)  \
     /* Finalize BLIS. */ \
     bli_finalize_auto(); \
-}
+} \
+void PASTEF77(ch,blasname) \
+     ( \
+       const f77_char* side, \
+       const f77_char* uploa, \
+       const f77_char* transa, \
+       const f77_char* diaga, \
+       const f77_int*  m, \
+       const f77_int*  n, \
+       const ftype*    alpha, \
+       const ftype*    a, const f77_int* lda, \
+             ftype*    b, const f77_int* ldb  \
+     ) \
+{ \
+    PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
+} \
 
 #endif
 
-#ifdef BLIS_ENABLE_BLAS
 
-void strsm_
+void strsm_blis_impl
 (
     const f77_char* side,
     const f77_char* uploa,
@@ -467,6 +533,24 @@ void strsm_
     const inc_t rs_b = 1;
     const inc_t cs_b = *ldb;
     const num_t dt = BLIS_FLOAT;
+
+	/* If alpha is zero, set B to zero and return early */
+	if( PASTEMAC(s,eq0)( *alpha ) )
+	{
+		PASTEMAC2(s,setm,_ex)( BLIS_NO_CONJUGATE,
+								0,
+								BLIS_NONUNIT_DIAG,
+								BLIS_DENSE,
+								m0, n0,
+								(float*) alpha,
+								(float*) b, rs_b, cs_b,
+								NULL, NULL
+							  );
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
+		/* Finalize BLIS. */
+		bli_finalize_auto();
+		return;
+	}
 
     if( n0 == 1 )
     {
@@ -622,28 +706,29 @@ void strsm_
     bli_obj_set_struc( struca, &ao );
 
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
     {
 	    /* bli_strsm_small is performing better existing native
 	     * implementations for [m,n]<=1000 for single thread.
-	     * In case of multithread when [m,n]<=128 sinlge thread implemenation
+	     * In case of multithread when [m,n]<=128 single thread implementation
 	     * is doing better than native multithread */
-	    bool nt = bli_thread_get_is_parallel();
-	    if((nt==0 && m0<=1000 && n0<=1000) ||
-			    (nt && (m0+n0)<320) )
+	    bool is_parallel = bli_thread_get_is_parallel();
+	    if((!is_parallel && m0<=1000 && n0<=1000) ||
+               (is_parallel && (m0+n0)<320))
 	    {
 		    err_t status;
 		    status = bli_trsm_small
-                (
-                 blis_side,
-			     &alphao,
-			     &ao,
-			     &bo,
-			     NULL,
-			     NULL
-			    );
+                             (
+                               blis_side,
+			       &alphao,
+			       &ao,
+			       &bo,
+			       NULL,
+			       NULL,
+			       is_parallel
+			     );
 		    if (status == BLIS_SUCCESS)
 		    {
 			    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
@@ -669,8 +754,24 @@ void strsm_
     /* Finalize BLIS. */
     bli_finalize_auto();
 }
-
-void dtrsm_
+#ifdef BLIS_ENABLE_BLAS
+void strsm_
+(
+    const f77_char* side,
+    const f77_char* uploa,
+    const f77_char* transa,
+    const f77_char* diaga,
+    const f77_int*  m,
+    const f77_int*  n,
+    const float*    alpha,
+    const float*    a, const f77_int* lda,
+    float*    b, const f77_int* ldb
+)
+{
+    strsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
+}
+#endif
+void dtrsm_blis_impl
 (
     const f77_char* side,
     const f77_char* uploa,
@@ -738,6 +839,24 @@ void dtrsm_
     const inc_t rs_b = 1;
     const inc_t cs_b = *ldb;
     const num_t dt = BLIS_DOUBLE;
+
+	/* If alpha is zero, set B to zero and return early */
+	if( PASTEMAC(d,eq0)( *alpha ) )
+	{
+		PASTEMAC2(d,setm,_ex)( BLIS_NO_CONJUGATE,
+								0,
+								BLIS_NONUNIT_DIAG,
+								BLIS_DENSE,
+								m0, n0,
+								(double*) alpha,
+								(double*) b, rs_b, cs_b,
+								NULL, NULL
+							  );
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
+		/* Finalize BLIS. */
+		bli_finalize_auto();
+		return;
+	}
 
     if( n0 == 1 )
     {
@@ -892,37 +1011,108 @@ void dtrsm_
     bli_obj_set_conjtrans( blis_transa, &ao );
 
     bli_obj_set_struc( struca, &ao );
-    
+
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
     {
-        /* bli_dtrsm_small is performing better existing native
-         * implementations for [m,n]<=1000 for single thread.
-         * In case of multithread when [m,n]<=128 sinlge thread implemenation
-         * is doing better than native multithread */
-        bool nt = bli_thread_get_is_parallel();
-        if ((nt == 0 && m0 <= 1000 && n0 <= 1000) ||
-            (nt && (m0 + n0) < 320))
+        // typedef for trsm small kernel function pointer
+        typedef err_t (*dtrsm_small_ker_ft)
+            (
+              side_t   side,
+              obj_t*   alpha,
+              obj_t*   a,
+              obj_t*   b,
+              cntx_t*  cntx,
+              cntl_t*  cntl,
+              bool     is_parallel
+            );
+        err_t status = BLIS_NOT_YET_IMPLEMENTED;
+        
+        // trsm small kernel function pointer definition
+        dtrsm_small_ker_ft ker_ft = NULL;
+
+        // Query the architecture ID
+        arch_t id = bli_arch_query_id();
+
+        // dimensions of triangular matrix
+        // for left variants, dim_a is m0,
+        // for right variants, dim_a is n0
+        dim_t dim_a = n0;
+        if (blis_side == BLIS_LEFT)
+            dim_a = m0;
+
+        // size of output matrix(B)
+        dim_t size_b = m0*n0;
+
+        /* bli_dtrsm_small is performing better than existing native
+         * implementations for dim_a<1500 and m0*n0<5e6 for single thread.
+         * In case of multithread when [m+n]<320 single thread implementation
+         * is doing better than small multithread and native multithread */
+        bool is_parallel = bli_thread_get_is_parallel();
+        if ((!is_parallel && ((dim_a < 1500) && (size_b < 5e6)) ) ||
+            (is_parallel && (m0+n0)<320))
         {
-            err_t status;
-            status = bli_trsm_small(
-                blis_side,
-                &alphao,
-                &ao,
-                &bo,
-                NULL,
-                NULL);
-            if (status == BLIS_SUCCESS)
+            switch(id)
             {
-                AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
-                /* Finalize BLIS. */
-                bli_finalize_auto();
-                return;
+                case BLIS_ARCH_ZEN4:
+#if defined(BLIS_KERNELS_ZEN4)
+                    /* For sizes where m and n < 50,avx2 kernels are performing better,
+                     except for sizes where n is multiple of 8.*/
+                    if (((n0 % 8 == 0) && (n0 < 50)) || ((m0 > 50) && (n0 > 50)))
+                    {
+                        ker_ft = bli_trsm_small_AVX512;
+                    }
+                    else
+                    {
+                        ker_ft = bli_trsm_small;
+                    }
+                    break;
+#endif // BLIS_KERNELS_ZEN4
+                case BLIS_ARCH_ZEN:
+                case BLIS_ARCH_ZEN2:
+                case BLIS_ARCH_ZEN3:
+                default:
+                    ker_ft = bli_trsm_small;
+                    break;
             }
         }
-    } // bli_cpuid_is_avx_supported
+
+#ifdef BLIS_ENABLE_OPENMP
+        if( (ker_ft == NULL) && (is_parallel) &&
+          ((dim_a < 2500) && (size_b < 5e6)) )
+        {
+            switch(id)
+            {
+                case BLIS_ARCH_ZEN4:
+#if defined(BLIS_KERNELS_ZEN4)
+                    ker_ft = bli_trsm_small_mt_AVX512;
+                    break;
+#endif// BLIS_KERNELS_ZEN4
+                case BLIS_ARCH_ZEN:
+                case BLIS_ARCH_ZEN2:
+                case BLIS_ARCH_ZEN3:
+                default:
+                    ker_ft = bli_trsm_small_mt;
+                    break;
+            }
+        }
+
+#endif// BLIS_ENABLE_OPENMP
+        if(ker_ft)
+        {
+            status = ker_ft(blis_side, &alphao, &ao, &bo, NULL, NULL, is_parallel);
+        }
+        if (status == BLIS_SUCCESS)
+        {
+            AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
+            /* Finalize BLIS. */
+            bli_finalize_auto();
+            return;
+        }
+    } // bli_cpuid_is_avx2fma3_supported
 #endif// END of BLIS_ENABLE_SMALL_MATRIX_TRSM
 
     bli_trsmnat
@@ -939,9 +1129,25 @@ void dtrsm_
     /* Finalize BLIS. */
     bli_finalize_auto();
 }
+#ifdef BLIS_ENABLE_BLAS
+void dtrsm_
+(
+    const f77_char* side,
+    const f77_char* uploa,
+    const f77_char* transa,
+    const f77_char* diaga,
+    const f77_int*  m,
+    const f77_int*  n,
+    const double*    alpha,
+    const double*    a, const f77_int* lda,
+    double*    b, const f77_int* ldb
+)
+{
+    dtrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
+}
+#endif
 
-
-void ztrsm_
+void ztrsm_blis_impl
 (
     const f77_char* side,
     const f77_char* uploa,
@@ -1010,6 +1216,23 @@ void ztrsm_
     const inc_t cs_b = *ldb;
     const num_t dt = BLIS_DCOMPLEX;
 
+	/* If alpha is zero, set B to zero and return early */
+	if( PASTEMAC(z,eq0)( *alpha ) )
+	{
+		PASTEMAC2(z,setm,_ex)( BLIS_NO_CONJUGATE,
+								0,
+								BLIS_NONUNIT_DIAG,
+								BLIS_DENSE,
+								m0, n0,
+								(dcomplex*) alpha,
+								(dcomplex*) b, rs_b, cs_b,
+								NULL, NULL
+							  );
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
+		/* Finalize BLIS. */
+		bli_finalize_auto();
+		return;
+	}
 
     if( n0 == 1 )
     {
@@ -1226,18 +1449,18 @@ void ztrsm_
     bli_obj_set_struc( struca, &ao );
 
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
     {
         /* bli_ztrsm_small is performing better existing native
         * implementations for [m,n]<=1000 for single thread.
-        * In case of multithread when [m,n]<=128 sinlge thread implemenation
+        * In case of multithread when [m,n]<=128 single thread implementation
         * is doing better than native multithread */
-        bool nt = bli_thread_get_is_parallel();
+        bool is_parallel = bli_thread_get_is_parallel();
 
-        if(((nt==0) && (m0<=500) && (n0<=500)) ||
-        (nt && ((m0+n0)<128)))
+        if((!is_parallel && m0<=500 && n0<=500) ||
+           (is_parallel && (m0+n0)<128))
         {
             err_t status;
             status = bli_trsm_small
@@ -1247,7 +1470,8 @@ void ztrsm_
                         &ao,
                         &bo,
                         NULL,
-                        NULL
+                        NULL,
+                        is_parallel
                     );
             if (status == BLIS_SUCCESS)
             {
@@ -1257,8 +1481,8 @@ void ztrsm_
                 return;
             }
         }
-    } // bli_cpuid_is_avx_supported
-#endif
+    } // bli_cpuid_is_avx2fma3_supported
+#endif// END of BLIS_ENABLE_SMALL_MATRIX_TRSM
 
     bli_trsmnat
     (
@@ -1274,9 +1498,25 @@ void ztrsm_
     /* Finalize BLIS. */
     bli_finalize_auto();
 }
+#ifdef BLIS_ENABLE_BLAS
+void ztrsm_
+(
+    const f77_char* side,
+    const f77_char* uploa,
+    const f77_char* transa,
+    const f77_char* diaga,
+    const f77_int*  m,
+    const f77_int*  n,
+    const dcomplex*    alpha,
+    const dcomplex*    a, const f77_int* lda,
+    dcomplex*    b, const f77_int* ldb
+)
+{
+    ztrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
+}
+#endif
 
-
-void ctrsm_
+void ctrsm_blis_impl
 (
     const f77_char* side,
     const f77_char* uploa,
@@ -1345,6 +1585,23 @@ void ctrsm_
     const inc_t cs_b = *ldb;
     const num_t dt = BLIS_SCOMPLEX;
 
+	/* If alpha is zero, set B to zero and return early */
+	if( PASTEMAC(c,eq0)( *alpha ) )
+	{
+		PASTEMAC2(c,setm,_ex)( BLIS_NO_CONJUGATE,
+								0,
+								BLIS_NONUNIT_DIAG,
+								BLIS_DENSE,
+								m0, n0,
+								(scomplex*) alpha,
+								(scomplex*) b, rs_b, cs_b,
+								NULL, NULL
+							  );
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
+		/* Finalize BLIS. */
+		bli_finalize_auto();
+		return;
+	}
 
     if( n0 == 1 )
     {
@@ -1560,17 +1817,17 @@ void ctrsm_
     bli_obj_set_struc( struca, &ao );
 
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
     {
         /* bli_ztrsm_small is performing better existing native
         * implementations for [m,n]<=1000 for single thread.
-        * In case of multithread when [m,n]<=128 sinlge thread implemenation
+        * In case of multithread when [m,n]<=128 single thread implementation
         * is doing better than native multithread */
-        bool nt = bli_thread_get_is_parallel();
-        if((nt==0 && m0<=1000 && n0<=1000) ||
-        (nt && (m0+n0)<320) )
+        bool is_parallel = bli_thread_get_is_parallel();
+        if((!is_parallel && m0<=1000 && n0<=1000) ||
+           (is_parallel && (m0+n0)<320))
         {
             err_t status;
             status = bli_trsm_small
@@ -1580,7 +1837,8 @@ void ctrsm_
                         &ao,
                         &bo,
                         NULL,
-                        NULL
+                        NULL,
+                        is_parallel
                     );
             if (status == BLIS_SUCCESS)
             {
@@ -1590,7 +1848,7 @@ void ctrsm_
                 return;
             }
         }
-    } // bli_cpuid_is_avx_supported
+    } // bli_cpuid_is_avx2fma3_supported
 #endif
 
     bli_trsmnat
@@ -1606,6 +1864,22 @@ void ctrsm_
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
     /* Finalize BLIS. */
     bli_finalize_auto();
+}
+#ifdef BLIS_ENABLE_BLAS
+void ctrsm_
+(
+    const f77_char* side,
+    const f77_char* uploa,
+    const f77_char* transa,
+    const f77_char* diaga,
+    const f77_int*  m,
+    const f77_int*  n,
+    const scomplex*    alpha,
+    const scomplex*    a, const f77_int* lda,
+    scomplex*    b, const f77_int* ldb
+)
+{
+    ctrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
 }
 
 #endif

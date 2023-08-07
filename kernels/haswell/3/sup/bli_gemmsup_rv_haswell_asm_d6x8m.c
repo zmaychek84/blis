@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019 - 22, Advanced Micro Devices, Inc.
+   Copyright (C) 2019-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -890,12 +890,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10",
+	  "ymm11", "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 
@@ -1587,12 +1590,14 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_L
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm6",
+	  "ymm8", "ymm10", "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 
@@ -1946,12 +1951,14 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_6x8_L
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm6",
+	  "ymm8", "ymm10", "ymm12", "ymm14",
 	  "memory"
 	)
 
@@ -2191,13 +2198,14 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_12x16_L
 			[a_next] "m" (a_next),
 			[b_next] "m" (b_next)*/
 			: // register clobber list
-			"rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+			"rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 			"r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 			"xmm0", "xmm1", "xmm2", "xmm3",
 			"xmm4", "xmm5", "xmm6", "xmm7",
 			"xmm8", "xmm9", "xmm10", "xmm11",
 			"xmm12", "xmm13", "xmm14", "xmm15",
-			"memory"
+			"ymm0", "ymm3", "ymm4", "ymm12", "ymm14",
+	 		"memory"
 			)
 }
 
@@ -2331,8 +2339,8 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L
 		label(.DPOSTPFETCH)
 		mov(var(ps_a8), rdx)
 		lea(mem(rax, rdx, 1), rdx)	//rdx = a + ps_a8		//for prefetch
-		mov(var(ps_a8), rbp)
-		lea(mem(r11, rbp, 1), rbp)	//rdx = a + ps_a8		//for prefetch
+		mov(var(ps_a8), rcx)
+		lea(mem(r11, rcx, 1), rcx)	//rdx = a + ps_a8		//for prefetch
 		mov(var(k_iter), rsi)
 		test(rsi, rsi)
 		je(.DCONSILEFT)
@@ -2341,7 +2349,7 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L
 		label(.DMAIN)
 		//0
 		prefetch(0, mem(rdx, 5*8))
-		prefetch(0, mem(rbp, 5*8))
+		prefetch(0, mem(rcx, 5*8))
 		vmovupd(mem(rbx,  0*32), ymm0)
 		vmovupd(mem(rbx,  1*32), ymm1)
 
@@ -2373,7 +2381,7 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L
 		add(r9, rax)
 		//1
 		prefetch(0, mem(rdx, r9, 1, 5*8))
-		prefetch(0, mem(rbp, r9, 1, 5*8))
+		prefetch(0, mem(rcx, r9, 1, 5*8))
 		vmovupd(mem(rbx,  0*32), ymm0)
 		vmovupd(mem(rbx,  1*32), ymm1)
 
@@ -2405,7 +2413,7 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L
 		add(r9, rax)
 		//2
 		prefetch(0, mem(rdx, r9, 2, 5*8))
-		prefetch(0, mem(rbp, r9, 2, 5*8))
+		prefetch(0, mem(rcx, r9, 2, 5*8))
 		vmovupd(mem(rbx,  0*32), ymm0)
 		vmovupd(mem(rbx,  1*32), ymm1)
 
@@ -2436,10 +2444,12 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L
 		add(r10, rbx)
 		add(r9, rax)
 		//3
-		prefetch(0, mem(rdx, rcx, 1, 5*8))
-		prefetch(0, mem(rbp, rcx, 1, 5*8))
-		lea(mem(rdx, r9,  4), rdx)
-		lea(mem(rbp, r9,  4), rbp)
+		lea(mem(rdx, r9,  2), rdx)
+		lea(mem(rcx, r9,  2), rcx)
+		prefetch(0, mem(rdx, r9, 1, 5*8))
+		prefetch(0, mem(rcx, r9, 1, 5*8))
+		lea(mem(rdx, r9,  2), rdx)
+		lea(mem(rcx, r9,  2), rcx)
 
 		vmovupd(mem(rbx,  0*32), ymm0)
 		vmovupd(mem(rbx,  1*32), ymm1)
@@ -2481,8 +2491,8 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L
 
 		label(.DLEFT)
 		prefetch(0, mem(rdx, 5*8))
-		prefetch(0, mem(rbp, 5*8))
-		add(r9, rbp)
+		prefetch(0, mem(rcx, 5*8))
+		add(r9, rcx)
 		add(r9, rdx)
 		vmovupd(mem(rbx,  0*32), ymm0)
 		vmovupd(mem(rbx,  1*32), ymm1)
@@ -2836,12 +2846,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L
 			[a_next] "m" (a_next),
 			[b_next] "m" (b_next)*/
 			: // register clobber list
-			"rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+			"rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 			"r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 			"xmm0", "xmm1", "xmm2", "xmm3",
 			"xmm4", "xmm5", "xmm6", "xmm7",
 			"xmm8", "xmm9", "xmm10", "xmm11",
 			"xmm12", "xmm13", "xmm14", "xmm15",
+			"ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+			"ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11",
+			"ymm12", "ymm13", "ymm14", "ymm15",
 			"memory"
 			)
 	}
@@ -3455,12 +3468,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_6x0_L
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11",
+	  "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 
@@ -4084,12 +4100,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_12x8_L
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11",
+	  "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 
@@ -4688,12 +4707,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_18x16_L
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11",
+	  "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 
@@ -5214,12 +5236,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_U
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11",
+	  "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 }
@@ -5771,12 +5796,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_6x8_U
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11",
+	  "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 }
@@ -6327,12 +6355,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_12x16_U
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11",
+	  "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 }
@@ -6578,12 +6609,13 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_6x0_U
 			[a_next] "m" (a_next),
 			[b_next] "m" (b_next)*/
 			: // register clobber list
-			"rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+			"rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 			"r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 			"xmm0", "xmm1", "xmm2", "xmm3",
 			"xmm4", "xmm5", "xmm6", "xmm7",
 			"xmm8", "xmm9", "xmm10", "xmm11",
 			"xmm12", "xmm13", "xmm14", "xmm15",
+			"ymm0", "ymm2", "ymm3", "ymm5", "ymm7",
 			"memory"
 			)
 }
@@ -6953,12 +6985,14 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_12x8_U
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm5",
+	  "ymm7", "ymm9", "ymm11",
 	  "memory"
 	)
 }
@@ -7440,12 +7474,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_18x16_U
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10", "ymm11",
+	  "ymm13", "ymm15",
 	  "memory"
 	)
 }
@@ -7615,9 +7652,9 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U
 
 	vmovupd(mem(rbx,  1*64), ymm0)
 	add(r10, rbx)                      // b += rs_b;
-	lea(mem(rax, r13, 2), rbp)
-	vbroadcastsd(mem(rbp       ), ymm2)
-	vbroadcastsd(mem(rbp, r8, 1), ymm3)
+	lea(mem(rax, r13, 2), r11)
+	vbroadcastsd(mem(r11       ), ymm2)
+	vbroadcastsd(mem(r11, r8, 1), ymm3)
 	vfmadd231pd(ymm1, ymm2, ymm12)
 	vfmadd231pd(ymm1, ymm3, ymm14)
 
@@ -7652,9 +7689,9 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U
 
 	vmovupd(mem(rbx,  1*64), ymm0)
 	add(r10, rbx)                      // b += rs_b;
-	lea(mem(rax, r13, 2), rbp)
-	vbroadcastsd(mem(rbp       ), ymm2)
-	vbroadcastsd(mem(rbp, r8, 1), ymm3)
+	lea(mem(rax, r13, 2), r11)
+	vbroadcastsd(mem(r11       ), ymm2)
+	vbroadcastsd(mem(r11, r8, 1), ymm3)
 	vfmadd231pd(ymm1, ymm2, ymm12)
 	vfmadd231pd(ymm1, ymm3, ymm14)
 
@@ -7689,9 +7726,9 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U
 
 	vmovupd(mem(rbx,  1*64), ymm0)
 	add(r10, rbx)                      // b += rs_b;
-	lea(mem(rax, r13, 2), rbp)
-	vbroadcastsd(mem(rbp       ), ymm2)
-	vbroadcastsd(mem(rbp, r8, 1), ymm3)
+	lea(mem(rax, r13, 2), r11)
+	vbroadcastsd(mem(r11       ), ymm2)
+	vbroadcastsd(mem(r11, r8, 1), ymm3)
 	vfmadd231pd(ymm1, ymm2, ymm12)
 	vfmadd231pd(ymm1, ymm3, ymm14)
 	add(r9, rax)                       // a += cs_a;
@@ -7725,9 +7762,9 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U
 
 	vmovupd(mem(rbx,  1*64), ymm0)
 	add(r10, rbx)                      // b += rs_b;
-	lea(mem(rax, r13, 2), rbp)
-	vbroadcastsd(mem(rbp       ), ymm2)
-	vbroadcastsd(mem(rbp, r8, 1), ymm3)
+	lea(mem(rax, r13, 2), r11)
+	vbroadcastsd(mem(r11       ), ymm2)
+	vbroadcastsd(mem(r11, r8, 1), ymm3)
 	vfmadd231pd(ymm1, ymm2, ymm12)
 	vfmadd231pd(ymm1, ymm3, ymm14)
 	add(r9, rax)                       // a += cs_a;
@@ -7771,9 +7808,9 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U
 
 	vmovupd(mem(rbx,  1*64), ymm0)
 	add(r10, rbx)                      // b += rs_b;
-	lea(mem(rax, r13, 2), rbp)
-	vbroadcastsd(mem(rbp       ), ymm2)
-	vbroadcastsd(mem(rbp, r8, 1), ymm3)
+	lea(mem(rax, r13, 2), r11)
+	vbroadcastsd(mem(r11       ), ymm2)
+	vbroadcastsd(mem(r11, r8, 1), ymm3)
 	vfmadd231pd(ymm1, ymm2, ymm12)
 	vfmadd231pd(ymm1, ymm3, ymm14)
 	add(r9, rax)                       // a += cs_a;
@@ -7909,12 +7946,12 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U
 	vunpckhpd(ymm14, ymm12, ymm1)
 	vextractf128(imm(0x1), ymm0, xmm2)
 	vextractf128(imm(0x1), ymm1, xmm4)
-	lea(mem(rcx, 6*8), rbp)
-	lea(mem(rbp, rsi, 2), rbp)
-	vfmadd231pd(mem(rbp ), xmm3, xmm2)
-	vfmadd231pd(mem(rbp, rsi, 1), xmm3, xmm4)
-	vmovlpd(xmm2, mem(rbp))
-	vmovupd(xmm4, mem(rbp, rsi, 1))
+	lea(mem(rcx, 6*8), r11)
+	lea(mem(r11, rsi, 2), r11)
+	vfmadd231pd(mem(r11 ), xmm3, xmm2)
+	vfmadd231pd(mem(r11, rsi, 1), xmm3, xmm4)
+	vmovlpd(xmm2, mem(r11))
+	vmovupd(xmm4, mem(r11, rsi, 1))
 
 	lea(mem(rdx, rsi, 4), rdx)
 
@@ -8022,11 +8059,11 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U
 	vunpckhpd(ymm14, ymm12, ymm1)
 	vextractf128(imm(0x1), ymm0, xmm2)
 	vextractf128(imm(0x1), ymm1, xmm4)
-	lea(mem(rcx, rdi, 4), rbp)
-	lea(mem(rbp, rdi, 2), rbp)
-	lea(mem(rbp, rsi, 2), rbp)
-	vmovlpd(xmm2, mem(rbp))
-	vmovupd(xmm4, mem(rbp, rsi, 1))
+	lea(mem(rcx, rdi, 4), r11)
+	lea(mem(r11, rdi, 2), r11)
+	lea(mem(r11, rsi, 2), r11)
+	vmovlpd(xmm2, mem(r11))
+	vmovupd(xmm4, mem(r11, rsi, 1))
 
 	lea(mem(rdx, rsi, 4), rdx)
 
@@ -8079,12 +8116,15 @@ void bli_dgemmsup_rv_haswell_asm_6x8m_0x0_combined_U
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10",
+	  "ymm11", "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 }
@@ -8775,12 +8815,15 @@ void bli_dgemmsup_rv_haswell_asm_6x6m
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5",
+	  "ymm6", "ymm7", "ymm8", "ymm9", "ymm10",
+	  "ymm11", "ymm12", "ymm13", "ymm14", "ymm15",
 	  "memory"
 	)
 
@@ -9433,12 +9476,14 @@ void bli_dgemmsup_rv_haswell_asm_6x4m
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4",
+	  "ymm6", "ymm8", "ymm10", "ymm12", "ymm14",
 	  "memory"
 	)
 
@@ -10066,12 +10111,14 @@ void bli_dgemmsup_rv_haswell_asm_6x2m
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4",
+	  "ymm6", "ymm8", "ymm10", "ymm12", "ymm14",
 	  "memory"
 	)
 

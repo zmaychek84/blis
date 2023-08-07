@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 22, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -143,9 +143,9 @@ void bli_dgemv_unf_var1
 
     conja = bli_extract_conj(transa);
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         if ( cntx == NULL ) cntx = bli_gks_query_cntx();
         const num_t dt = PASTEMAC(d,type);
@@ -460,9 +460,9 @@ void bli_sgemv_unf_var1
 
     conja = bli_extract_conj( transa );
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == FALSE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == FALSE)
     {
         if ( cntx == NULL ) cntx = bli_gks_query_cntx();
         const num_t dt = PASTEMAC(s,type);
@@ -501,13 +501,6 @@ void bli_sgemv_unf_var1
       return;
     }
 
-// If both multithreading and OpenMP are enabled, GEMV will multithread
-#if defined(BLIS_ENABLE_MULTITHREADING) && defined(BLIS_ENABLE_OPENMP)
-    bool is_omp_mt_enabled = TRUE;
-#else
-    bool is_omp_mt_enabled = FALSE;
-#endif
-
     dim_t nt_max;
 
     rntm_t rnmt_obj;
@@ -517,9 +510,23 @@ void bli_sgemv_unf_var1
     // Query the total number of threads from the rntm_t object.
     nt_max = bli_rntm_num_threads( &rnmt_obj );
 
-    if ( ( nt_max > 1 ) & ( is_omp_mt_enabled == TRUE ) )
+    if (nt_max<=0)
     {
+        // nt is less than one if BLIS manual setting of parallelism
+        // has been used. Parallelism here will be product of values.
+        dim_t jc, pc, ic, jr, ir;
+        jc = bli_rntm_jc_ways( &rnmt_obj );
+        pc = bli_rntm_pc_ways( &rnmt_obj );
+        ic = bli_rntm_ic_ways( &rnmt_obj );
+        jr = bli_rntm_jr_ways( &rnmt_obj );
+        ir = bli_rntm_ir_ways( &rnmt_obj );
+        nt_max = jc*pc*ic*jr*ir;
+    }
+
+// If OpenMP is enabled, GEMV will multithread
 #ifdef BLIS_ENABLE_OPENMP
+    if ( nt_max > 1 )
+    {
         b_fuse = 4;
 
         //Setting the thread count to the maximum number of threads provided
@@ -545,10 +552,10 @@ void bli_sgemv_unf_var1
           cntx,
           nt
         );
-#endif// BLIS_ENABLE_OPENMP
     }
     else
     {
+#endif// BLIS_ENABLE_OPENMP
         b_fuse = 8;
 
         for ( i = 0; i < n_iter; i += f )
@@ -575,7 +582,9 @@ void bli_sgemv_unf_var1
               cntx
             );
         }
+#ifdef BLIS_ENABLE_OPENMP
     }
+#endif// BLIS_ENABLE_OPENMP
 }
 
 INSERT_GENTFUNC_BASIC0_CZ( gemv_unf_var1 )

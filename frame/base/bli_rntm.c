@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2021 - 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -39,6 +39,9 @@
 // along with a few other key parameters.
 rntm_t global_rntm;
 
+// Make thread settings local to each thread calling BLIS routines
+BLIS_THREAD_LOCAL rntm_t tl_rntm = BLIS_RNTM_INITIALIZER;
+
 // A mutex to allow synchronous access to global_rntm.
 bli_pthread_mutex_t global_rntm_mutex = BLIS_PTHREAD_MUTEX_INITIALIZER;
 
@@ -46,38 +49,43 @@ bli_pthread_mutex_t global_rntm_mutex = BLIS_PTHREAD_MUTEX_INITIALIZER;
 
 void bli_rntm_init_from_global( rntm_t* rntm )
 {
-	// We must ensure that global_rntm has been initialized.
+	// Initializes supplied rntm from a combination of global and
+	// thread local data (global_rntm and tl_rntm respectively).
+
+	dim_t jc, pc, ic, jr, ir;
+
+	// We must ensure that global_rntm has been initialized
 	bli_init_once();
 
-	// Fetch the number of threads based on the order of precedence,
-	// or the latest value of number of threads,
-	// if set by the Application using omp_set_num_threads(nt) API.
-#ifdef BLIS_ENABLE_OPENMP
-	dim_t n_threads = omp_get_max_threads();
-#endif
+	// We must also ensure that tl_rntm has been updated.
+	bli_thread_update_tl();
 
 	// Acquire the mutex protecting global_rntm.
 	bli_pthread_mutex_lock( &global_rntm_mutex );
 
-	// If BLIS_NUM_THREADS environment variable is not set or
-	// if bli_thread_set_num_threads() API is not used by the
-	// application, blis_mt flag will be false.
-	// Then we derive number of threads using OpenMP API
-	// omp_get_max_threads(), and update into global rntm structure,
-	// before copying into local rntm structure.
-
-	// This updated value will be used in the subsequent parallel regions.
-	if(!(global_rntm.blis_mt))
-	{
-#ifdef BLIS_ENABLE_OPENMP
-	    global_rntm.num_threads = n_threads;
-#endif
-	}
-
+	// Initialize supplied rntm from global_rntm.
 	*rntm = global_rntm;
 
 	// Release the mutex protecting global_rntm.
 	bli_pthread_mutex_unlock( &global_rntm_mutex );
+
+	// Now update threading info in supplied rntm from tl_rntm
+	bli_rntm_set_auto_factor_only( tl_rntm.auto_factor, rntm );
+	bli_rntm_set_num_threads_only( tl_rntm.num_threads, rntm );
+
+	jc = bli_rntm_jc_ways( &tl_rntm );
+	pc = bli_rntm_pc_ways( &tl_rntm );
+	ic = bli_rntm_ic_ways( &tl_rntm );
+	jr = bli_rntm_jr_ways( &tl_rntm );
+	ir = bli_rntm_ir_ways( &tl_rntm );
+	bli_rntm_set_ways_only( jc, pc, ic, jr, ir, rntm );
+
+	bli_rntm_set_blis_mt_only( tl_rntm.blis_mt, rntm );
+
+#if 0
+	printf( "bli_rntm_init_from_global()\n" );
+	bli_rntm_print( rntm );
+#endif
 }
 
 // -----------------------------------------------------------------------------
@@ -96,9 +104,9 @@ void bli_rntm_set_ways_for_op
 	// kind of information is already stored in the rntm_t object.
 	bli_rntm_set_ways_from_rntm( m, n, k, rntm );
 
-#if 0
-printf( "bli_rntm_set_ways_for_op()\n" );
-bli_rntm_print( rntm );
+#ifdef PRINT_THREADING
+	printf( "bli_rntm_set_ways_for_op()\n" );
+	bli_rntm_print( rntm );
 #endif
 
 	// Now modify the number of ways, if necessary, based on the operation.
@@ -211,8 +219,9 @@ void bli_rntm_set_ways_from_rntm
 	// First, we establish whether or not the number of threads is set.
 	if ( nt > 0 ) nt_set = TRUE;
 
-	// Take this opportunity to set the auto_factor field.
-	if ( nt_set ) auto_factor = TRUE;
+	// Take this opportunity to set the auto_factor field (when using
+	// more than one thread).
+	if ( nt_set && nt > 1 ) auto_factor = TRUE;
 
 	// Next, we establish whether or not any of the ways of parallelism
 	// for each loop were set. If any of the ways are set (positive), we
@@ -300,6 +309,11 @@ void bli_rntm_set_ways_from_rntm
 	bli_rntm_set_auto_factor_only( auto_factor, rntm );
 	bli_rntm_set_num_threads_only( nt, rntm );
 	bli_rntm_set_ways_only( jc, pc, ic, jr, ir, rntm );
+
+#ifdef PRINT_THREADING
+	printf( "bli_rntm_set_ways_from_rntm()\n" );
+	bli_rntm_print( rntm );
+#endif
 }
 
 void bli_rntm_set_ways_from_rntm_sup
@@ -337,8 +351,9 @@ void bli_rntm_set_ways_from_rntm_sup
 	// First, we establish whether or not the number of threads is set.
 	if ( nt > 0 ) nt_set = TRUE;
 
-	// Take this opportunity to set the auto_factor field.
-	if ( nt_set ) auto_factor = TRUE;
+	// Take this opportunity to set the auto_factor field (when using
+	// more than one thread).
+	if ( nt_set && nt > 1 ) auto_factor = TRUE;
 
 	// Next, we establish whether or not any of the ways of parallelism
 	// for each loop were set. If any of the ways are set (positive), we
@@ -435,6 +450,11 @@ void bli_rntm_set_ways_from_rntm_sup
 	bli_rntm_set_auto_factor_only( auto_factor, rntm );
 	bli_rntm_set_num_threads_only( nt, rntm );
 	bli_rntm_set_ways_only( jc, pc, ic, jr, ir, rntm );
+
+#ifdef PRINT_THREADING
+	printf( "bli_rntm_set_ways_from_rntm_sup()\n" );
+	bli_rntm_print( rntm );
+#endif
 }
 
 void bli_rntm_print
@@ -446,14 +466,16 @@ void bli_rntm_print
 
 	dim_t nt = bli_rntm_num_threads( rntm );
 
+	bool mt = bli_rntm_blis_mt( rntm );
+
 	dim_t jc = bli_rntm_jc_ways( rntm );
 	dim_t pc = bli_rntm_pc_ways( rntm );
 	dim_t ic = bli_rntm_ic_ways( rntm );
 	dim_t jr = bli_rntm_jr_ways( rntm );
 	dim_t ir = bli_rntm_ir_ways( rntm );
 
-	printf( "rntm contents	nt  jc  pc  ic  jr  ir\n" );
-	printf( "autofac? %1d | %4d%4d%4d%4d%4d%4d\n", (int)af,
+	printf( "rntm contents	       |   nt  jc  pc  ic  jr  ir\n" );
+	printf( "autofac, blis_mt? %1d, %1d | %4d%4d%4d%4d%4d%4d\n", (int)af, (int)mt,
 							   (int)nt, (int)jc, (int)pc,
 							   (int)ic, (int)jr, (int)ir );
 }
@@ -524,10 +546,10 @@ dim_t bli_rntm_calc_num_threads_in
 
 
 #ifdef AOCL_DYNAMIC
-//calculates the optimum number of threads using m, n, k dimensions.
-//This function modifies only the local copy of rntm with optimum threads.
-//Global rntm will remain unchanged. As a result, num_threads set by
-//application is available in global_rntm data structure.
+// Calculates the optimum number of threads using m, n, k dimensions.
+// This function modifies only the local copy of rntm with optimum threads.
+// tl_rntm will remain unchanged. As a result, num_threads set by
+// application is available in tl_rntm data structure.
 
 void bli_nthreads_optimum(
 				   obj_t*  a,
@@ -553,78 +575,647 @@ void bli_nthreads_optimum(
 		dim_t n = bli_obj_width(c);
 		dim_t k = bli_obj_width_after_trans(a);
 
-		if( k >= 128)
+		if(bli_arch_query_id() == BLIS_ARCH_ZEN4)
 		{
-			if(n <= 15)
+			if(n < m)
 			{
-				if(m < 128) 	 n_threads_ideal = 8;
-				else if(m < 256) n_threads_ideal = 16;
-				else if(m < 512) n_threads_ideal = 32;
-				else 			 n_threads_ideal = 64;
-			}else if (n <= 64)
+				if(k <= 32)
+				{
+					if( m <= 1000 )
+					{
+						n_threads_ideal = 8;
+					}
+					else if( m <= 10000)
+					{
+						if( n <= 500 )
+						{
+							n_threads_ideal = 16;
+						}
+						else if( n <= 1000 )
+						{
+							n_threads_ideal = 64;
+						}
+						else
+						{
+							n_threads_ideal = 96;
+						}
+					}
+					else
+					{
+						n_threads_ideal = 96;
+					}
+				}
+				else if(k <= 64)
+				{
+					if( (m <= 100) || (m <= 500 && n <= 100))
+					{
+						n_threads_ideal = 8;
+					}
+					else if(m <= 500)
+					{
+						n_threads_ideal = 16;
+					}
+					else if(m <= 1000)
+					{
+						if(n <= 50)
+						{
+							n_threads_ideal = 8;
+						}
+						else if(n <= 250)
+						{
+							n_threads_ideal = 16;
+						}
+						else
+						{
+							n_threads_ideal = 24;
+						}
+					}
+					else if(m <= 10000)
+					{
+						if(n <= 500)
+						{
+							n_threads_ideal = 24;
+						}
+						else if(n <= 1000)
+						{
+							n_threads_ideal = 64;
+						}
+					}
+					else if( m <= 20000 && n <= 500)
+					{
+						n_threads_ideal = 96;
+					}
+					else if( m <= 30000)
+					{
+						if(n <= 1000)
+						{
+							n_threads_ideal = 144;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( m <= 40000 && n <= 1000)
+					{
+						n_threads_ideal = 168;
+					}
+					else
+					{
+						n_threads_ideal = 192;
+					}
+				}
+				else if(k <= 128)
+				{
+					if( (m <= 100) || (m <= 500 && n <= 50))
+					{
+						n_threads_ideal = 8;
+					}
+					else if(m <= 500)
+					{
+						if(n <= 100)
+						{
+							n_threads_ideal = 16;
+						}
+						else
+						{
+							n_threads_ideal = 24;
+						}
+					}
+					else if( m <= 1000 )
+					{
+						if(n <= 200)
+						{
+							n_threads_ideal = 24;
+						}
+						else
+						{
+							n_threads_ideal = 48;
+						}
+					}
+					else if( m <= 10000 )
+					{
+						if(n <= 50)
+						{
+							n_threads_ideal = 32;
+						}
+						else if(n <= 500)
+						{
+							n_threads_ideal = 48;
+						}
+						else if(n <= 750)
+						{
+							n_threads_ideal = 96;
+						}
+						else if(n <= 1000)
+						{
+							n_threads_ideal = 128;
+						}
+						else if(n <= 5000)
+						{
+							n_threads_ideal = 144;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( m <= 30000 )
+					{
+						if(n <= 1000)
+						{
+							n_threads_ideal = 168;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( m <= 40000 )
+					{
+						if(n <= 600)
+						{
+							n_threads_ideal = 144;
+						}
+						else if(n <= 1000)
+						{
+							n_threads_ideal = 168;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else
+					{
+						n_threads_ideal = 192;
+					}
+				}
+				else
+				{
+					if( m <= 100 )
+					{
+						n_threads_ideal = 8;
+					}
+					else if( m <= 500 )
+					{
+						if( n <= 50 )
+						{
+							n_threads_ideal = 16;
+						}
+						else if( n <= 200 )
+						{
+							n_threads_ideal = 32;
+						}
+						else
+						{
+							n_threads_ideal = 48;
+						}
+					}
+					else if( m <= 1000 )
+					{
+						if(n <= 100 )
+						{
+							n_threads_ideal = 32;
+						}
+						else
+						{
+							n_threads_ideal = 48;
+						}
+					}
+					else if( m <= 10000 )
+					{
+						if(n <= 200 )
+						{
+							n_threads_ideal = 48;
+						}
+						else if( n <= 500 )
+						{
+							n_threads_ideal = 96;
+						}
+						else if( n <= 600 )
+						{
+							n_threads_ideal = 144;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( m <= 20000 && n <= 750 )
+					{
+						n_threads_ideal = 168;
+					}
+					else
+					{
+						n_threads_ideal = 192;
+					}
+				}
+			}
+			else if(m < n)
 			{
-				if(m < 128) 	 n_threads_ideal = 16;
-				else if(m < 256) n_threads_ideal = 32;
-				else 			 n_threads_ideal = 64;
-			}else{
-				if(m < 256) n_threads_ideal = 32;
-				else 		n_threads_ideal = 64;
-            }
+				if(k <= 32)
+				{
+					if( n <= 1000 )
+					{
+						n_threads_ideal = 8;
+					}
+					else if( n <= 10000 )
+					{
+						if( m <= 500 )
+						{
+							n_threads_ideal = 16;
+						}
+						else if( m <= 1000 )
+						{
+							n_threads_ideal = 32;
+						}
+						else
+						{
+							n_threads_ideal = 96;
+						}
+					}
+					else
+					{
+						n_threads_ideal = 96;
+					}
+				}
+				else if(k <= 64)
+				{
+					if( (n <= 100) || (n <= 500 && m <= 100) )
+					{
+						n_threads_ideal = 8;
+					}
+					else if(n <= 500)
+					{
+						n_threads_ideal = 16;
+					}
+					else if( n <= 1000 )
+					{
+						if( m <= 200)
+						{
+							n_threads_ideal = 16;
+						}
+						else
+						{
+							n_threads_ideal = 32;
+						}
+					}
+					else if( n <= 10000 )
+					{
+						if( m <= 100)
+						{
+							n_threads_ideal = 32;
+						}
+						else if( m <= 500)
+						{
+							n_threads_ideal = 48;
+						}
+						else if( m <= 1000)
+						{
+							n_threads_ideal = 96;
+						}
+						else if(m <= 2500)
+						{
+							n_threads_ideal = 128;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( n <= 20000 )
+					{
+						if( m < 1000 )
+						{
+							n_threads_ideal = 128;
+						}
+						else if( m < 2500 )
+						{
+							n_threads_ideal = 144;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( n <= 30000)
+					{
+						if( m < 1000 )
+						{
+							n_threads_ideal = 168;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( n <= 40000 )
+					{
+						if(m < 600)
+						{
+							n_threads_ideal = 144;
+						}
+						else if(m < 750)
+						{
+							n_threads_ideal = 168;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else
+					{
+						n_threads_ideal = 192;
+					}
+				}
+				else if(k <= 128)
+				{
+					if( (n <= 100) || (n <= 500 && m <= 50) )
+					{
+						n_threads_ideal = 8;
+					}
+					else if(n <= 500 )
+					{
+						if( m <= 100)
+						{
+							n_threads_ideal = 16;
+						}
+						else
+						{
+							n_threads_ideal = 32;
+						}
+					}
+					else if( n <= 1000 )
+					{
+						if( m <= 50)
+						{
+							n_threads_ideal = 16;
+						}
+						else
+						{
+							n_threads_ideal = 32;
+						}
+					}
+					else if( n <= 10000 )
+					{
+						if(m <= 100 )
+						{
+							n_threads_ideal = 32;
+						}
+						else if(m <= 200 )
+						{
+							n_threads_ideal = 64;
+						}
+						else if(m <= 500 )
+						{
+							n_threads_ideal = 72;
+						}
+						else if(m < 1000 )
+						{
+							n_threads_ideal = 96;
+						}
+						else if(m < 2500 )
+						{
+							n_threads_ideal = 168;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( n <= 20000 )
+					{
+						if(m <= 500 )
+						{
+							n_threads_ideal = 96;
+						}
+						else if(m < 1000 )
+						{
+							n_threads_ideal = 128;
+						}
+						else if(m < 2500 )
+						{
+							n_threads_ideal = 144;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( n <= 30000 )
+					{
+						if(m <= 500 )
+						{
+							n_threads_ideal = 96;
+						}
+						else if(m < 750 )
+						{
+							n_threads_ideal = 128;
+						}
+						else if(m < 1000 )
+						{
+							n_threads_ideal = 168;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else if( n <= 40000 )
+					{
+						if(m < 500 )
+						{
+							n_threads_ideal = 128;
+						}
+						else if(m < 600 )
+						{
+							n_threads_ideal = 144;
+						}
+						else if(m < 750 )
+						{
+							n_threads_ideal = 168;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else
+					{
+						n_threads_ideal = 192;
+					}
+				}
+				else
+				{
+					if(n <= 100)
+					{
+						n_threads_ideal = 8;
+					}
+					else if( n <= 500 )
+					{
+						if( m <= 100)
+						{
+							n_threads_ideal = 16;
+						}
+						else
+						{
+							n_threads_ideal = 32;
+						}
+					}
+					else if( n <= 1000 )
+					{
+						if( m <= 100)
+						{
+							n_threads_ideal = 32;
+						}
+						else
+						{
+							n_threads_ideal = 48;
+						}
+					}
+					else if( n <= 10000 )
+					{
+						if( m <= 50)
+						{
+							n_threads_ideal = 48;
+						}
+						else if(m <= 100)
+						{
+							n_threads_ideal = 64;
+						}
+						else if(m < 750)
+						{
+							n_threads_ideal = 96;
+						}
+						else
+						{
+							n_threads_ideal = 192;
+						}
+					}
+					else
+					{
+						n_threads_ideal = 192;
+					}
+				}
+			}
+			else if(m == n)
+			{
+				if(k <= 32)
+				{
+					if( m <= 20 )        n_threads_ideal = 1;
+					else if( m <= 40 )   n_threads_ideal = 4;
+					else if( m <= 800 )  n_threads_ideal = 8;
+					else if( m <= 1000 ) n_threads_ideal = 16;
+					else if( m <= 5000 ) n_threads_ideal = 64;
+					else                 n_threads_ideal = 96;
+				}
+				else if(k <= 64)
+				{
+					if(m <= 150) n_threads_ideal = 8;
+					else if(m <= 1000) n_threads_ideal = 16;
+					else if( m <= 2500) n_threads_ideal = 96;
+					else if( m <= 5000) n_threads_ideal = 128;
+					else if( m <= 6000) n_threads_ideal = 128;
+					else n_threads_ideal = 192;
+				}
+				else if( k <= 128)
+				{
+					if( m <= 100) n_threads_ideal = 8;
+					else if(m <= 500) n_threads_ideal = 32;
+					else if( m <= 1000) n_threads_ideal = 64;
+					else if( m <= 5000) n_threads_ideal = 144;
+					else n_threads_ideal = 192;
+				}
+				else
+				{
+					if( m <= 100) n_threads_ideal = 8;
+					else if( m <= 250 ) n_threads_ideal = 32;
+					else if( m <= 500 ) n_threads_ideal = 48;
+					else if( m <= 1000) n_threads_ideal = 96;
+					else n_threads_ideal = 192;
+				}
+			}
 		}
 		else
 		{
-			if(m > 10000)
+			if( k >= 128)
 			{
-				// current logic is only limiting threads to
-				// less or equal to 64 - limits performance.
-				// To deal with larger matrix sizes we need to use
-				// large number of threads to improve performance
-				// Need to derive this upperTH - and
-				// if matrix -sizes are larger and user wants
-				// to use higher number of threads - that should be allowed.
-
-				// if (n > UpperTH) n_threads_ideal = n_threads;
-				if (n > 200 )	    n_threads_ideal = 64;
-				else if ( n > 120 ) n_threads_ideal = 32;
-				else if ( n > 40  ) n_threads_ideal = 16;
-				else if ( n > 10  ) n_threads_ideal = 8;
-				else 				n_threads_ideal = 4;
-			}
-			else if( m > 1000)
-			{
-				if (n <= 10) 		  n_threads_ideal = 4;
-				else if ( n <= 512 )  n_threads_ideal = 8;
-				else if ( n <= 1024 ) n_threads_ideal = 16;
-				else if ( n <= 2048 ) n_threads_ideal = 32;
-				else 				  n_threads_ideal = 64;
-			}
-			else if(m > 210)
-			{
-				if(n < 10)  	   n_threads_ideal = 4;
-				else if(n <= 512)  n_threads_ideal = 8;
-				else if(n <= 1024) n_threads_ideal = 16;
-				else if(n <= 2048) n_threads_ideal = 32;
-				else 			   n_threads_ideal = 64;
-			}
-			else if(m > 150)
-			{
-				if(n < 10)  	   n_threads_ideal = 2;
-				else if(n <= 512)  n_threads_ideal = 8;
-				else if(n <= 1024) n_threads_ideal = 16;
-				else if(n <= 2048) n_threads_ideal = 32;
-				else 			   n_threads_ideal = 64;
-			}
-			else if( ( m < 34) && (k < 68) && ( n < 34))
-			{
-				n_threads_ideal = 1;
+				if(n <= 15)
+				{
+					if(m < 128) 	 n_threads_ideal = 8;
+					else if(m < 256) n_threads_ideal = 16;
+					else if(m < 512) n_threads_ideal = 32;
+					else 			 n_threads_ideal = 64;
+				}
+				else if (n <= 64)
+				{
+					if(m < 128) 	 n_threads_ideal = 16;
+					else if(m < 256) n_threads_ideal = 32;
+					else 			 n_threads_ideal = 64;
+				}
+				else
+				{
+					if(m < 256) n_threads_ideal = 32;
+					else 		n_threads_ideal = 64;
+				}
 			}
 			else
-			{	//(m<150 && k<128)
-				if(n < 20) n_threads_ideal = 1;
-				if(n < 64) n_threads_ideal = 4;
-				else	   n_threads_ideal = 8;
+			{
+				if(m > 10000)
+				{
+					// current logic is only limiting threads to
+					// less or equal to 64 - limits performance.
+					// To deal with larger matrix sizes we need to use
+					// large number of threads to improve performance
+					// Need to derive this upperTH - and
+					// if matrix -sizes are larger and user wants
+					// to use higher number of threads - that should be allowed.
+
+					// if (n > UpperTH) n_threads_ideal = n_threads;
+					if (n > 200 )	    n_threads_ideal = 64;
+					else if ( n > 120 ) n_threads_ideal = 32;
+					else if ( n > 40  ) n_threads_ideal = 16;
+					else if ( n > 10  ) n_threads_ideal = 8;
+					else 				n_threads_ideal = 4;
+				}
+				else if( m > 1000)
+				{
+					if (n <= 10) 		  n_threads_ideal = 4;
+					else if ( n <= 512 )  n_threads_ideal = 8;
+					else if ( n <= 1024 ) n_threads_ideal = 16;
+					else if ( n <= 2048 ) n_threads_ideal = 32;
+					else 				  n_threads_ideal = 64;
+				}
+				else if(m > 210)
+				{
+					if(n < 10)  	   n_threads_ideal = 4;
+					else if(n <= 512)  n_threads_ideal = 8;
+					else if(n <= 1024) n_threads_ideal = 16;
+					else if(n <= 2048) n_threads_ideal = 32;
+					else 			   n_threads_ideal = 64;
+				}
+				else if(m > 150)
+				{
+					if(n < 10)  	   n_threads_ideal = 2;
+					else if(n <= 512)  n_threads_ideal = 8;
+					else if(n <= 1024) n_threads_ideal = 16;
+					else if(n <= 2048) n_threads_ideal = 32;
+					else 			   n_threads_ideal = 64;
+				}
+				else if( ( m < 34) && (k < 68) && ( n < 34))
+				{
+					n_threads_ideal = 1;
+				}
+				else
+				{	//(m<150 && k<128)
+					if(n < 20) n_threads_ideal = 1;
+					if(n < 64) n_threads_ideal = 4;
+					else	   n_threads_ideal = 8;
+				}
 			}
-		  }
+		}
 	}
 	else if( family == BLIS_GEMM && bli_obj_is_dcomplex(c))
 	{
@@ -885,13 +1476,18 @@ void bli_nthreads_optimum(
 	// for updating rntm
 	bli_rntm_set_num_threads_only( n_threads_opt, rntm );
 
+#ifdef PRINT_THREADING
+	printf( "bli_nthreads_optimum()\n" );
+	bli_rntm_print( rntm );
+#endif
+
 	return;
 }
 
 // Calculates the optimum number of threads along with the factorization
 // (ic, jc) using m, n, k dimensions. This function modifies only the local
-// copy of rntm with optimum threads. Since global rntm remains unchanged the
-// num_threads set by application is available in global_rntm data structure.
+// copy of rntm with optimum threads. Since tl_rntm remains unchanged the
+// num_threads set by application is available in tl_rntm data structure.
 err_t bli_smart_threading_sup
 				(
 				 obj_t*  a,
@@ -967,4 +1563,439 @@ err_t bli_smart_threading_sup
 	}
 	return ret_val;
 }
+
+/*
+	Functionality:
+	--------------
+	This function decides the AOCL dynamic logic for L1 dscalv API based on the
+	architecture ID and size of the input variable.
+
+	Function signature
+	-------------------
+
+	This function takes the following input:
+
+	* 'arch_id' - Architecture ID of the system (copy of BLIS global arch id)
+	* 'n_elem' - Number of elements in the vector
+	* 'nt_ideal' - Ideal number of threads
+
+	The function has been made static to restrict its scope.
+
+	Exception
+	----------
+
+	1. For non-Zen architectures, return -1. The expectation is that this is handled
+	   in the higher layer
+*/
+static void aocl_dscalv_dynamic
+     (
+       arch_t arch_id,
+       dim_t  n_elem,
+       dim_t* nt_ideal
+     )
+{
+
+	/*
+		Pick the AOCL dynamic logic based on the
+		architecture ID
+	*/
+	switch (arch_id)
+	{
+		case BLIS_ARCH_ZEN4:
+		case BLIS_ARCH_ZEN:
+		case BLIS_ARCH_ZEN2:
+		case BLIS_ARCH_ZEN3:
+
+			if ( n_elem <= 10000 )
+				*nt_ideal = 1;
+			else if (n_elem <= 20000)
+				*nt_ideal = 2;
+			else if (n_elem <= 50000)
+				*nt_ideal = 4;
+			else
+				*nt_ideal = 8;
+
+			break;
+
+		default:
+			/*
+				Without this default condition, compiler will throw
+				a warning saying other conditions are not handled
+			*/
+
+			/*
+				For other architectures, AOCL dynamic does not make any change
+			*/
+			*nt_ideal = -1;
+	}
+}
+
+/*
+	Functionality:
+	--------------
+	This function decides the AOCL dynamic logic for L1 zdscalv API based on the
+	architecture ID and size of the input variable.
+
+	Function signature
+	-------------------
+
+	This function takes the following input:
+
+	* 'arch_id' - Architecture ID of the system (copy of BLIS global arch id)
+	* 'n_elem' - Number of elements in the vector
+	* 'nt_ideal' - Ideal number of threads
+
+	The function has been made static to restrict its scope.
+
+	Exception
+	----------
+
+	1. For non-Zen architectures, return -1. The expectation is that this is handled
+	   in the higher layer
+*/
+static void aocl_zdscalv_dynamic
+     (
+       arch_t arch_id,
+       dim_t  n_elem,
+       dim_t* nt_ideal
+     )
+{
+
+	/*
+		Pick the AOCL dynamic logic based on the
+		architecture ID
+	*/
+	switch (arch_id)
+	{
+		case BLIS_ARCH_ZEN4:
+		case BLIS_ARCH_ZEN:
+		case BLIS_ARCH_ZEN2:
+		case BLIS_ARCH_ZEN3:
+
+			if ( n_elem <= 10000)
+				*nt_ideal = 1;
+			else if (n_elem <= 20000)
+				*nt_ideal = 4;
+			else if (n_elem <= 1000000)
+				*nt_ideal = 8;
+			else if (n_elem <= 2500000)
+				*nt_ideal = 12;
+			else if (n_elem <= 5000000)
+				*nt_ideal = 32;
+			else
+				*nt_ideal = 64;
+
+			break;
+
+		default:
+			/*
+				Without this default condition, compiler will throw
+				a warning saying other conditions are not handled
+			*/
+
+			/*
+				For other architectures, AOCL dynamic does not make any change
+			*/
+			*nt_ideal = -1;
+	}
+}
+
+/*
+	Functionality:
+	--------------
+	This function decides the AOCL dynamic logic for L1 daxpyv API based on the
+	architecture ID and size of the input variable.
+
+	Function signature
+	-------------------
+
+	This function takes the following input:
+
+	* 'arch_id' - Architecture ID of the system (copy of BLIS global arch id)
+	* 'n_elem' - Number of elements in the vector
+	* 'nt_ideal' - Ideal number of threads
+
+	The function has been made static to restrict its scope.
+
+	Exception
+	----------
+
+	1. For non-Zen architectures, return -1. The expectation is that this is handled
+	   in the higher layer
+*/
+static void aocl_daxpyv_dynamic
+     (
+       arch_t arch_id,
+       dim_t  n_elem,
+       dim_t* nt_ideal
+     )
+{
+	/*
+		Pick the AOCL dynamic logic based on the
+		architecture ID
+	*/
+	switch (arch_id)
+	{
+		case BLIS_ARCH_ZEN4:
+		case BLIS_ARCH_ZEN:
+		case BLIS_ARCH_ZEN2:
+		case BLIS_ARCH_ZEN3:
+
+			if ( n_elem <= 100 )
+				*nt_ideal = 1;
+			else if (n_elem <= 10000)
+				*nt_ideal = 2;
+			else if (n_elem <= 250000)
+				*nt_ideal = 8;
+			else if (n_elem <= 750000)
+				*nt_ideal = 16;
+			else if (n_elem <= 2000000)
+				*nt_ideal = 32;
+			else
+				// For sizes in this range, AOCL dynamic does not make any change
+				*nt_ideal = -1;
+
+			break;
+
+		default:
+			/*
+				Without this default condition, compiler will throw
+				a warning saying other conditions are not handled
+			*/
+
+			/*
+				For other architectures, AOCL dynamic does not make any change
+			*/
+			*nt_ideal = -1;
+	}
+}
+
+/*
+	Functionality:
+	--------------
+	This function decides the AOCL dynamic logic for L1 ddotv API based on the
+	architecture ID and size of the input variable.
+
+	Function signature
+	-------------------
+
+	This function takes the following input:
+
+	* 'arch_id' - Architecture ID of the system (copy of BLIS global arch id)
+	* 'n_elem' - Number of elements in the vector
+	* 'nt_ideal' - Ideal number of threads
+
+	The function has been made static to restrict its scope.
+
+	Exception
+	----------
+
+	1. For non-Zen architectures, return -1. The expectation is that this is handled
+	   in the higher layer
+*/
+static void aocl_ddotv_dynamic
+     (
+       arch_t arch_id,
+       dim_t  n_elem,
+       dim_t* nt_ideal
+     )
+{
+	/*
+		Pick the AOCL dynamic logic based on the
+		architecture ID
+	*/
+	switch (arch_id)
+	{
+		case BLIS_ARCH_ZEN4:
+		case BLIS_ARCH_ZEN:
+		case BLIS_ARCH_ZEN2:
+		case BLIS_ARCH_ZEN3:
+
+			if ( n_elem <= 2500 )
+				*nt_ideal = 1;
+			else if (n_elem <= 5000)
+				*nt_ideal = 4;
+			else if (n_elem <= 15000)
+				*nt_ideal = 8;
+			else if (n_elem <= 40000)
+				*nt_ideal = 16;
+			else if (n_elem <= 200000)
+				*nt_ideal = 32;
+			else
+				// For sizes in this range, AOCL dynamic does not make any change
+				*nt_ideal = -1;
+
+			break;
+
+		default:
+			/*
+				Without this default condition, compiler will throw
+				a warning saying other conditions are not handled
+			*/
+
+			/*
+				For other architectures, AOCL dynamic does not make any change
+			*/
+			*nt_ideal = -1;
+	}
+}
+
 #endif // AOCL_DYNAMIC
+
+/*
+	Functionality:
+	--------------
+
+	This function does the following:
+	1. Reads the number of threads requested by the user from the rntm variable
+	2. Acts as the gateway to the AOCL dynamic logic if AOCL dynamic is enabled
+	   and alters the count of the number of threads accordingly
+
+	Function signature
+	-------------------
+
+	This function takes the following input:
+
+	* 'ker_id' - ID of kernel invoking this function
+	* 'datatype_a' - Datatype 1 of kernel
+	* 'datatype_b' - Datatype 2 of kernel
+	* 'arch_id' - Architecture ID of the system (copy of BLIS global arch id)
+	* 'n_elem' - Number of elements in the vector
+	* 'nt_ideal' - Ideal number of threads
+
+	Exception
+	----------
+
+	None
+*/
+void bli_nthreads_l1
+     (
+       l1vkr_t  ker_id,
+       num_t    data_type_a,
+       num_t    data_type_b,
+       arch_t   arch_id,
+       dim_t    n_elem,
+       dim_t*   nt_ideal
+     )
+{
+#ifdef AOCL_DYNAMIC
+	/*
+		This code sections dispatches the AOCL dynamic logic kernel for
+		L1 APIs based on the kernel ID and the data type.
+	*/
+	// Function pointer to AOCL Dynamic logic kernel
+	void (*aocl_dynamic_func_l1)(arch_t, dim_t, dim_t* ) = NULL;
+
+	// Pick the aocl dynamic thread decision kernel based on the kernel ID
+	switch (ker_id)
+	{
+		case BLIS_SCALV_KER:
+
+			/*
+				When input data types do not match the call is from mixed precision
+			*/
+			if (data_type_a != data_type_b)
+			{
+				// Function for ZDSCALV
+				aocl_dynamic_func_l1 = aocl_zdscalv_dynamic;
+			}
+			else
+			{
+				// Function for DSCALV
+				aocl_dynamic_func_l1 = aocl_dscalv_dynamic;
+			}
+
+			break;
+
+		case BLIS_AXPYV_KER:
+
+			// Function for DAXPYV
+			aocl_dynamic_func_l1 = aocl_daxpyv_dynamic;
+
+			break;
+
+		case BLIS_DOTV_KER:
+
+			// Function for DDOTV
+			aocl_dynamic_func_l1 = aocl_ddotv_dynamic;
+
+			break;
+
+		default:
+			/*
+				For kernels that do no have AOCL dynamic logic,
+				use the number of threads requested by the user.
+			*/
+			*nt_ideal = -1;
+	}
+
+	/*
+		For APIs that do not have AOCL dynamic
+		logic, aocl_dynamic_func_l1 will be NULL.
+	*/
+	if( aocl_dynamic_func_l1 != NULL)
+	{
+		// Call the AOCL dynamic logic kernel
+		aocl_dynamic_func_l1
+		(
+			arch_id,
+			n_elem,
+			nt_ideal
+		);
+
+		if (*nt_ideal == 1)
+		{
+			// Return early when the number of threads is 1
+			return;
+		}
+	}
+
+#endif
+	// Initialized to avoid compiler warning
+	rntm_t rntm_local;
+
+	// Initialize a local runtime with global settings.
+	bli_rntm_init_from_global(&rntm_local);
+
+	// Query the total number of threads from the rntm_t object.
+	dim_t nt_rntm = bli_rntm_num_threads(&rntm_local);
+
+	if (nt_rntm <= 0)
+	{
+		// nt is less than one if BLIS manual setting of parallelism
+		// has been used. Parallelism here will be product of values.
+		nt_rntm = bli_rntm_calc_num_threads(&rntm_local);
+	}
+
+#ifdef AOCL_DYNAMIC
+
+	// Calculate the actual number of threads that will be spawned
+	if (*nt_ideal != -1)
+	{
+		// The if block is executed for all Zen architectures
+		*nt_ideal = bli_min(nt_rntm, *nt_ideal);
+	}
+	else
+	{
+		/*
+			For non-Zen architectures and very large sizes,
+			spawn the actual number of threads requested
+		*/
+		*nt_ideal = nt_rntm;
+	}
+
+	/*
+	  When the number of element to be processed is less
+	  than the number of threads spawn n_elem number of threads.
+	*/
+	if (n_elem < *nt_ideal)
+	{
+		*nt_ideal = n_elem;
+	}
+#else
+
+	// Calculate the actual number of threads that will be spawned
+	*nt_ideal = nt_rntm;
+
+#endif
+}

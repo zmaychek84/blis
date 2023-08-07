@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -168,11 +168,18 @@ BLIS_INLINE void lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
 
 BLIS_INLINE void lpgemm_adjust_ic_jc_ways
      (
-       dim_t   m,
-       dim_t   n,
+       const dim_t  m,
+       const dim_t  n,
+       const dim_t  k,
+       const dim_t  MC,
+       const dim_t  NC,
+       const dim_t  KC,
+       const dim_t  MR,
+       const dim_t  NR,
        dim_t* n_threads,
        dim_t* ic_ways,
-       dim_t* jc_ways
+       dim_t* jc_ways,
+       dim_t  m_boost
      )
 {
 	const dim_t m_ic = m / ( *ic_ways );
@@ -192,16 +199,56 @@ BLIS_INLINE void lpgemm_adjust_ic_jc_ways
 	const int64_t next_jc_work_per_thread = n_next_jc + m_prev_ic;
 	const int64_t next_ic_work_per_thread = m_next_ic + n_prev_jc;
 
+	const dim_t MCx2 = MC * 2;
+	const dim_t k_factor = k / KC;
+	const dim_t n_jc_modulo_NR = n_jc % NR;
+	const dim_t n_prev_jc_modulo_NR = n_prev_jc % NR;
+
 	bool can_increase_ic = FALSE;
 	bool can_increase_jc = FALSE;
 
-	if ( next_ic_work_per_thread <= cur_work_per_thread )
+	if ( ( ( *ic_ways ) > 1 ) && ( ( *jc_ways ) < ( *n_threads ) ) )
 	{
-		can_increase_ic = TRUE;
+		if ( next_jc_work_per_thread < cur_work_per_thread )
+		{
+			can_increase_jc = TRUE;
+		}
+		// Check whether m_prev_ic remains in good l2 load zone.
+		else if ( ( ( ( m_ic <= MC ) && ( m_prev_ic <= MC ) ) ||
+					( m_ic > MC ) ) &&
+				  ( ( n_jc > NR ) && ( n_next_jc == NR ) ) )
+		{
+			can_increase_jc = TRUE;
+		}
 	}
-	else if ( next_jc_work_per_thread < cur_work_per_thread )
+	if ( ( ( *ic_ways ) < ( *n_threads ) ) && ( ( *jc_ways ) > 1) )
 	{
-		can_increase_jc = TRUE;
+		if ( next_ic_work_per_thread <= cur_work_per_thread )
+		{
+			can_increase_ic = TRUE;
+		}
+		// ic adjustment towards next highest factor if it results in
+		// m_next_ic <= MC. This helps in reducing number of A matrix
+		// loads per thread to l2 from main memory.
+		else if ( ( m_ic > MC ) && ( m_next_ic <= MC ) &&
+				  ( m_next_ic >= MR ) && ( k_factor > 4 ) )
+		{
+			can_increase_ic = TRUE;
+		}
+		// ic adjustment towards next highest factor resulted in better
+		// performance when m is sufficiently larger than n.
+		else if ( ( m > ( m_boost * n ) ) && ( m_ic >= MCx2 ) &&
+				  ( k_factor > 4 ) )
+		{
+			can_increase_ic = TRUE;
+		}
+		// Performance improvement also observed when n_jc is a multiple
+		// of NR.
+		else if ( ( n_jc_modulo_NR != 0 ) && ( n_prev_jc_modulo_NR == 0 ) &&
+				  ( k_factor > 4 ) )
+		{
+			can_increase_ic = TRUE;
+		}
 	}
 
 	if ( can_increase_ic )
@@ -315,8 +362,6 @@ BLIS_INLINE void lpgemm_u8s8s32o32_get_threading
 			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
 			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
 
-			lpgemm_adjust_ic_jc_ways( m, n, n_threads, ic_ways, jc_ways );
-
 			lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
 			(
 			  MR, NR, m, n,
@@ -375,7 +420,7 @@ BLIS_INLINE void lpgemm_bf16bf16f32of32_get_threading
 		{
 			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
 			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
-			lpgemm_adjust_ic_jc_ways( m, n, n_threads, ic_ways, jc_ways );
+
 			lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
 			(
 			  MR, NR, m, n,
@@ -416,6 +461,13 @@ BLIS_INLINE void lpgemm_f32f32f32of32_get_threading
 	const dim_t NT = bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_NT, cntx );
 	const dim_t KT = bli_cntx_get_l3_sup_thresh_dt( dt, BLIS_KT, cntx );
 
+	// Query the context for various blocksizes.
+	const dim_t NR = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_NR, cntx );
+	const dim_t MR = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_MR, cntx );
+	const dim_t NC = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_NC, cntx );
+	const dim_t MC = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_MC, cntx );
+	const dim_t KC = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_KC, cntx );
+
 	const dim_t MT_2 = MT / 2;
 
 	*n_threads = bli_rntm_num_threads( rntm_g );
@@ -436,7 +488,12 @@ BLIS_INLINE void lpgemm_f32f32f32of32_get_threading
 		// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
 		bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
 
-		lpgemm_adjust_ic_jc_ways( m, n, n_threads, ic_ways, jc_ways );
+		lpgemm_adjust_ic_jc_ways
+		(
+		  m, n, k,
+		  MC, NC, KC, MR, NR,
+		  n_threads, ic_ways, jc_ways, 5
+		);
 	}
 	else
 	{
@@ -458,12 +515,125 @@ BLIS_INLINE void lpgemm_f32f32f32of32_get_threading
 	{
 		if ( ( k > page_size_b_floatx2 ) ||
 			 ( ( k <= page_size_b_floatx2 ) &&
-				  ( m_ic > MT_2 ) && ( n_jc >= NT ) ) )
+			   ( m_ic > MT_2 ) && ( n_jc >= NT ) ) )
 		{
+			bli_rntm_set_pack_b( 1, rntm_g );
 			bli_rntm_set_pack_a( 1, rntm_g );
 		}
 	}
 }
+
+BLIS_INLINE void lpgemm_s8s8s32o32_get_threading
+     (
+       dim_t*  n_threads,
+       dim_t*  ic_ways,
+       dim_t*  jc_ways,
+       dim_t   m,
+       dim_t   n,
+       dim_t   k,
+       rntm_t* rntm_g
+     )
+{
+	*n_threads = bli_rntm_num_threads( rntm_g );
+	*jc_ways = bli_rntm_jc_ways( rntm_g );
+	*ic_ways = bli_rntm_ic_ways( rntm_g );
+
+	if ( ( ( *ic_ways ) > 0 ) || ( ( *jc_ways ) > 0 ) )
+	{
+		// If BLIS_IC_NT or JC_NT are set.
+		// Default cases.
+ 		*ic_ways = ( ( *ic_ways ) > 0 ) ? ( *ic_ways ) : 1;
+		*jc_ways = ( ( *jc_ways ) > 0 ) ? ( *jc_ways ) : 1;
+
+		*n_threads = ( *jc_ways ) * ( *ic_ways );
+	}
+	else if ( ( *n_threads ) > 1 )
+	{
+
+		dim_t NR = lpgemm_get_block_size_NR_global_cntx( S8S8S32OS32 );
+		dim_t MR = lpgemm_get_block_size_MR_global_cntx( S8S8S32OS32 );
+
+		if ( n <= NR )
+		{
+			// If n is less than micro panel dimension, allocating all threads
+			// to ic resulted in gains.
+			( *ic_ways ) = ( *n_threads );
+			( *jc_ways ) = 1;
+		}
+		else
+		{
+			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
+			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
+
+			lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
+			(
+			  MR, NR, m, n,
+			  n_threads, ic_ways, jc_ways
+			);
+		}
+	}
+	else
+	{
+		// Setting all the values to 1 in case n_threads <= 1. This ensures
+		// the threading parameters are valid.
+		*n_threads = 1;
+		*jc_ways = 1;
+		*ic_ways = 1;
+	}
+}
+
+BLIS_INLINE void lpgemm_s8s8s16o16_get_threading
+     (
+       dim_t*  n_threads,
+       dim_t*  ic_ways,
+       dim_t*  jc_ways,
+       dim_t   m,
+       dim_t   n,
+       dim_t   k,
+       rntm_t* rntm_g
+     )
+{
+	*n_threads = bli_rntm_num_threads( rntm_g );
+	*jc_ways = bli_rntm_jc_ways( rntm_g );
+	*ic_ways = bli_rntm_ic_ways( rntm_g );
+
+	if ( ( ( *ic_ways ) > 0 ) || ( ( *jc_ways ) > 0 ) )
+	{
+		// If BLIS_IC_NT or JC_NT are set.
+		// Default cases.
+ 		*ic_ways = ( ( *ic_ways ) > 0 ) ? ( *ic_ways ) : 1;
+		*jc_ways = ( ( *jc_ways ) > 0 ) ? ( *jc_ways ) : 1;
+
+		*n_threads = ( *jc_ways ) * ( *ic_ways );
+	}
+	else if ( ( *n_threads ) > 1 )
+	{
+
+		dim_t NR = lpgemm_get_block_size_NR_global_cntx( S8S8S16OS16 );
+
+		if ( n <= NR )
+		{
+			// If n is less than micro panel dimension, allocating all threads
+			// to ic resulted in gains.
+			( *ic_ways ) = ( *n_threads );
+			( *jc_ways ) = 1;
+		}
+		else
+		{
+			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
+			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
+		}
+	}
+	else
+	{
+		// Setting all the values to 1 in case n_threads <= 1. This ensures
+		// the threading parameters are valid.
+		*n_threads = 1;
+		*jc_ways = 1;
+		*ic_ways = 1;
+	}
+}
+
 
 #define GEN_LPGEMM_OPENMP_DECORATOR(A_type,B_type,C_type,LPGEMM_SFX) \
 void lpgemm_ ## LPGEMM_SFX ## _openmp_thread_decorator \
@@ -482,9 +652,10 @@ void lpgemm_ ## LPGEMM_SFX ## _openmp_thread_decorator \
        C_type*               c, \
        const dim_t           rs_c, \
        const dim_t           cs_c, \
-       C_type                alpha, \
-       C_type                beta, \
+       const C_type          alpha, \
+       const C_type          beta, \
        rntm_t*               rntm_g, \
+       lpgemm_cntx_t*        lcntx, \
        lpgemm_post_op*       post_op_list, \
        bool                  c_downscale \
      ) \
@@ -546,6 +717,7 @@ void lpgemm_ ## LPGEMM_SFX ## _openmp_thread_decorator \
 		  beta, \
 		  &rntm_l, \
 		  &thread, \
+		  lcntx, \
 		  post_op_list, c_downscale \
 		); \
 	} \
@@ -559,6 +731,8 @@ GEN_LPGEMM_OPENMP_DECORATOR(uint8_t,int8_t,int16_t,u8s8s16o16)
 GEN_LPGEMM_OPENMP_DECORATOR(uint8_t,int8_t,int32_t,u8s8s32o32)
 GEN_LPGEMM_OPENMP_DECORATOR(bfloat16,bfloat16,float,bf16bf16f32of32)
 GEN_LPGEMM_OPENMP_DECORATOR(float,float,float,f32f32f32of32)
+GEN_LPGEMM_OPENMP_DECORATOR(int8_t,int8_t,int32_t,s8s8s32o32)
+GEN_LPGEMM_OPENMP_DECORATOR(int8_t,int8_t,int16_t,s8s8s16o16)
 
 #else
 
@@ -579,9 +753,10 @@ void lpgemm_ ## LPGEMM_SFX ## _thread_decorator \
        C_type*               c, \
        const dim_t           rs_c, \
        const dim_t           cs_c, \
-       C_type                alpha, \
-       C_type                beta, \
+       const C_type          alpha, \
+       const C_type          beta, \
        rntm_t*               rntm_g, \
+       lpgemm_cntx_t*        lcntx, \
        lpgemm_post_op*       post_op_list, \
        bool                  c_downscale \
      ) \
@@ -622,6 +797,7 @@ void lpgemm_ ## LPGEMM_SFX ## _thread_decorator \
 	  beta, \
 	  rntm_g, \
 	  &thread, \
+	  lcntx, \
 	  post_op_list, c_downscale \
 	); \
 } \
@@ -630,5 +806,7 @@ GEN_LPGEMM_DECORATOR(uint8_t,int8_t,int16_t,u8s8s16o16)
 GEN_LPGEMM_DECORATOR(uint8_t,int8_t,int32_t,u8s8s32o32)
 GEN_LPGEMM_DECORATOR(bfloat16,bfloat16,float,bf16bf16f32of32)
 GEN_LPGEMM_DECORATOR(float,float,float,f32f32f32of32)
+GEN_LPGEMM_DECORATOR(int8_t,int8_t,int32_t,s8s8s32o32)
+GEN_LPGEMM_DECORATOR(int8_t,int8_t,int16_t,s8s8s16o16)
 
 #endif

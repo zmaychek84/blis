@@ -1,4 +1,4 @@
-##Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.##
+##Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.##
 
 cmake_minimum_required(VERSION 3.0.0)
 
@@ -107,8 +107,9 @@ option (ENABLE_UPPERCASE_API "export APIs with uppercase" OFF)
 option (ENABLE_COMPLEX_RETURN_INTEL "Enable complex_return_intel" OFF)
 option (ENABLE_TRSM_PREINVERSION "Enable TRSM preinversion" ON)
 option (ENABLE_AOCL_DYNAMIC "Enable Dynamic Multi-threading" OFF)
-option(DISABLE_BLIS_ARCH_TYPE "Disable BLIS_ARCH_TYPE functionality" OFF)
+option(DISABLE_BLIS_ARCH_TYPE "Disable BLIS_ARCH_TYPE and BLIS_MODEL_TYPE functionality" OFF)
 option(RENAME_BLIS_ARCH_TYPE "Rename BLIS_ARCH_TYPE env var renamed to supplied value" BLIS_ARCH_TYPE)
+option(RENAME_BLIS_MODEL_TYPE "Rename BLIS_MODEL_TYPE env var renamed to supplied value" BLIS_MODEL_TYPE)
 
 if (${AOCL_BLIS_FAMILY} STREQUAL "amdzen")
   set(REF_KERNEL_MIRRORING_PY "${CMAKE_SOURCE_DIR}/build/blis_ref_kernel_mirror.py")
@@ -181,9 +182,11 @@ endif ()
 if (ENABLE_JRIR_RR)
     message("Round robin thread method enabled")
     set(BLIS_ENABLE_JRIR_RR TRUE)
+    set(BLIS_ENABLE_JRIR_SLAB FALSE)
 elseif (ENABLE_JRIR_SLAB)
     message("SLAB thread method enabled")
     set(BLIS_ENABLE_JRIR_SLAB TRUE)
+    set(BLIS_ENABLE_JRIR_RR FALSE)
 else ()
     message("Unsupported method of thread partitioning in jr and ir loops")
 endif ()
@@ -202,18 +205,23 @@ endif ()
 
 if (ENABLE_BLAS)
     add_definitions(-DBLIS_ENABLE_BLAS)
+    set(BLIS_ENABLE_BLAS TRUE)
 else ()
     add_definitions(-DBLIS_DISABLE_BLAS)
+    set(BLIS_ENABLE_BLAS FALSE)
 endif ()
 
 if (ENABLE_CBLAS)
     add_definitions(-DBLIS_ENABLE_CBLAS)
+    set(BLIS_ENABLE_CBLAS TRUE)
     if (NOT ENABLE_BLAS)
         # Force BLAS layer when CBLAS is enabled
         add_definitions(-DBLIS_ENABLE_BLAS)
+        set(BLIS_ENABLE_BLAS TRUE)
     endif ()
 else ()
     add_definitions(-DBLIS_DISABLE_CBLAS)
+    set(BLIS_ENABLE_CBLAS FALSE)
 endif ()
 
 if (ENABLE_BLASTEST)
@@ -286,8 +294,10 @@ endif()
 
 if(DISABLE_BLIS_ARCH_TYPE)
     set(BLIS_DISABLE_BLIS_ARCH_TYPE TRUE)
+    set(BLIS_DISABLE_BLIS_MODEL_TYPE TRUE)
 else()
     set(BLIS_DISABLE_BLIS_ARCH_TYPE FALSE)
+    set(BLIS_DISABLE_BLIS_MODEL_TYPE FALSE)
 endif()
 
 if(RENAME_BLIS_ARCH_TYPE)
@@ -298,6 +308,30 @@ else()
     set(rename_blis_arch_type "BLIS_ARCH_TYPE")
 endif()
 
+if(RENAME_BLIS_MODEL_TYPE)
+    set(__blis_model_type_name TRUE)
+    set(rename_blis_model_type "${RENAME_BLIS_MODEL_TYPE}")
+else()
+    set(__blis_model_type_name TRUE)
+    set(rename_blis_model_type "BLIS_MODEL_TYPE")
+endif()
+
+find_package(Doxygen)
+set(W_DIR "${CMAKE_CURRENT_SOURCE_DIR}/docs")
+if(NOT (DOXYGEN_FOUND))
+  message(STATUS "Doxygen not found please install and try again.")
+else()
+  execute_process(COMMAND doxygen Doxyfile
+      WORKING_DIRECTORY ${W_DIR}
+      COMMAND_ECHO STDOUT)
+endif()
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/docs/html/index.html)
+  message(STATUS "Documentation generated successfully, to view documentation open docs/html/index.html .")
+else()
+  message(STATUS "Document generation failed.")
+endif()
+
+set(CMAKE_BUILD_TYPE ${CMAKE_CONFIGURATION_TYPES})
 
 #print configurations
 message("---cmake configurations---")
@@ -322,8 +356,9 @@ message(BLIS_ENABLE_SANDBOX : ${BLIS_ENABLE_SANDBOX})
 message(BLIS_ENABLE_SHARED : ${BLIS_ENABLE_SHARED})
 message(DISABLE_BLIS_ARCH_TYPE : ${DISABLE_BLIS_ARCH_TYPE})
 message(RENAME_BLIS_ARCH_TYPE : ${RENAME_BLIS_ARCH_TYPE})
+message(RENAME_BLIS_MODEL_TYPE : ${RENAME_BLIS_MODEL_TYPE})
 
-SET(ENABLE_SIMD_FLAGS "AVX2" CACHE STRING "Set compiler SIMD flags")
+SET(ENABLE_SIMD_FLAGS "none" CACHE STRING "Set compiler SIMD flags")
 SET_PROPERTY(CACHE ENABLE_SIMD_FLAGS PROPERTY STRINGS none SSE2 AVX AVX2)
 
 if(${ENABLE_SIMD_FLAGS} MATCHES "AVX2")
@@ -332,15 +367,6 @@ elseif(${ENABLE_SIMD_FLAGS} MATCHES "AVX")
   add_definitions(/arch:AVX)
 elseif(${ENABLE_SIMD_FLAGS} MATCHES "SSE2")
   add_definitions(/arch:SSE2)
-endif()
-
-if(${TARGET_ARCH} STREQUAL zen4 OR 
-   ${TARGET_ARCH} STREQUAL amdzen)
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/kernels/zen4/1/bli_amaxv_zen_int_avx512.c PROPERTIES COMPILE_FLAGS /arch:AVX512)
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/kernels/zen4/3/bli_gemmtrsm_l_zen_16x14.c PROPERTIES COMPILE_FLAGS /arch:AVX512)
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/kernels/zen4/3/bli_gemmtrsm_u_zen_16x14.c PROPERTIES COMPILE_FLAGS /arch:AVX512)
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/kernels/skx/3/bli_dgemm_skx_asm_16x14.c PROPERTIES COMPILE_FLAGS /arch:AVX512)
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/kernels/skx/3/bli_sgemm_skx_asm_32x12_l2.c PROPERTIES COMPILE_FLAGS /arch:AVX512)
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W0 ")
@@ -588,10 +614,37 @@ set(BLIS_VERSION_STRING ${BLIS_VERSION})
 string(TIMESTAMP BUILD_DATE "%Y%m%d")
 add_definitions(-DBLIS_VERSION_STRING="AOCL-BLIS ${BLIS_VERSION_STRING} Build ${BUILD_DATE}")
 
+# Set object libraries created in kernels directory to be added into BLIS library.
+set(OBJECT_LIBRARIES 
+    $<TARGET_OBJECTS:zen_1>
+    $<TARGET_OBJECTS:zen_1f>
+    $<TARGET_OBJECTS:zen_2>
+    $<TARGET_OBJECTS:zen_3>
+    $<TARGET_OBJECTS:zen_3_sup>
+    $<TARGET_OBJECTS:haswell_1m>
+    $<TARGET_OBJECTS:haswell_3>
+    $<TARGET_OBJECTS:haswell_3sup>
+    $<TARGET_OBJECTS:haswell_3supd6x8>
+)
+# Ammend the list of object libraries to include zen4 paths as appropriate.
+if(${TARGET_ARCH} STREQUAL zen4 OR 
+   ${TARGET_ARCH} STREQUAL amdzen)
+   set(OBJECT_LIBRARIES ${OBJECT_LIBRARIES}
+      $<TARGET_OBJECTS:zen4_1>
+      $<TARGET_OBJECTS:zen4_1m>
+      $<TARGET_OBJECTS:zen4_3>
+      $<TARGET_OBJECTS:zen4_3sup>
+      $<TARGET_OBJECTS:zen4_3supd24x8>
+      $<TARGET_OBJECTS:skx_3>
+   )
+endif()
+
 if(BUILD_SHARED_LIBS)
     add_library("${PROJECT_NAME}" SHARED ${CMAKE_SOURCE_DIR}/bli_config.h
                          ${CMAKE_SOURCE_DIR}/include/${TARGET_ARCH}/blis.h
-                         ${headers})
+                         ${headers} 
+                         ${OBJECT_LIBRARIES}
+                         )
     if(ENABLE_OPENMP)
         target_link_libraries("${PROJECT_NAME}" PRIVATE OpenMP::OpenMP_CXX)
     endif()
@@ -601,7 +654,9 @@ endif()
 if(NOT BUILD_SHARED_LIBS)
     add_library("${PROJECT_NAME}" STATIC ${CMAKE_SOURCE_DIR}/bli_config.h
                          ${CMAKE_SOURCE_DIR}/include/${TARGET_ARCH}/blis.h
-                         ${headers})
+                         ${headers} 
+                         ${OBJECT_LIBRARIES}
+                         )
     if(ENABLE_OPENMP)
         set_target_properties("${PROJECT_NAME}" PROPERTIES LINKER_LANGUAGE C OUTPUT_NAME "${LIB_NAME}" STATIC_LIBRARY_OPTIONS "${OpenMP_libomp_LIBRARY}")
     else()

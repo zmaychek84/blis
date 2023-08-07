@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,6 +35,17 @@
 
 #include "blis.h"
 
+/*
+  Early return conditions
+  ------------------------
+
+  1. When n <= 0 where n is the length of the vector passed
+
+  NaN propagation expectation
+  --------------------------
+
+  1. Always propagate
+*/
 
 //
 // Define BLAS-to-BLIS interfaces.
@@ -42,7 +53,7 @@
 #undef  GENTFUNCDOT
 #define GENTFUNCDOT( ftype, ch, chc, blis_conjx, blasname, blisname ) \
 \
-ftype PASTEF772(ch,blasname,chc) \
+ftype PASTEF772S(ch,blasname,chc) \
      ( \
        const f77_int* n, \
        const ftype*   x, const f77_int* incx, \
@@ -87,10 +98,21 @@ ftype PASTEF772(ch,blasname,chc) \
     bli_finalize_auto(); \
 \
     return rho; \
-}
+}\
+\
+IF_BLIS_ENABLE_BLAS(\
+ftype PASTEF772(ch,blasname,chc) \
+     ( \
+       const f77_int* n, \
+       const ftype*   x, const f77_int* incx, \
+       const ftype*   y, const f77_int* incy  \
+     ) \
+{ \
+  return PASTEF772S(ch,blasname,chc)( n, x, incx, y, incy );\
+} \
+)
 
-#ifdef BLIS_ENABLE_BLAS
-float sdot_
+float sdot_blis_impl
      (
        const f77_int* n,
        const float*   x, const f77_int* incx,
@@ -107,11 +129,20 @@ float sdot_
     float  rho;
 
     /* Initialize BLIS. */
-//  bli_init_auto();
+    //  bli_init_auto();
 
-    /* Convert/typecast negative values of n to zero. */
-    if ( *n < 0 ) n0 = ( dim_t )0;
-    else              n0 = ( dim_t )(*n);
+    // If the vector dimension is less than or equal to zero, return.
+    if (*n <= 0)
+    {
+      rho = 0.0f;
+
+      AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
+      return rho;
+    }
+    else
+    {
+      n0 = ( dim_t )(*n);
+    }
 
     /* If the input increments are negative, adjust the pointers so we can
        use positive increments instead. */
@@ -153,45 +184,73 @@ float sdot_
         incy0 = ( inc_t )(*incy);
     }
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+    cntx_t *cntx = NULL;
+
+    // Query the architecture ID
+    arch_t arch_id = bli_arch_query_id();
+
+    /*
+      Function pointer declaration for the function
+      that will be used by this API
+    */
+    sdotv_ker_ft dotv_ker_ptr; // SDOTV
+
+    // Pick the kernel based on the architecture ID
+    switch (arch_id)
     {
-        /* Call BLIS kernel. */
-        bli_sdotv_zen_int10
-        (
-        BLIS_NO_CONJUGATE,
-        BLIS_NO_CONJUGATE,
-        n0,
-        x0, incx0,
-        y0, incy0,
-        &rho,
-        NULL
-        );
-    }
-    else
-    {
-        /* Call BLIS interface. */
-        PASTEMAC2(s,dotv,BLIS_TAPI_EX_SUF)
-        (
-        BLIS_NO_CONJUGATE,
-        BLIS_NO_CONJUGATE,
-        n0,
-        x0, incx0,
-        y0, incy0,
-        &rho,
-        NULL,
-        NULL
-        );
+        case BLIS_ARCH_ZEN4:
+#if defined(BLIS_KERNELS_ZEN4)
+
+            // AVX-512 Kernel
+            dotv_ker_ptr = bli_sdotv_zen_int_avx512;
+
+        break;
+#endif
+        case BLIS_ARCH_ZEN:
+        case BLIS_ARCH_ZEN2:
+        case BLIS_ARCH_ZEN3:
+
+            // AVX-2 Kernel
+            dotv_ker_ptr = bli_sdotv_zen_int10;
+
+            break;
+        default:
+
+            // For non-Zen architectures, query the context
+            cntx = bli_gks_query_cntx();
+
+            // Query the context for the kernel function pointers for sdotv
+            dotv_ker_ptr = bli_cntx_get_l1v_ker_dt(BLIS_FLOAT, BLIS_DOTV_KER, cntx);
     }
 
+    dotv_ker_ptr
+    (
+      BLIS_NO_CONJUGATE,
+      BLIS_NO_CONJUGATE,
+      n0,
+      x0, incx0,
+      y0, incy0,
+      &rho,
+      cntx
+    );
+
     /* Finalize BLIS. */
-//  bli_finalize_auto();
+    //  bli_finalize_auto();
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
     return rho;
 }
-
-double ddot_
+#ifdef BLIS_ENABLE_BLAS
+float sdot_
+     (
+       const f77_int* n,
+       const float*   x, const f77_int* incx,
+       const float*   y, const f77_int* incy
+     )
+{
+  return sdot_blis_impl( n, x, incx, y, incy );
+}
+#endif
+double ddot_blis_impl
      (
        const f77_int* n,
        const double*   x, const f77_int* incx,
@@ -200,19 +259,23 @@ double ddot_
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
     AOCL_DTL_LOG_DOTV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'D', *n, *incx, *incy);
-    dim_t  n0;
+    dim_t  n_elem;
     double* x0;
     double* y0;
     inc_t  incx0;
     inc_t  incy0;
-    double  rho;
+    double  rho = 0.0;
 
-    /* Initialize BLIS. */
-//  bli_init_auto();
-
-    /* Convert/typecast negative values of n to zero. */
-    if ( *n < 0 ) n0 = ( dim_t )0;
-    else              n0 = ( dim_t )(*n);
+    // BLAS Exception: Return early when n <= 0.
+    if((*n) <= 0)
+    {
+        AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
+        return 0.0;
+    }
+    else
+    {
+        n_elem = ( dim_t )(*n);
+    }
 
     /* If the input increments are negative, adjust the pointers so we can
        use positive increments instead. */
@@ -232,7 +295,7 @@ double ddot_
         pass in the address to the (n-1)th (i.e., the bottom-most or
         right-most) element along with a negative stride. */
 
-        x0    = ((double*)x) + (n0-1)*(-*incx);
+        x0    = ((double*)x) + (n_elem-1)*(-*incx);
         incx0 = ( inc_t )(*incx);
 
     }
@@ -244,7 +307,7 @@ double ddot_
 
     if ( *incy < 0 )
     {
-        y0    = ((double*)y) + (n0-1)*(-*incy);
+        y0    = ((double*)y) + (n_elem-1)*(-*incy);
         incy0 = ( inc_t )(*incy);
 
     }
@@ -254,12 +317,303 @@ double ddot_
         incy0 = ( inc_t )(*incy);
     }
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+     // Definition of function pointer
+    ddotv_ker_ft dotv_ker_ptr;
+
+    cntx_t *cntx = NULL;
+
+    // Query the architecture ID
+    arch_t arch_id_local = bli_arch_query_id();
+
+    // Pick the kernel based on the architecture ID
+    switch (arch_id_local)
+    {
+      case BLIS_ARCH_ZEN4:
+#if defined(BLIS_KERNELS_ZEN4)
+
+        // AVX-512 Kernel
+        dotv_ker_ptr = bli_ddotv_zen_int_avx512;
+        break;
+#endif
+      case BLIS_ARCH_ZEN:
+      case BLIS_ARCH_ZEN2:
+      case BLIS_ARCH_ZEN3:
+
+          // AVX2 Kernel
+          dotv_ker_ptr = bli_ddotv_zen_int10;
+          break;
+
+      default:
+
+          // Query the context
+          cntx = bli_gks_query_cntx();
+
+          // Query the function pointer using the context
+          dotv_ker_ptr = bli_cntx_get_l1v_ker_dt(BLIS_DOUBLE, BLIS_DOTV_KER, cntx);
+    }
+
+#ifdef BLIS_ENABLE_OPENMP
+    /*
+      Initializing the number of thread to one
+      to avoid compiler warnings
+    */
+    dim_t nt = 1;
+
+    /*
+      For the given problem size and architecture, the function
+      returns the optimum number of threads with AOCL dynamic enabled
+      else it returns the number of threads requested by the user.
+    */
+    bli_nthreads_l1
+    (
+      BLIS_DOTV_KER,
+      BLIS_DOUBLE,
+      BLIS_DOUBLE,
+      arch_id_local,
+      n_elem,
+      &nt
+    );
+
+    /*
+      If the number of optimum threads is 1, the OpenMP overhead
+      is avoided by calling the function directly
+    */
+    if (nt == 1)
+    {
+#endif
+        dotv_ker_ptr
+        (
+          BLIS_NO_CONJUGATE,
+          BLIS_NO_CONJUGATE,
+          n_elem,
+          x0, incx0,
+          y0, incy0,
+          &rho,
+          cntx
+        );
+
+        AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
+
+        return rho;
+#ifdef BLIS_ENABLE_OPENMP
+    }
+
+    /*
+      Here we know that more than one thread needs to be spawned.
+
+      In such a case, each thread will need its own rho value to
+      do the accumulation. These temporary rho's will be accumulated
+      in the end.
+    */
+    rntm_t rntm;
+    mem_t mem_buf_rho;
+    double *rho_temp = NULL;
+    rho = 0.0;
+
+    /*
+      Initialize mem pool buffer to NULL and size to 0
+      "buf" and "size" fields are assigned once memory
+      is allocated from the pool in bli_membrk_acquire_m().
+      This will ensure bli_mem_is_alloc() will be passed on
+      an allocated memory if created or a NULL .
+    */
+    mem_buf_rho.pblk.buf = NULL;
+    mem_buf_rho.pblk.block_size = 0;
+    mem_buf_rho.buf_type = 0;
+    mem_buf_rho.size = 0;
+    mem_buf_rho.pool = NULL;
+
+    /*
+        In order to get the buffer from pool via rntm access to
+        memory broker is needed.Following are initializations
+        for rntm
+    */
+    bli_rntm_init_from_global(&rntm);
+    bli_rntm_set_num_threads_only(1, &rntm);
+    bli_membrk_rntm_set_membrk(&rntm);
+
+    // Calculate the size required for rho buffer.
+    size_t buffer_size = nt * sizeof(double);
+
+#ifdef BLIS_ENABLE_MEM_TRACING
+    printf("bli_ddotv_unf_var1(): get mem pool block\n");
+#endif
+
+    /*
+      Acquire a buffer (nt * size(double)) from the memory broker
+      and save the associated mem_t entry to mem_buf_rho.
+    */
+    bli_membrk_acquire_m(&rntm,
+                         buffer_size,
+                         BLIS_BITVAL_BUFFER_FOR_A_BLOCK,
+                         &mem_buf_rho);
+
+    /* Continue if rho buffer memory is allocated*/
+    if ((bli_mem_is_alloc(&mem_buf_rho)))
+    {
+        rho_temp = bli_mem_buffer(&mem_buf_rho);
+
+        /*
+          This is done to handle cases when the
+          number of threads launched is not equal
+          to the number of threads requested. In
+          such cases, the garbage value in the created
+          buffer will not be overwritten by valid values.
+
+          This will ensure that garbage value will
+          not get accumulated with the final result.
+        */
+        for (dim_t i = 0; i < nt; i++)
+          rho_temp[i] = 0.0;
+    }
+    else
+    {
+        nt = 1;
+        rho_temp = &rho;
+    }
+
+    _Pragma("omp parallel num_threads(nt)")
+    {
+        dim_t start, length;
+
+        // Get the thread ID
+        dim_t thread_id = omp_get_thread_num();
+
+        // Get the actual number of threads spawned
+        dim_t nt_use = omp_get_num_threads();
+
+        /*
+          Calculate the compute range for the current thread
+          based on the actual number of threads spawned
+        */
+        bli_thread_vector_partition
+        (
+          n_elem,
+          nt_use,
+          &start, &length,
+          thread_id
+        );
+
+        // Adjust the local pointer for computation
+        double *x_thread_local = x0 + (start * incx0);
+        double *y_thread_local = y0 + (start * incy0);
+
+        // Invoke the function based on the kernel function pointer
+        dotv_ker_ptr
+        (
+          BLIS_NO_CONJUGATE,
+          BLIS_NO_CONJUGATE,
+          length,
+          x_thread_local, incx0,
+          y_thread_local, incy0,
+          rho_temp + thread_id,
+          cntx
+        );
+    }
+
+    /*
+      Accumulate the values in rho_temp only when mem is allocated.
+      When the memory cannot be allocated rho_temp will point to
+      rho
+    */
+    if (bli_mem_is_alloc(&mem_buf_rho))
+    {
+        // Accumulating the nt thread outputs to rho
+        for (dim_t i = 0; i < nt; i++)
+          rho += rho_temp[i];
+
+        // Releasing the allocated memory if it was allocated
+        bli_membrk_release(&rntm, &mem_buf_rho);
+    }
+#endif
+
+    /* Finalize BLIS. */
+    //  bli_finalize_auto();
+    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
+    return rho;
+}
+#ifdef BLIS_ENABLE_BLAS
+double ddot_
+     (
+       const f77_int* n,
+       const double*   x, const f77_int* incx,
+       const double*   y, const f77_int* incy
+     )
+{
+  return ddot_blis_impl( n, x, incx, y, incy );
+}
+#endif
+
+#ifdef BLIS_DISABLE_COMPLEX_RETURN_INTEL
+scomplex cdotu_blis_impl
+     (
+       const f77_int* n,
+       const scomplex*   x, const f77_int* incx,
+       const scomplex*   y, const f77_int* incy
+     )
+{
+    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
+    AOCL_DTL_LOG_DOTV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'C', *n, *incx, *incy);
+    dim_t  n0;
+    scomplex* x0;
+    scomplex* y0;
+    inc_t  incx0;
+    inc_t  incy0;
+    scomplex  rho;
+
+    /* Initialize BLIS. */
+//  bli_init_auto();
+
+    /* Convert/typecast negative values of n to zero. */
+    if ( *n < 0 ) n0 = ( dim_t )0;
+    else              n0 = ( dim_t )(*n);
+
+    /* If the input increments are negative, adjust the pointers so we can
+       use positive increments instead. */
+
+    if ( *incx < 0 )
+    {
+        /* The semantics of negative stride in BLAS are that the vector
+        operand be traversed in reverse order. (Another way to think
+        of this is that negative strides effectively reverse the order
+        of the vector, but without any explicit data movements.) This
+        is also how BLIS interprets negative strides. The differences
+        is that with BLAS, the caller *always* passes in the 0th (i.e.,
+        top-most or left-most) element of the vector, even when the
+        stride is negative. By contrast, in BLIS, negative strides are
+        used *relative* to the vector address as it is given. Thus, in
+        BLIS, if this backwards traversal is desired, the caller *must*
+        pass in the address to the (n-1)th (i.e., the bottom-most or
+        right-most) element along with a negative stride. */
+
+        x0    = ((scomplex*)x) + (n0-1)*(-*incx);
+        incx0 = ( inc_t )(*incx);
+
+    }
+    else
+    {
+        x0    = ((scomplex*)x);
+        incx0 = ( inc_t )(*incx);
+    }
+
+    if ( *incy < 0 )
+    {
+        y0    = ((scomplex*)y) + (n0-1)*(-*incy);
+        incy0 = ( inc_t )(*incy);
+
+    }
+    else
+    {
+        y0    = ((scomplex*)y);
+        incy0 = ( inc_t )(*incy);
+    }
+
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
     {
         /* Call BLIS kernel. */
-        bli_ddotv_zen_int10
+        bli_cdotv_zen_int5
         (
         BLIS_NO_CONJUGATE,
         BLIS_NO_CONJUGATE,
@@ -273,7 +627,7 @@ double ddot_
     else
     {
         /* Call BLIS interface. */
-        PASTEMAC2(d,dotv,BLIS_TAPI_EX_SUF)
+        PASTEMAC2(c,dotv,BLIS_TAPI_EX_SUF)
         (
         BLIS_NO_CONJUGATE,
         BLIS_NO_CONJUGATE,
@@ -291,8 +645,7 @@ double ddot_
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
     return rho;
 }
-
-#ifdef BLIS_DISABLE_COMPLEX_RETURN_INTEL
+#ifdef BLIS_ENABLE_BLAS
 scomplex cdotu_
      (
        const f77_int* n,
@@ -300,101 +653,10 @@ scomplex cdotu_
        const scomplex*   y, const f77_int* incy
      )
 {
-    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
-    AOCL_DTL_LOG_DOTV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'C', *n, *incx, *incy);
-    dim_t  n0;
-    scomplex* x0;
-    scomplex* y0;
-    inc_t  incx0;
-    inc_t  incy0;
-    scomplex  rho;
-
-    /* Initialize BLIS. */
-//  bli_init_auto();
-
-    /* Convert/typecast negative values of n to zero. */
-    if ( *n < 0 ) n0 = ( dim_t )0;
-    else              n0 = ( dim_t )(*n);
-
-    /* If the input increments are negative, adjust the pointers so we can
-       use positive increments instead. */
-
-    if ( *incx < 0 )
-    {
-        /* The semantics of negative stride in BLAS are that the vector
-        operand be traversed in reverse order. (Another way to think
-        of this is that negative strides effectively reverse the order
-        of the vector, but without any explicit data movements.) This
-        is also how BLIS interprets negative strides. The differences
-        is that with BLAS, the caller *always* passes in the 0th (i.e.,
-        top-most or left-most) element of the vector, even when the
-        stride is negative. By contrast, in BLIS, negative strides are
-        used *relative* to the vector address as it is given. Thus, in
-        BLIS, if this backwards traversal is desired, the caller *must*
-        pass in the address to the (n-1)th (i.e., the bottom-most or
-        right-most) element along with a negative stride. */
-
-        x0    = ((scomplex*)x) + (n0-1)*(-*incx);
-        incx0 = ( inc_t )(*incx);
-
-    }
-    else
-    {
-        x0    = ((scomplex*)x);
-        incx0 = ( inc_t )(*incx);
-    }
-
-    if ( *incy < 0 )
-    {
-        y0    = ((scomplex*)y) + (n0-1)*(-*incy);
-        incy0 = ( inc_t )(*incy);
-
-    }
-    else
-    {
-        y0    = ((scomplex*)y);
-        incy0 = ( inc_t )(*incy);
-    }
-
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
-    {
-        /* Call BLIS kernel. */
-        bli_cdotv_zen_int5
-        (
-        BLIS_NO_CONJUGATE,
-        BLIS_NO_CONJUGATE,
-        n0,
-        x0, incx0,
-        y0, incy0,
-        &rho,
-        NULL
-        );
-    }
-    else
-    {
-        /* Call BLIS interface. */
-        PASTEMAC2(c,dotv,BLIS_TAPI_EX_SUF)
-        (
-        BLIS_NO_CONJUGATE,
-        BLIS_NO_CONJUGATE,
-        n0,
-        x0, incx0,
-        y0, incy0,
-        &rho,
-        NULL,
-        NULL
-        );
-    }
-
-    /* Finalize BLIS. */
-//  bli_finalize_auto();
-    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
-    return rho;
+  return cdotu_blis_impl( n, x, incx, y, incy );
 }
-
-dcomplex zdotu_
+#endif
+dcomplex zdotu_blis_impl
      (
        const f77_int* n,
        const dcomplex*   x, const f77_int* incx,
@@ -458,9 +720,9 @@ dcomplex zdotu_
         incy0 = ( inc_t )(*incy);
     }
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
     {
         /* Call BLIS kernel. */
         bli_zdotv_zen_int5
@@ -497,9 +759,18 @@ dcomplex zdotu_
 
     return rho;
 }
-
-
-scomplex cdotc_
+#ifdef BLIS_ENABLE_BLAS
+dcomplex zdotu_
+     (
+       const f77_int* n,
+       const dcomplex*   x, const f77_int* incx,
+       const dcomplex*   y, const f77_int* incy
+     )
+{
+  return zdotu_blis_impl( n, x, incx, y, incy );
+}
+#endif
+scomplex cdotc_blis_impl
      (
        const f77_int* n,
        const scomplex*   x, const f77_int* incx,
@@ -563,9 +834,9 @@ scomplex cdotc_
         incy0 = ( inc_t )(*incy);
     }
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
     {
         /* Call BLIS kernel. */
         bli_cdotv_zen_int5
@@ -601,8 +872,18 @@ scomplex cdotc_
 
     return rho;
 }
-
-dcomplex zdotc_
+#ifdef BLIS_ENABLE_BLAS
+scomplex cdotc_
+     (
+       const f77_int* n,
+       const scomplex*   x, const f77_int* incx,
+       const scomplex*   y, const f77_int* incy
+     )
+{
+  return cdotc_blis_impl( n, x, incx, y, incy );
+}
+#endif
+dcomplex zdotc_blis_impl
      (
        const f77_int* n,
        const dcomplex*   x, const f77_int* incx,
@@ -665,9 +946,9 @@ dcomplex zdotc_
         incy0 = ( inc_t )(*incy);
     }
 
-    // This function is invoked on all architectures including ‘generic’.
-    // Non-AVX platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx_supported() == TRUE)
+    // This function is invoked on all architectures including 'generic'.
+    // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
+    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
     {
         /* Call BLIS kernel. */
         bli_zdotv_zen_int5
@@ -697,10 +978,6 @@ dcomplex zdotc_
         );
     }
 
-
-
-
-
     /* Finalize BLIS. */
 //  bli_finalize_auto();
 
@@ -708,13 +985,24 @@ dcomplex zdotc_
 
     return rho;
 }
+#ifdef BLIS_ENABLE_BLAS
+dcomplex zdotc_
+     (
+       const f77_int* n,
+       const dcomplex*   x, const f77_int* incx,
+       const dcomplex*   y, const f77_int* incy
+     )
+{
+  return zdotc_blis_impl( n, x, incx, y, incy );
+}
+#endif
 
 #else // BLIS_DISABLE_COMPLEX_RETURN_INTEL
 // For the "intel" complex return type, use a hidden parameter to return the result
 #undef  GENTFUNCDOT
 #define GENTFUNCDOT( ftype, ch, chc, blis_conjx, blasname, blisname ) \
 \
-void PASTEF772(ch,blasname,chc) \
+void PASTEF772S(ch,blasname,chc) \
      ( \
        ftype*         rhop, \
        const f77_int* n, \
@@ -760,18 +1048,29 @@ void PASTEF772(ch,blasname,chc) \
         bli_finalize_auto(); \
 \
         *rhop = rho; \
-}
+}\
+\
+IF_BLIS_ENABLE_BLAS(\
+void PASTEF772(ch,blasname,chc) \
+     ( \
+       ftype*         rhop, \
+       const f77_int* n, \
+       const ftype*   x, const f77_int* incx, \
+       const ftype*   y, const f77_int* incy  \
+     ) \
+{ \
+  PASTEF772S(ch,blasname,chc)( rhop, n, x, incx, y, incy );\
+} \
+)
 
 INSERT_GENTFUNCDOTC_BLAS( dot, dotv )
 #endif // BLIS_DISABLE_COMPLEX_RETURN_INTEL
-
-
 
 // -- "Black sheep" dot product function definitions --
 
 // Input vectors stored in single precision, computed in double precision,
 // with result returned in single precision.
-float PASTEF77(sd,sdot)
+float PASTEF77S(sd,sdot)
      (
        const f77_int* n,
        const float*   sb,
@@ -782,7 +1081,7 @@ float PASTEF77(sd,sdot)
     return ( float )
            (
              ( double )(*sb) +
-             PASTEF77(d,sdot)
+             PASTEF77S(d,sdot)
              (
                n,
                x, incx,
@@ -790,10 +1089,22 @@ float PASTEF77(sd,sdot)
              )
            );
 }
+#ifdef BLIS_ENABLE_BLAS
+float PASTEF77(sd,sdot)
+     (
+       const f77_int* n,
+       const float*   sb,
+       const float*   x, const f77_int* incx,
+       const float*   y, const f77_int* incy
+     )
+{
+  return PASTEF77S(sd,sdot)( n,sb, x, incx, y, incy );
+}
+#endif
 
 // Input vectors stored in single precision, computed in double precision,
 // with result returned in double precision.
-double PASTEF77(d,sdot)
+double PASTEF77S(d,sdot)
      (
        const f77_int* n,
        const float*   x, const f77_int* incx,
@@ -838,4 +1149,14 @@ double PASTEF77(d,sdot)
     return rho;
 }
 
-#endif
+#ifdef BLIS_ENABLE_BLAS
+double PASTEF77(d,sdot)
+     (
+       const f77_int* n,
+       const float*   x, const f77_int* incx,
+       const float*   y, const f77_int* incy
+     )
+{
+  return PASTEF77S(d,sdot)( n, x, incx, y, incy );
+}
+#endif // BLIS_ENABLE_BLAS

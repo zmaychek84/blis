@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2020 - 22, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 23, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -75,6 +75,9 @@ typedef void (*gemmt_ker_ft)
        cntx_t*    restrict cntx
      );
 
+// these kernels are compiled as part of haswell config
+// use them only when BLIS_KERNELS_HASWELL is defined
+#ifdef BLIS_KERNELS_HASWELL
 //Look-up table for Gemmt Upper Variant Kernels
 gemmt_ker_ft ker_fpus[14] =
 	{
@@ -94,23 +97,27 @@ gemmt_ker_ft ker_fpus[14] =
 		bli_dgemmsup_rd_haswell_asm_6x8m_0x0_combined_U};
 
 //Look-up table for Gemmt Lower Variant Kernels
-gemmt_ker_ft ker_fpls[14] =
-{
-	bli_dgemmsup_rv_haswell_asm_6x8m_0x0_L,
-	bli_dgemmsup_rv_haswell_asm_6x8m_6x0_L,
-	bli_dgemmsup_rv_haswell_asm_6x8m_6x8_L,
-	bli_dgemmsup_rv_haswell_asm_6x8m_12x8_L,
-	bli_dgemmsup_rv_haswell_asm_6x8m_12x16_L,
-	bli_dgemmsup_rv_haswell_asm_6x8m_18x16_L,
-	bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L,
-	bli_dgemmsup_rd_haswell_asm_6x8m_0x0_L,
-	bli_dgemmsup_rd_haswell_asm_6x8m_6x0_L,
-	bli_dgemmsup_rd_haswell_asm_6x8m_6x8_L,
-	bli_dgemmsup_rd_haswell_asm_6x8m_12x8_L,
-	bli_dgemmsup_rd_haswell_asm_6x8m_12x16_L,
-	bli_dgemmsup_rd_haswell_asm_6x8m_18x16_L,
-	bli_dgemmsup_rd_haswell_asm_6x8m_16x12_combined_L
-};
+gemmt_ker_ft ker_fpls[14] = 
+	{
+		bli_dgemmsup_rv_haswell_asm_6x8m_0x0_L,
+		bli_dgemmsup_rv_haswell_asm_6x8m_6x0_L,
+		bli_dgemmsup_rv_haswell_asm_6x8m_6x8_L,
+		bli_dgemmsup_rv_haswell_asm_6x8m_12x8_L,
+		bli_dgemmsup_rv_haswell_asm_6x8m_12x16_L,
+		bli_dgemmsup_rv_haswell_asm_6x8m_18x16_L,
+		bli_dgemmsup_rv_haswell_asm_6x8m_16x12_combined_L,
+		bli_dgemmsup_rd_haswell_asm_6x8m_0x0_L,
+		bli_dgemmsup_rd_haswell_asm_6x8m_6x0_L,
+		bli_dgemmsup_rd_haswell_asm_6x8m_6x8_L,
+		bli_dgemmsup_rd_haswell_asm_6x8m_12x8_L,
+		bli_dgemmsup_rd_haswell_asm_6x8m_12x16_L,
+		bli_dgemmsup_rd_haswell_asm_6x8m_18x16_L,
+		bli_dgemmsup_rd_haswell_asm_6x8m_16x12_combined_L
+	};
+#else
+gemmt_ker_ft ker_fpls[1];
+gemmt_ker_ft ker_fpus[1];
+#endif
 
 //
 // -- var1n --------------------------------------------------------------------
@@ -219,6 +226,12 @@ void bli_gemmtsup_ref_var1n
 		cs_b  = bli_obj_row_stride( b );
 	}
 
+
+	// Optimize some storage/packing cases by transforming them into others.
+	// These optimizations are expressed by changing trans and/or eff_id.
+	bli_gemmsup_ref_var1n2m_opt_cases( dt, &trans, packa, packb, &eff_id, cntx );
+
+
 	bool uploc;
 	if( bli_obj_is_lower( c ) )
 	{
@@ -241,12 +254,6 @@ void bli_gemmtsup_ref_var1n
 	// Index into the type combination array to extract the correct
 	// function pointer.
 	FUNCPTR_T f = ftypes_var1n[dt][uploc];
-
-#if 1
-	// Optimize some storage/packing cases by transforming them into others.
-	// These optimizations are expressed by changing trans and/or eff_id.
-	bli_gemmsup_ref_var1n2m_opt_cases( dt, &trans, packa, packb, &eff_id, cntx );
-#endif
 
 	if ( bli_is_notrans( trans ) )
 	{
@@ -1353,8 +1360,13 @@ void bli_gemmtsup_ref_var2m
 		cs_b  = bli_obj_row_stride( b );
 	}
 
-	bool uploc;
 
+	// Optimize some storage/packing cases by transforming them into others.
+	// These optimizations are expressed by changing trans and/or eff_id.
+	bli_gemmsup_ref_var1n2m_opt_cases( dt, &trans, packa, packb, &eff_id, cntx );
+
+
+	bool uploc;
 	if ( bli_is_notrans ( trans ) )
 		uploc = bli_obj_is_lower( c ) ? 0 : 1;
 	else
@@ -1373,11 +1385,7 @@ void bli_gemmtsup_ref_var2m
 	// function pointer.
 	FUNCPTR_T f = ftypes_var2m[dt][uploc];
 
-#if 0
-	// Optimize some storage/packing cases by transforming them into others.
-	// These optimizations are expressed by changing trans and/or eff_id.
-	bli_gemmsup_ref_var1n2m_opt_cases( dt, &trans, packa, packb, &eff_id, cntx );
-#endif
+
 
 	if ( bli_is_notrans( trans ) )
 	{
@@ -1922,7 +1930,9 @@ void PASTEMACT(ch,opname,uplo,varname) \
 \
 						/* Check if m, n indices are multiple of MR and NR respectively
 						   and current block is a complete 6x8 block */ \
-						bool idx_supported = ((m_off_24 % MR) == 0) && ((n_off_24 % NR) == 0) && (mr_cur == MR) && (nr_cur == NR); \
+						bool idx_supported = ((m_off_24 % MR) == 0) && ((n_off_24 % NR) == 0)\
+						&& (MR == 6) && (NR == 8) \
+						&& (bli_cpuid_is_avx2fma3_supported() == TRUE) && (mr_cur == MR) && (nr_cur == NR); \
 \
 						/* m_idx and n_idx would be equal only if the current block is
 						   a diagonal block */\
@@ -2568,7 +2578,6 @@ void PASTEMACT(ch,opname,uplo,varname) \
 					for( dim_t i = m_rect;( i < mc_cur) && (m_off_cblock < n_off_cblock + nr_cur); i += MR ) \
 					{ \
 						const dim_t mr_cur = (i+MR-1) < mc_cur ? MR : mc_cur - i; \
-\
 						/* Prerequisites : MR = 6, NR = 8.
 						   An optimization: allow the last jr iteration to contain up to NRE
 						   In DGEMMT API implementation, kernel operates on 6x8 block. MR and
@@ -2600,7 +2609,9 @@ void PASTEMACT(ch,opname,uplo,varname) \
 \
 						/* Check if m, n indices are multiple of MR and NR respectively
 						   and current block is a complete 6x8 block */ \
-						bool idx_supported = ((m_off_24 % MR) == 0) && ((n_off_24 % NR) == 0) && (mr_cur==MR) && (nr_cur==NR); \
+						bool idx_supported = ((m_off_24 % MR) == 0) && ((n_off_24 % NR) == 0)\
+						&& (MR == 6) && (NR == 8) \
+						&& (bli_cpuid_is_avx2fma3_supported() == TRUE) && (mr_cur==MR) && (nr_cur==NR); \
 \
 						/* m_idx and n_idx would be equal only if the current block is
 						   a diagonal block */\

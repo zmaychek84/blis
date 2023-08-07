@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019, Advanced Micro Devices, Inc.
+   Copyright (C) 2019-2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -163,7 +163,7 @@ void bli_dgemmsup_rv_haswell_asm_6x2
 
 	mov(var(cs_c), rsi)                // load cs_c to rsi (temporarily)
 	lea(mem(, rsi, 8), rsi)            // cs_c *= sizeof(double)
-	//lea(mem(rsi, rsi, 2), rbp)         // rbp = 3*cs_c;
+
 	prefetch(0, mem(rcx,         5*8)) // prefetch c + 0*cs_c
 	prefetch(0, mem(rcx, rsi, 1, 5*8)) // prefetch c + 1*cs_c
 
@@ -544,12 +544,13 @@ void bli_dgemmsup_rv_haswell_asm_6x2
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm6",
 	  "memory"
 	)
 }
@@ -635,7 +636,7 @@ void bli_dgemmsup_rv_haswell_asm_5x2
 
 	mov(var(cs_c), rsi)                // load cs_c to rsi (temporarily)
 	lea(mem(, rsi, 8), rsi)            // cs_c *= sizeof(double)
-	//lea(mem(rsi, rsi, 2), rbp)         // rbp = 3*cs_c;
+
 	prefetch(0, mem(rcx,         4*8)) // prefetch c + 0*cs_c
 	prefetch(0, mem(rcx, rsi, 1, 4*8)) // prefetch c + 1*cs_c
 
@@ -994,12 +995,13 @@ void bli_dgemmsup_rv_haswell_asm_5x2
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm6",
 	  "memory"
 	)
 }
@@ -1084,7 +1086,7 @@ void bli_dgemmsup_rv_haswell_asm_4x2
 
 	mov(var(cs_c), rsi)                // load cs_c to rsi (temporarily)
 	lea(mem(, rsi, 8), rsi)            // cs_c *= sizeof(double)
-	//lea(mem(rsi, rsi, 2), rbp)         // rbp = 3*cs_c;
+
 	prefetch(0, mem(rcx,         3*8)) // prefetch c + 0*cs_c
 	prefetch(0, mem(rcx, rsi, 1, 3*8)) // prefetch c + 1*cs_c
 
@@ -1402,12 +1404,13 @@ void bli_dgemmsup_rv_haswell_asm_4x2
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm6",
 	  "memory"
 	)
 }
@@ -1491,7 +1494,7 @@ void bli_dgemmsup_rv_haswell_asm_3x2
 
 	mov(var(cs_c), rsi)                // load cs_c to rsi (temporarily)
 	lea(mem(, rsi, 8), rsi)            // cs_c *= sizeof(double)
-	//lea(mem(rsi, rsi, 2), rbp)         // rbp = 3*cs_c;
+
 	prefetch(0, mem(rcx,         2*8)) // prefetch c + 0*cs_c
 	prefetch(0, mem(rcx, rsi, 1, 2*8)) // prefetch c + 1*cs_c
 
@@ -1807,12 +1810,14 @@ void bli_dgemmsup_rv_haswell_asm_3x2
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm6",
+	  "ymm8", "ymm10",
 	  "memory"
 	)
 }
@@ -1895,7 +1900,7 @@ void bli_dgemmsup_rv_haswell_asm_2x2
 
 	mov(var(cs_c), rsi)                // load cs_c to rsi (temporarily)
 	lea(mem(, rsi, 8), rsi)            // cs_c *= sizeof(double)
-	//lea(mem(rsi, rsi, 2), rbp)         // rbp = 3*cs_c;
+
 	prefetch(0, mem(rcx,         1*8)) // prefetch c + 0*cs_c
 	prefetch(0, mem(rcx, rsi, 1, 1*8)) // prefetch c + 1*cs_c
 
@@ -2157,12 +2162,13 @@ void bli_dgemmsup_rv_haswell_asm_2x2
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm2", "ymm3",
 	  "memory"
 	)
 }
@@ -2244,7 +2250,7 @@ void bli_dgemmsup_rv_haswell_asm_1x2
 
 	mov(var(cs_c), rsi)                // load cs_c to rsi (temporarily)
 	lea(mem(, rsi, 8), rsi)            // cs_c *= sizeof(double)
-	//lea(mem(rsi, rsi, 2), rbp)         // rbp = 3*cs_c;
+
 	prefetch(0, mem(rcx,         0*8)) // prefetch c + 0*cs_c
 	prefetch(0, mem(rcx, rsi, 1, 0*8)) // prefetch c + 1*cs_c
 
@@ -2484,12 +2490,13 @@ void bli_dgemmsup_rv_haswell_asm_1x2
       [a_next] "m" (a_next),
       [b_next] "m" (b_next)*/
 	: // register clobber list
-	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+	  "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
 	  "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
 	  "xmm0", "xmm1", "xmm2", "xmm3",
 	  "xmm4", "xmm5", "xmm6", "xmm7",
 	  "xmm8", "xmm9", "xmm10", "xmm11",
 	  "xmm12", "xmm13", "xmm14", "xmm15",
+	  "ymm0", "ymm2", "ymm3",
 	  "memory"
 	)
 }
