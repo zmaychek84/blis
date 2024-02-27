@@ -34,6 +34,7 @@
 
 #include "blis.h"
 #include "aocl_gemm_interface_apis.h"
+#include "aocl_gemm_check.h"
 #include "lpgemm_types.h"
 #include "lpgemm_5loop_interface_apis.h"
 #include "lpgemm_config.h"
@@ -60,11 +61,16 @@ AOCL_GEMM_MATMUL(int8_t,int8_t,int8_t,int16_t,s8s8s16os8)
 	// Set MC, NC, KC, NR, MR.
 	aocl_lpgemm_init_global_cntx();
 
-	// Null check for pointers.
-	if ((a == NULL) || (b == NULL) || (c == NULL))
-	{
-		return; // Error.
-	}
+	// check for validity of params.
+	AOCL_GEMM_CHECK
+	(
+	  "s8s8s16os8",
+	  order, transa, transb,
+	  m, n, k,
+	  a, lda, mem_format_a,
+	  b, ldb, mem_format_b,
+	  c, ldc
+	);
 
 	/* Map BLAS chars to their corresponding BLIS enumerated type value. */
 	bli_param_map_netlib_to_blis_trans(transa, &blis_transa);
@@ -75,29 +81,14 @@ AOCL_GEMM_MATMUL(int8_t,int8_t,int8_t,int16_t,s8s8s16os8)
 	if ( ( blis_transa != BLIS_NO_TRANSPOSE ) ||
 		 ( blis_transb != BLIS_NO_TRANSPOSE ) )
 	{
+		bli_print_msg(" Transpose of matrices is not supported.", __FILE__, __LINE__ );
 		return; // Error.
 	}
 
-	// Sanitize order input.
-	char order_use =
-			( ( order == 'r' ) || ( order == 'R' ) ||
-			  ( order == 'c' ) || ( order == 'C' ) ) ?
-			order : 'r';
-	if ( ( order_use != 'r' ) && ( order_use != 'R' ) )
+	if ( ( order != 'r' ) && ( order != 'R' ) )
 	{
+		bli_print_msg(" Operation only supports row-major matrices.", __FILE__, __LINE__ );
 		return; // Only row major supported.
-	}
-
-	// Row major input expected with leading dimensions equal to row stride.
-	if ((lda != k) || (ldb != n) || (ldc != n))
-	{
-		return; // Error.
-	}
-
-	// Check if dimensions are valid.
-	if ((m <= 0) || (n <= 0) || (k <= 0) || (lda <= 0) || (ldb <= 0) || (ldc <= 0))
-	{
-		return; // Error.
 	}
 
 	const inc_t rs_a = lda;
@@ -125,22 +116,25 @@ AOCL_GEMM_MATMUL(int8_t,int8_t,int8_t,int16_t,s8s8s16os8)
 	// Only unpacked A supported now.
 	if (mtag_a != UNPACKED)
 	{
+		bli_print_msg(" A matrix needs to be unpacked.", __FILE__, __LINE__ );
 		return; // Error.
 	}
 
 	// Convert post op struct to post op linked list format.
 	lpgemm_post_op post_op_list[AOCL_MAX_POST_OPS];
-	lpgemm_translate_to_post_ops_list
+	err_t err = lpgemm_translate_to_post_ops_list
 	(
 	  post_op_unparsed, post_op_list,
-	  ( void* )c, ( void* )( &order_use )
+	  ( void* )c, ( void* )( &order )
 	);
+
+	if( err != BLIS_SUCCESS ) return;
 
 	// Initialize a local runtime with global settings if necessary. Note
 	// that in the case that a runtime is passed in, we make a local copy.
 	rntm_t rntm_g;
 	bli_rntm_init_from_global(&rntm_g);
-	bli_membrk_rntm_set_membrk(&rntm_g);
+	bli_pba_rntm_set_pba(&rntm_g);
 
 	lpgemm_cntx_t* lcntx_g = lpgemm_get_global_cntx_obj( S8S8S16OS16 );
 
@@ -153,7 +147,7 @@ AOCL_GEMM_MATMUL(int8_t,int8_t,int8_t,int16_t,s8s8s16os8)
 	  ( int16_t* )c, rs_c, cs_c,
 	  alpha, beta,
 	  &rntm_g, lcntx_g,
-	  post_op_list, TRUE
+	  post_op_list, S8
 	);
 #else
 	lpgemm_s8s8s16o16_thread_decorator
@@ -164,7 +158,7 @@ AOCL_GEMM_MATMUL(int8_t,int8_t,int8_t,int16_t,s8s8s16os8)
 	  ( int16_t* )c, rs_c, cs_c,
 	  alpha, beta,
 	  &rntm_g, lcntx_g,
-	  post_op_list, TRUE
+	  post_op_list, S8
 	);
 #endif
 }

@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2016, Hewlett Packard Enterprise Development LP
-   Copyright (C) 2022, Advanced Micro Devices, Inc.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -1184,6 +1184,57 @@ BLIS_INLINE stor3_t bli_obj_stor3_from_strides( obj_t* c, obj_t* a, obj_t* b )
 	return bli_stor3_from_strides( rs_c, cs_c,
 	                               rs_a, cs_a,
 	                               rs_b, cs_b  );
+}
+
+
+// -- User-provided information macros --
+
+// User data query
+
+BLIS_INLINE void* bli_obj_user_data( obj_t* obj )
+{
+	return obj->user_data;
+}
+
+// User data modification
+
+BLIS_INLINE void bli_obj_set_user_data( void* data, obj_t* obj )
+{
+	obj->user_data = data;
+}
+
+// Function pointer query
+
+BLIS_INLINE obj_pack_fn_t bli_obj_pack_fn( obj_t* obj )
+{
+	return obj->pack;
+}
+
+BLIS_INLINE obj_ker_fn_t bli_obj_ker_fn( obj_t* obj )
+{
+	return obj->ker;
+}
+
+BLIS_INLINE obj_ukr_fn_t bli_obj_ukr_fn( obj_t* obj )
+{
+	return obj->ukr;
+}
+
+// Function pointer modification
+
+BLIS_INLINE void bli_obj_set_pack_fn( obj_pack_fn_t pack, obj_t* obj )
+{
+	obj->pack = pack;
+}
+
+BLIS_INLINE void bli_obj_set_ker_fn( obj_ker_fn_t ker, obj_t* obj )
+{
+	obj->ker = ker;
+}
+
+BLIS_INLINE void bli_obj_set_ukr_fn( obj_ukr_fn_t ukr, obj_t* obj )
+{
+	obj->ukr = ukr;
 }
 
 

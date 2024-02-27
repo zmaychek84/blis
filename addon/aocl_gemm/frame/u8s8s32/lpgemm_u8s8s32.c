@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -122,7 +122,8 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 	bool is_first_k = FALSE;
 
 	lpgemm_post_op_attr post_ops_attr;
-	if ( c_downscale == TRUE )
+	post_ops_attr.c_stor_type = c_downscale;
+	if ( c_downscale < S32 )
 	{
 		post_ops_attr.buf_downscale = c;
 	}
@@ -162,12 +163,12 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 			);
 		}
 
-		if ( c_downscale == FALSE )
+		if ( c_downscale == S32 )
 		{
 			c_use_jc = c + jc;
 		}
 		// Temp accumulaton buffer for C allocation.
-		else if ( c_downscale == TRUE )
+		else if ( c_downscale < S32 )
 		{
 			// Buffer memory is only required if output needs to be
 			// persisted across iterations of the pc/KC loop.
@@ -180,7 +181,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 
 				lpgemm_alloc_mem_panel
 				(
-				  mem_scale_c_size_req, BLIS_BUFFER_FOR_C_PANEL,
+				  mem_scale_c_size_req, BLIS_BUFFER_FOR_GEN_USE,
 				  &mem_scale_c, rntm
 				);
 
@@ -313,7 +314,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 
 				// Only per thread C matrix is stored in temp buffer, so both
 				// per thread jc and ic start should be normalized to zero.
-				if ( c_downscale == TRUE )
+				if ( c_downscale < S32 )
 				{
 					c_use_ic = c_use_jc + ( rs_c_use * ( ic - ic_start ) );
 				}
@@ -405,7 +406,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 		{
 			if ( bli_mem_is_alloc( &mem_b ) )
 			{
-				bli_membrk_release( rntm, &mem_b );
+				bli_pba_release( rntm, &mem_b );
 			}
 		}
 	}
@@ -413,14 +414,14 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 	{
 		if ( bli_mem_is_alloc( &mem_a ) )
 		{
-			bli_membrk_release( rntm, &mem_a );
+			bli_pba_release( rntm, &mem_a );
 		}
 	}
-	if ( c_downscale == TRUE )
+	if ( c_downscale < S32 )
 	{
 		if ( bli_mem_is_alloc( &mem_scale_c ) )
 		{
-			bli_membrk_release( rntm, &mem_scale_c );
+			bli_pba_release( rntm, &mem_scale_c );
 		}
 	}
 }

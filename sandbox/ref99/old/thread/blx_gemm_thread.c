@@ -147,7 +147,7 @@ void blx_gemm_thread
 	// Set the packing block allocator field of the rntm. This will be
 	// inherited by all of the child threads when they make local copies of
 	// the rntm below.
-	bli_membrk_rntm_set_membrk( rntm );
+	bli_pba_rntm_set_pba( rntm );
 
 	// Allocate a global communicator for the root thrinfo_t structures.
 	thrcomm_t* restrict gl_comm = bli_thrcomm_create( rntm, n_threads );
@@ -164,7 +164,7 @@ void blx_gemm_thread
 		// Query the thread's id from OpenMP.
 		const dim_t tid = omp_get_thread_num();
 
-		// Check for a somewhat obscure OpenMP thread-mistmatch issue.
+		// Check for a somewhat obscure OpenMP thread-mismatch issue.
 		//bli_l3_thread_decorator_thread_check( n_threads, tid, gl_comm, rntm_p );
 
 		// Use the thread id to access the appropriate pool_t* within the

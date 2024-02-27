@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -42,6 +42,8 @@
 #define AOCL_GEMM_GET_REORDER_BUF_SIZE(LP_SFX) \
 BLIS_EXPORT_ADDON siz_t aocl_get_reorder_buf_size_ ## LP_SFX \
      ( \
+       const char  order, \
+       const char  trans, \
        const char  mat_type, \
        const dim_t k, \
        const dim_t n \
@@ -60,6 +62,8 @@ AOCL_GEMM_GET_REORDER_BUF_SIZE(s8s8s16os16);
 #define AOCL_GEMM_REORDER(B_type,LP_SFX) \
 BLIS_EXPORT_ADDON void aocl_reorder_ ## LP_SFX \
      ( \
+       const char    order, \
+       const char    trans, \
        const char    mat_type, \
        const B_type* input_buf_addr, \
        B_type*       reorder_buf_addr, \
@@ -106,6 +110,7 @@ AOCL_GEMM_MATMUL(uint8_t,int8_t,int16_t,int16_t,u8s8s16os16);
 AOCL_GEMM_MATMUL(bfloat16,bfloat16,float,float,bf16bf16f32of32);
 AOCL_GEMM_MATMUL(uint8_t,int8_t,int8_t,int32_t,u8s8s32os8);
 AOCL_GEMM_MATMUL(uint8_t,int8_t,int8_t,int16_t,u8s8s16os8);
+AOCL_GEMM_MATMUL(uint8_t,int8_t,uint8_t,int16_t,u8s8s16ou8);
 AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16);
 AOCL_GEMM_MATMUL(int8_t,int8_t,int32_t,int32_t,s8s8s32os32);
 AOCL_GEMM_MATMUL(int8_t,int8_t,int8_t,int32_t,s8s8s32os8);

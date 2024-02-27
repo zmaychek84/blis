@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -34,8 +34,26 @@
 */
 
 #ifdef BLIS_CONFIGURETIME_CPUID
+
+  // NOTE: If you need to make any changes to this cpp branch, it's probably
+  // the case that you also need to modify bli_arch.c, bli_cpuid.c, and
+  // bli_env.c. Don't forget to update these other files as needed!
+
+  // The BLIS_ENABLE_SYSTEM macro must be defined so that the correct cpp
+  // branch in bli_system.h is processed. (This macro is normally defined in
+  // bli_config.h.)
+  #define BLIS_ENABLE_SYSTEM
+
+  // Use C-style static inline functions for any static inline functions that
+  // happen to be defined by the headers below. (This macro is normally defined
+  // in bli_config_macro_defs.h.)
   #define BLIS_INLINE static
+
+  // Since we're not building a shared library, we can forgo the use of the
+  // BLIS_EXPORT_BLIS annotations by #defining them to be nothing. (This macro
+  // is normally defined in bli_config_macro_defs.h.)
   #define BLIS_EXPORT_BLIS
+
   #include "bli_system.h"
   #include "bli_type_defs.h"
   #include "bli_arch.h"
@@ -61,6 +79,15 @@ static model_t model_id = -1;
 // Variable used to communicate if user has set '__blis_arch_type_name' between
 // bli_arch_set_id() and bli_arch_check_id()
 static dim_t __attribute__ ((unused)) req_id = -1;
+
+// Keep track if AOCL_ENABLE_INSTRUCTIONS environment variable was set.
+static bool __attribute__ ((unused)) aocl_e_i = FALSE;
+
+bool bli_aocl_enable_instruction_query( void )
+{
+	// Return whether the AOCL_ENABLE_INSTRUCTIONS environment variable is set or not.
+	return aocl_e_i;
+}
 
 arch_t bli_arch_query_id( void )
 {
@@ -135,6 +162,19 @@ void bli_arch_set_id( void )
 	// subconfiguration. "__blis_arch_type_name" will be defined by the
 	// configure command in bli_config.h, with the default name of BLIS_ARCH_TYPE
 	req_id = bli_env_get_var_arch_type( __blis_arch_type_name, -1 );
+
+	// If "__blis_arch_type_name" environment variable was not set, check
+	// AOCL generic environment variable AOCL_ENABLE_INSTRUCTIONS. For simplicity
+	// we refer to either of these options below as "BLIS_ARCH_TYPE" and only
+	// distinguish between them where necessary.
+	if ( req_id == -1 )
+	{
+		req_id = bli_env_get_var_arch_type( "AOCL_ENABLE_INSTRUCTIONS", -1 );
+		if ( req_id != -1 )
+		{
+			aocl_e_i = TRUE;
+		}
+	}
 
 #ifndef BLIS_CONFIGURETIME_CPUID
 	if ( req_id != -1 )
@@ -220,6 +260,12 @@ void bli_arch_set_id( void )
 		#endif
 
 		// ARM microarchitectures.
+		#ifdef BLIS_FAMILY_ARMSVE
+		arch_id = BLIS_ARCH_ARMSVE;
+		#endif
+		#ifdef BLIS_FAMILY_A64FX
+		arch_id = BLIS_ARCH_A64FX;
+		#endif
 		#ifdef BLIS_FAMILY_THUNDERX2
 		arch_id = BLIS_ARCH_THUNDERX2;
 		#endif
@@ -310,6 +356,10 @@ void bli_arch_check_id( void )
 {
 	bli_arch_set_id_once();
 
+	bool arch_reset = FALSE;
+	arch_t orig_arch_id= req_id;
+	model_t orig_model_id = model_id;
+
 	// Check arch value against configured options. Only needed
 	// if user has set it. This function will also do the
 	// logging of chosen arch and model (if desired).
@@ -332,19 +382,100 @@ void bli_arch_check_id( void )
 		// called, so ensure cntx has been initialized here.
 		bli_gks_init_once();
 
-		// At this point, we know that req_id is in the valid range, but we
-		// don't yet know if it refers to a context that was actually
-		// initialized. Query the address of an internal context data structure
-		// corresponding to req_id. This pointer will be NULL if the associated
-		// subconfig is not available.
-		cntx_t** req_cntx = bli_gks_lookup_id( req_id );
-
-		// This function checks the context pointer and aborts with a useful
-		// error message if the pointer is found to be NULL.
-		if ( bli_error_checking_is_enabled() )
+		bool test_arch = TRUE;
+		while (test_arch)
 		{
-			err_t e_val = bli_check_initialized_gks_cntx( req_cntx );
-			bli_check_error_code( e_val );
+
+			// At this point, we know that req_id is in the valid range, but we
+			// don't yet know if it refers to a context that was actually
+			// initialized. Query the address of an internal context data structure
+			// corresponding to req_id. This pointer will be NULL if the associated
+			// subconfig is not available.
+			cntx_t** req_cntx = bli_gks_lookup_id( req_id );
+
+			// This function checks the context pointer and aborts with a useful
+			// error message if the pointer is found to be NULL.
+			if ( bli_error_checking_is_enabled() )
+			{
+				err_t e_val = bli_check_initialized_gks_cntx( req_cntx );
+				bli_check_error_code( e_val );
+			}
+
+			// If BLIS_ARCH_TYPE (or renamed version of this environment variable)
+			// was set, we always use this value of req_id to set arch_id.
+			// However, if AOCL_ENABLE_INSTRUCTIONS was set instead, we check for
+			// ISA compatibility and switch to a supported option if necessary.
+			if ( aocl_e_i )
+			{
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
+
+				// If AVX2 test fails here we assume either:
+				// 1. Config was either zen, zen2, zen3, zen4, haswell or skx,
+				//    so there is no fallback code path, hence error checking
+				//    above will fail.
+				// 2. Config was amdzen, intel64 or x86_64, and will have 
+				//    generic code path.
+				if ( !bli_cpuid_is_avx2fma3_supported() )
+				{
+					switch (req_id)
+					{
+						case BLIS_ARCH_ZEN4:
+						case BLIS_ARCH_ZEN3:
+						case BLIS_ARCH_ZEN2:
+						case BLIS_ARCH_ZEN:
+						case BLIS_ARCH_EXCAVATOR:
+						case BLIS_ARCH_SKX:
+						case BLIS_ARCH_HASWELL:
+							arch_reset = TRUE;
+							req_id = BLIS_ARCH_GENERIC;
+							model_id = BLIS_MODEL_DEFAULT;
+							continue;
+							break;
+					}
+				}
+				// If AVX512 test fails here we assume either:
+				// 1. Config was either zen4 or skx, so there is
+				//    no fallback code path, hence error checking
+				//    above will fail.
+				// 2. Config was amdzen, intel64 or x86_64, and will have 
+				//    appropriate avx2 code path to try.
+				if ( !bli_cpuid_is_avx512_supported() )
+				{
+					switch (req_id)
+					{
+						case BLIS_ARCH_ZEN4:
+							arch_reset = TRUE;
+							req_id = BLIS_ARCH_ZEN3;
+							model_id = BLIS_MODEL_DEFAULT;
+							continue;
+							break;
+						case BLIS_ARCH_SKX:
+							arch_reset = TRUE;
+							req_id = BLIS_ARCH_HASWELL;
+							model_id = BLIS_MODEL_DEFAULT;
+							continue;
+							break;
+					}
+				}
+				// If both tests above pass, we accept req_id choice.
+				test_arch = FALSE;
+
+				// Note: Pre-AVX2 systems from AMD and Intel, and Intel KNL,
+				//       have not been included in these tests, and thus could
+				//       continue to give illegal instruction errors on other
+				//       platforms, just as if BLIS_ARCH_TYPE was set to the
+				//       same value.
+#else
+				// Non-x86 platforms just accept value given for now.
+				// Similar logic to x86 if block could be implemented
+				// here if desired.
+				test_arch = FALSE;
+#endif				
+			}
+			else
+			{
+				test_arch = FALSE;
+			}
 		}
 
 		// Finally, we can be confident that req_id (1) is in range and (2)
@@ -357,16 +488,60 @@ void bli_arch_check_id( void )
 
 	if ( bli_arch_get_logging() )
         {
-		if ( model_id == BLIS_MODEL_DEFAULT )
+		if ( arch_reset )
 		{
-			fprintf( stderr, "libblis: selecting sub-configuration '%s'.\n",
-				 bli_arch_string( arch_id ) );
+			if ( orig_model_id == BLIS_MODEL_DEFAULT )
+			{
+				fprintf( stderr, "libblis: Sub-configuration '%s' is not supported on this system.\nlibblis: Switching to sub-configuration '%s'.\n",
+					 bli_arch_string( orig_arch_id ), bli_arch_string( arch_id ) );
+			}
+			else
+			{
+				fprintf( stderr, "libblis: Sub-configuration '%s', model '%s' is not supported on this system.\nlibblis: Switching to sub-configuration '%s', model '%s'.\n",
+					 bli_arch_string( orig_arch_id ), bli_model_string( orig_model_id ), bli_arch_string( arch_id ), bli_model_string( model_id ) );
+			}
 		}
 		else
 		{
-			fprintf( stderr, "libblis: selecting sub-configuration '%s', model '%s'.\n",
-				 bli_arch_string( arch_id ), bli_model_string( model_id ) );
+			if ( model_id == BLIS_MODEL_DEFAULT )
+			{
+#ifdef DISABLE_BLIS_ARCH_TYPE
+				fprintf( stderr, "libblis: Selecting sub-configuration '%s'.\n"
+                                                 "libblis: User control of sub-configuration using AOCL_ENABLE_INSTRUCTIONS\n"
+                                                 "libblis: or using "__blis_arch_type_name" and "__blis_model_type_name" is disabled.\n",
+					 bli_arch_string( arch_id ) );
+#else
+				fprintf( stderr, "libblis: Selecting sub-configuration '%s'.\n",
+					 bli_arch_string( arch_id ) );
+#endif
+			}
+			else
+			{
+#ifdef DISABLE_BLIS_ARCH_TYPE
+				fprintf( stderr, "libblis: Selecting sub-configuration '%s', model '%s'.\n"
+                                                 "libblis: User control of sub-configuration using AOCL_ENABLE_INSTRUCTIONS\n"
+                                                 "libblis: or using "__blis_arch_type_name" and "__blis_model_type_name" is disabled.\n",
+					 bli_arch_string( arch_id ), bli_model_string( model_id ) );
+#else
+				fprintf( stderr, "libblis: Selecting sub-configuration '%s', model '%s'.\n",
+					 bli_arch_string( arch_id ), bli_model_string( model_id ) );
+#endif
+			}
 		}
+#if 0
+		if ( orig_model_id == BLIS_MODEL_DEFAULT )
+		{
+			fprintf( stderr, "libblis: Actual hardware '%s'.\n",
+				 bli_arch_string( actual_arch_id ) );
+
+		}
+		else
+		{
+			fprintf( stderr, "libblis: Actual hardware '%s', model '%s'.\n",
+				 bli_arch_string( actual_arch_id ), bli_model_string( actual_model_id ) );
+
+		}
+#endif
         }
 
 	//printf( "blis_arch_check_id(): arch_id, model_id = %u, %u\n", arch_id, model_id );
@@ -406,6 +581,8 @@ static char* config_name[ BLIS_NUM_ARCHS ] =
     "thunderx2",
     "cortexa57",
     "cortexa53",
+    "armsve",
+    "a64fx",
     "cortexa15",
     "cortexa9",
 
@@ -413,8 +590,6 @@ static char* config_name[ BLIS_NUM_ARCHS ] =
     "power9",
     "power7",
     "bgq",
-
-    "generic"
 };
 
 char* bli_arch_string( arch_t id )
@@ -440,8 +615,6 @@ static char* model_name[ BLIS_NUM_MODELS ] =
 
     "Milan",
     "Milan-X",
-
-    "default"
 };
 
 char* bli_model_string( model_t id )

@@ -57,6 +57,13 @@
 // for the sup code path.
 #include "bli_l3_sup_decor.h"
 
+// Include the pack full thread decorator and related definitions and prototypes
+// for the pack code path.
+#include "bli_pack_full_decor.h"
+// Include the level-3 thread decorator and related definitions and prototypes
+// for the compute code path.
+#include "bli_l3_compute_decor.h"
+
 // Initialization-related prototypes.
 void bli_thread_init( void );
 void bli_thread_update_tl( void );
@@ -198,6 +205,17 @@ void bli_thread_vector_partition
        dim_t* compute_len,
        dim_t  thread_id
      );
+
+void bli_normfv_thread_partition
+	 (
+		dim_t 	n_elem,
+		dim_t 	t_count,
+		dim_t* 	start,
+		dim_t* 	compute_len,
+		dim_t  	block_size,
+		dim_t 	incx,
+		dim_t 	thread_id
+	 );
 
 // -----------------------------------------------------------------------------
 

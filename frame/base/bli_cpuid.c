@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
    Copyright (C) 2019, Dave Love, University of Manchester
 
    Redistribution and use in source and binary forms, with or without
@@ -47,12 +47,31 @@
 #endif
 
 #ifdef BLIS_CONFIGURETIME_CPUID
+
+  // NOTE: If you need to make any changes to this cpp branch, it's probably
+  // the case that you also need to modify bli_arch.c, bli_cpuid.c, and
+  // bli_env.c. Don't forget to update these other files as needed!
+
+  // The BLIS_ENABLE_SYSTEM macro must be defined so that the correct cpp
+  // branch in bli_system.h is processed. (This macro is normally defined in
+  // bli_config.h.)
+  #define BLIS_ENABLE_SYSTEM
+
+  // Use C-style static inline functions for any static inline functions that
+  // happen to be defined by the headers below. (This macro is normally defined
+  // in bli_config_macro_defs.h.)
   #define BLIS_INLINE static
+
+  // Since we're not building a shared library, we can forgo the use of the
+  // BLIS_EXPORT_BLIS annotations by #defining them to be nothing. (This macro
+  // is normally defined in bli_config_macro_defs.h.)
   #define BLIS_EXPORT_BLIS
+
   #include "bli_system.h"
   #include "bli_type_defs.h"
-  #include "bli_cpuid.h"
   #include "bli_arch.h"
+  #include "bli_cpuid.h"
+  //#include "bli_env.h"
 #else
   #include "blis.h"
   #include "bli_arch.h"
@@ -855,6 +874,14 @@ arch_t bli_cpuid_query_id( void )
 		{
 			// Check for each ARMv8 configuration that is enabled, check for that
 			// microarchitecture. We check from most recent to most dated.
+#ifdef BLIS_CONFIG_ARMSVE
+			if ( bli_cpuid_is_armsve( model, part, features ) )
+				return BLIS_ARCH_ARMSVE;
+#endif
+#ifdef BLIS_CONFIG_A64FX
+			if ( bli_cpuid_is_a64fx( model, part, features ) )
+				return BLIS_ARCH_A64FX;
+#endif
 #ifdef BLIS_CONFIG_THUNDERX2
 			if ( bli_cpuid_is_thunderx2( model, part, features ) )
 				return BLIS_ARCH_THUNDERX2;
@@ -890,6 +917,12 @@ arch_t bli_cpuid_query_id( void )
 	}
 
 	return BLIS_ARCH_GENERIC;
+}
+
+model_t bli_cpuid_query_model_id( arch_t arch_id )
+{
+	// Set default for architectures where separate models haven't been defined.
+	return BLIS_MODEL_DEFAULT;
 }
 
 bool bli_cpuid_is_thunderx2
@@ -937,6 +970,36 @@ bool bli_cpuid_is_cortexa53
 	return TRUE;
 }
 
+bool bli_cpuid_is_armsve
+     (
+       uint32_t family,
+       uint32_t model,
+       uint32_t features
+     )
+{
+	// Check for expected CPU features.
+	const uint32_t expected = FEATURE_SVE;
+
+	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
+
+	return TRUE;
+}
+
+bool bli_cpuid_is_a64fx
+     (
+       uint32_t family,
+       uint32_t model,
+       uint32_t features
+     )
+{
+	// Check for expected CPU features.
+	const uint32_t expected = FEATURE_SVE;
+
+	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
+
+	return TRUE;
+}
+
 bool bli_cpuid_is_cortexa15
      (
        uint32_t family,
@@ -967,6 +1030,22 @@ bool bli_cpuid_is_cortexa9
 	return TRUE;
 }
 
+#else
+
+// Define basic versions of these functions for architectures not explicitly
+// handled above.
+
+arch_t bli_cpuid_query_id( void )
+{
+	return BLIS_ARCH_GENERIC;
+}
+
+model_t bli_cpuid_query_model_id( arch_t arch_id )
+{
+    // Set default for architectures where separate models haven't been defined.
+    return BLIS_MODEL_DEFAULT;
+}
+
 #endif
 
 // -----------------------------------------------------------------------------
@@ -981,7 +1060,7 @@ bool bli_cpuid_is_cortexa9
 
    Copyright (C) 2017, The University of Texas at Austin
    Copyright (C) 2017, Devin Matthews
-   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -1461,6 +1540,10 @@ uint32_t bli_cpuid_query
 	if ( strstr( feat_str, "neon"  ) != NULL ||
 	     strstr( feat_str, "asimd" ) != NULL )
 		*features |= FEATURE_NEON;
+
+	// Parse the feature string to check for SVE features.
+	if ( strstr( feat_str, "sve" ) != NULL )
+		*features |= FEATURE_SVE;
 
 	//printf( "bli_cpuid_query(): features var: %u\n", *features );
 

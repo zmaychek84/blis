@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,77 +35,6 @@
 
 #ifndef BLIS_MACRO_DEFS_H
 #define BLIS_MACRO_DEFS_H
-
-
-// -- Undefine restrict for C++ and C89/90 --
-
-#ifdef __cplusplus
-  // Language is C++; define restrict as nothing.
-  #ifndef restrict
-  #define restrict
-  #endif
-#elif __STDC_VERSION__ >= 199901L
-  // Language is C99 (or later); do nothing since restrict is recognized.
-#else
-  // Language is pre-C99; define restrict as nothing.
-  #ifndef restrict
-  #define restrict
-  #endif
-#endif
-
-
-// -- Define typeof() operator if using non-GNU compiler --
-
-#ifndef __GNUC__
-  #define typeof __typeof__
-#else
-  #ifndef typeof
-  #define typeof __typeof__
-  #endif
-#endif
-
-
-// -- BLIS Thread Local Storage Keyword --
-
-// __thread for TLS is supported by GCC, CLANG, ICC, and IBMC.
-// There is a small risk here as __GNUC__ can also be defined by some other
-// compiler (other than ICC and CLANG which we know define it) that
-// doesn't support __thread, as __GNUC__ is not quite unique to GCC.
-// But the possibility of someone using such non-main-stream compiler
-// for building BLIS is low.
-#if defined(__GNUC__) || defined(__clang__) || defined(__ICC) || defined(__IBMC__)
-  #define BLIS_THREAD_LOCAL __thread
-#else
-  #define BLIS_THREAD_LOCAL
-#endif
-
-
-// -- BLIS constructor/destructor function attribute --
-
-// __attribute__((constructor/destructor)) is supported by GCC only.
-// There is a small risk here as __GNUC__ can also be defined by some other
-// compiler (other than ICC and CLANG which we know define it) that
-// doesn't support this, as __GNUC__ is not quite unique to GCC.
-// But the possibility of someone using such non-main-stream compiler
-// for building BLIS is low.
-
-#if defined(__ICC) || defined(__INTEL_COMPILER)
-  // ICC defines __GNUC__ but doesn't support this
-  #define BLIS_ATTRIB_CTOR
-  #define BLIS_ATTRIB_DTOR
-#elif defined(__clang__)
-  // CLANG supports __attribute__, but its documentation doesn't
-  // mention support for constructor/destructor. Compiling with
-  // clang and testing shows that it does support.
-  #define BLIS_ATTRIB_CTOR __attribute__((constructor))
-  #define BLIS_ATTRIB_DTOR __attribute__((destructor))
-#elif defined(__GNUC__)
-  #define BLIS_ATTRIB_CTOR __attribute__((constructor))
-  #define BLIS_ATTRIB_DTOR __attribute__((destructor))
-#else
-  #define BLIS_ATTRIB_CTOR
-  #define BLIS_ATTRIB_DTOR
-#endif
 
 
 // -- Concatenation macros --
@@ -287,6 +216,12 @@
 #define dgemm_batch_ dgemm_batch
 #define cgemm_batch_ cgemm_batch
 #define zgemm_batch_ zgemm_batch
+#define sgemm_compute_ sgemm_compute
+#define dgemm_compute_ dgemm_compute
+#define sgemm_pack_get_size_ sgemm_pack_get_size
+#define dgemm_pack_get_size_ dgemm_pack_get_size
+#define sgemm_pack_ sgemm_pack
+#define dgemm_pack_ dgemm_pack
 #define saxpby_ saxpby
 #define daxpby_ daxpby
 #define caxpby_ caxpby
@@ -391,6 +326,9 @@
 #define dgbmv                     DGBMV
 #define dgemm                     DGEMM
 #define dgemm_batch               DGEMM_BATCH
+#define dgemm_compute             DGEMM_COMPUTE
+#define dgemm_pack_get_size       DGEMM_PACK_GET_SIZE
+#define dgemm_pack                DGEMM_PACK
 #define dgemmt                    DGEMMT
 #define dgemv                     DGEMV
 #define dger                      DGER
@@ -464,6 +402,9 @@
 #define sgbmv                     SGBMV
 #define sgemm                     SGEMM
 #define sgemm_batch               SGEMM_BATCH
+#define sgemm_compute             SGEMM_COMPUTE
+#define sgemm_pack_get_size       SGEMM_PACK_GET_SIZE
+#define sgemm_pack                SGEMM_PACK
 #define sgemmt                    SGEMMT
 #define sgemv                     SGEMV
 #define sger                      SGER

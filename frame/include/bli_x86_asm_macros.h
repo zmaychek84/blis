@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2018, The University of Texas at Austin
-   Copyright (C) 2019-23, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -776,6 +776,7 @@
 #define VMOVHPD(...) INSTR_(vmovhpd, __VA_ARGS__)
 #define VMOVDQA(_0, _1) INSTR_(vmovdqa, _0, _1)
 #define VMOVDQA32(_0, _1) INSTR_(vmovdqa32, _0, _1)
+#define VMOVDQU(_0, _1) INSTR_(vmovdqu, _0, _1)
 #define VMOVDQA64(_0, _1) INSTR_(vmovdqa64, _0, _1)
 #define VBROADCASTSS(_0, _1) INSTR_(vbroadcastss, _0, _1)
 #define VBROADCASTSD(_0, _1) INSTR_(vbroadcastsd, _0, _1)
@@ -809,6 +810,7 @@
 #define vmovhpd(...) VMOVHPD(__VA_ARGS__)
 #define vmovdqa(_0, _1) VMOVDQA(_0, _1)
 #define vmovdqa32(_0, _1) VMOVDQA32(_0, _1)
+#define vmovdqu(_0, _1) VMOVDQU(_0, _1)
 #define vmovdqa64(_0, _1) VMOVDQA64(_0, _1)
 #define vbroadcastss(_0, _1) VBROADCASTSS(_0, _1)
 #define vbroadcastsd(_0, _1) VBROADCASTSD(_0, _1)
@@ -886,6 +888,8 @@
 #define VHADDPD(_0, _1, _2) INSTR_(vhaddpd, _0, _1, _2)
 #define VHSUBPD(_0, _1, _2) INSTR_(vhsubpd, _0, _1, _2)
 #define VHADDPS(_0, _1, _2) INSTR_(vhaddps, _0, _1, _2)
+#define VHSUBPD(_0, _1, _2) INSTR_(vhsubpd, _0, _1, _2)
+#define VHSUBPS(_0, _1, _2) INSTR_(vhsubps, _0, _1, _2)
 #define VADDPS(_0, _1, _2) INSTR_(vaddps, _0, _1, _2)
 #define VADDPD(_0, _1, _2) INSTR_(vaddpd, _0, _1, _2)
 #define VSUBPS(_0, _1, _2) INSTR_(vsubps, _0, _1, _2)
@@ -911,6 +915,8 @@
 #define VCOMISS(_0, _1) INSTR_(vcomiss, _0, _1)
 #define VCOMISD(_0, _1) INSTR_(vcomisd, _0, _1)
 
+#define VMASKMOVPD(_0, _1, _2) INSTR_(vmaskmovpd, _0, _1, _2)
+#define VMASKMOVPS(_0, _1, _2) INSTR_(vmaskmovps, _0, _1, _2)
 #define VFMADD132SS(_0, _1, _2) INSTR_(vfmadd132ss, _0, _1, _2)
 #define VFMADD213SS(_0, _1, _2) INSTR_(vfmadd213ss, _0, _1, _2)
 #define VFMADD231SS(_0, _1, _2) INSTR_(vfmadd231ss, _0, _1, _2)
@@ -1017,6 +1023,8 @@
 #define vhaddpd(_0, _1, _2) VHADDPD(_0, _1, _2)
 #define vhsubpd(_0, _1, _2) VHSUBPD(_0, _1, _2)
 #define vhaddps(_0, _1, _2) VHADDPS(_0, _1, _2)
+#define vhsubpd(_0, _1, _2) VHSUBPD(_0, _1, _2)
+#define vhsubps(_0, _1, _2) VHSUBPS(_0, _1, _2)
 #define vaddps(_0, _1, _2) VADDPS(_0, _1, _2)
 #define vaddpd(_0, _1, _2) VADDPD(_0, _1, _2)
 #define vsubps(_0, _1, _2) VSUBPS(_0, _1, _2)
@@ -1236,7 +1244,8 @@
 #define vblendpd(_0, _1, _2, _3) VBLENDPD(_0, _1, _2, _3)
 #define vblendmps(_0, _1, _2) VBLENDMSD(_0, _1, _2)
 #define vblendmpd(_0, _1, _2) VBLENDMPD(_0, _1, _2)
-
+#define vmaskmovpd(_0, _1, _2) VMASKMOVPD(_0, _1, _2)
+#define vmaskmovps(_0, _1, _2) VMASKMOVPS(_0, _1, _2)
 // Prefetches
 
 #define PREFETCH(_0, _1) INSTR_(prefetcht##_0, _1)

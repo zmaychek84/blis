@@ -318,15 +318,76 @@ void bli_cnormfv_unb_var1
         rntm_t*  rntm
     )
 {
+    scomplex *x_buf = x;
+    inc_t incx_buf = incx;
+
+    // Querying the architecture ID to deploy the appropriate kernel
     arch_t id = bli_arch_query_id();
-    switch (id)
+    switch ( id )
     {
         case BLIS_ARCH_ZEN4:
         case BLIS_ARCH_ZEN3:
         case BLIS_ARCH_ZEN2:
-        case BLIS_ARCH_ZEN:
+        case BLIS_ARCH_ZEN:;
 #ifdef BLIS_KERNELS_ZEN
-            bli_scnorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
+            // Memory pool declarations for packing vector X.
+            // Initialize mem pool buffer to NULL and size to 0.
+            // "buf" and "size" fields are assigned once memory
+            // is allocated from the pool in bli_pba_acquire_m().
+            // This will ensure bli_mem_is_alloc() will be passed on
+            // an allocated memory if created or a NULL.
+            mem_t   mem_buf_X = { 0 };
+            rntm_t  rntm_l;
+            // Packing for non-unit strided vector x.
+            if ( incx != 1 )
+            {
+                // In order to get the buffer from pool via rntm access to memory broker
+                // is needed. Following are initializations for rntm.
+                if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); }
+                else                { rntm_l = *rntm; }
+                bli_rntm_set_num_threads_only( 1, &rntm_l );
+                bli_pba_rntm_set_pba( &rntm_l );
+
+                // Calculate the size required for "n" scomplex elements in vector x.
+                size_t buffer_size = n * sizeof( scomplex );
+
+                #ifdef BLIS_ENABLE_MEM_TRACING
+                    printf( "bli_scnorm2fv_unb_var1_avx2(): get mem pool block\n" );
+                #endif
+
+                // Acquire a Buffer(n*size(scomplex)) from the memory broker
+                // and save the associated mem_t entry to mem_buf_X.
+                bli_pba_acquire_m
+                (
+                    &rntm_l,
+                    buffer_size,
+                    BLIS_BUFFER_FOR_B_PANEL,
+                    &mem_buf_X
+                );
+
+                // Continue packing X if buffer memory is allocated.
+                if ( bli_mem_is_alloc( &mem_buf_X ) )
+                {
+                    x_buf = bli_mem_buffer( &mem_buf_X );
+                    // Pack vector x with non-unit stride to a temp buffer x_buf with unit stride.
+                    for ( dim_t x_index = 0; x_index < n; x_index++ )
+                    {
+                        *( x_buf + x_index ) = *( x + ( x_index * incx ) );
+                    }
+                    incx_buf = 1;
+                }
+            }
+
+            bli_scnorm2fv_unb_var1_avx2( n, x_buf, incx_buf, norm, cntx );
+
+            if ( bli_mem_is_alloc( &mem_buf_X ) )
+            {
+                #ifdef BLIS_ENABLE_MEM_TRACING
+                    printf( "bli_scnorm2fv_unb_var1_avx2(): releasing mem pool block\n" );
+                #endif
+                // Return the buffer to pool.
+                bli_pba_release( &rntm_l , &mem_buf_X );
+            }
             break;
 #endif
         default:;
@@ -345,8 +406,8 @@ void bli_cnormfv_unb_var1
             bli_csumsqv_unb_var1
             (
                 n,
-                x,
-                incx,
+                x_buf,
+                incx_buf,
                 &scale,
                 &sumsq,
                 cntx,
@@ -372,15 +433,33 @@ void bli_znormfv_unb_var1
         rntm_t*  rntm
     )
 {
+    /*
+        Declaring a function pointer to point to the supported vectorized kernels.
+        Based on the arch_id support, the appropriate function is set to the function
+        pointer. Deployment happens post the switch cases.
+
+        NOTE : A separate function pointer type is set to NULL, which will be used
+               only for reduction purpose. This is because the norm(per thread)
+               is of type double, and thus requires call to the vectorized
+               kernel for dnormfv operation.
+    */
+    void ( *norm_fp )( dim_t, dcomplex*, inc_t, double*, cntx_t* ) = NULL;
+    void ( *reduce_fp )( dim_t, double*, inc_t, double*, cntx_t* ) = NULL;
+
+    dcomplex *x_buf = x;
+    dim_t nt_ideal = -1;
     arch_t id = bli_arch_query_id();
-    switch (id)
+    switch ( id )
     {
         case BLIS_ARCH_ZEN4:
         case BLIS_ARCH_ZEN3:
         case BLIS_ARCH_ZEN2:
         case BLIS_ARCH_ZEN:
 #ifdef BLIS_KERNELS_ZEN
-            bli_dznorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
+
+            norm_fp   = bli_dznorm2fv_unb_var1_avx2;
+            reduce_fp = bli_dnorm2fv_unb_var1_avx2;
+
             break;
 #endif
         default:;
@@ -413,6 +492,245 @@ void bli_znormfv_unb_var1
 
             // Store the final value to the output variable.
             bli_dcopys( sqrt_sumsq, *norm );
+    }
+
+    /*
+        If the function signature to vectorized kernel was not set,
+        the default case would have been performed. Thus exit early.
+
+        NOTE : Both the pointers are used here to avoid compilation warning.
+    */
+    if ( norm_fp == NULL && reduce_fp == NULL )
+        return;
+    
+    /*
+        When the size is such that nt_ideal is 1, and packing is not
+        required( incx == 1 ), we can directly call the kernel to
+        avoid framework overheads( fast-path ).
+    */
+    else if ( ( incx == 1 ) && ( n < 2000 ) )
+    {
+        norm_fp( n, x, incx, norm, cntx );
+        return;
+    }
+
+    // Setting the ideal number of threads if support is enabled
+    #if defined( BLIS_ENABLE_OPENMP ) && defined( AOCL_DYNAMIC )
+        if ( n < 2000 )
+            nt_ideal = 1;
+        else if ( n < 6500 )
+            nt_ideal = 4;
+        else if ( n < 71000 )
+            nt_ideal = 8;
+        else if ( n < 200000 )
+            nt_ideal = 16;
+        else if ( n < 1530000 )
+            nt_ideal = 32;
+        
+    #endif
+
+    // Initialize a local runtime with global settings if necessary. Note
+    // that in the case that a runtime is passed in, we make a local copy.
+    rntm_t rntm_l;
+    if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); }
+    else                { rntm_l = *rntm; }
+
+    /*
+        Initialize mem pool buffer to NULL and size to 0
+        "buf" and "size" fields are assigned once memory
+        is allocated from the pool in bli_pba_acquire_m().
+        This will ensure bli_mem_is_alloc() will be passed on
+        an allocated memory if created or a NULL .
+    */
+
+    mem_t mem_buf_X = { 0 };
+    inc_t incx_buf = incx;
+    dim_t nt;
+
+    nt = bli_rntm_num_threads( &rntm_l );
+
+    // nt is less than 1 if BLIS was configured with default settings for parallelism
+    nt = ( nt < 1 )? 1 : nt;
+
+    // Altering the ideal thread count if it was not set or if it is greater than nt
+    if ( ( nt_ideal == -1 ) ||  ( nt_ideal > nt ) )
+        nt_ideal = nt;
+
+    // Packing for non-unit strided vector x.
+    // In order to get the buffer from pool via rntm access to memory broker
+    // is needed. Following are initializations for rntm.
+    bli_rntm_set_num_threads_only( 1, &rntm_l );
+    bli_pba_rntm_set_pba( &rntm_l );
+
+    if ( incx == 0 )    nt_ideal = 1;
+    else if ( incx != 1 )
+    {
+        // Calculate the size required for "n" double elements in vector x.
+        size_t buffer_size = n * sizeof( dcomplex );
+
+        #ifdef BLIS_ENABLE_MEM_TRACING
+            printf( "bli_znorm2fv_unb_var1(): get mem pool block\n" );
+        #endif
+
+        // Acquire a buffer of the required size from the memory broker
+        // and save the associated mem_t entry to mem_buf_X.
+        bli_pba_acquire_m(
+                            &rntm_l,
+                            buffer_size,
+                            BLIS_BITVAL_BUFFER_FOR_A_BLOCK,
+                            &mem_buf_X
+                         );
+
+
+        // Continue packing X if buffer memory is allocated.
+        if ( bli_mem_is_alloc( &mem_buf_X ) )
+        {
+            x_buf = bli_mem_buffer( &mem_buf_X );
+            // Pack vector x with non-unit stride to a temp buffer x_buf with unit stride.
+            for ( dim_t x_index = 0; x_index < n; x_index++ )
+            {
+                *( x_buf + x_index ) = *( x + ( x_index * incx ) );
+            }
+            incx_buf = 1;
+        }
+        else
+        {
+            nt_ideal = 1;
+        }
+    }
+
+    #ifdef BLIS_ENABLE_OPENMP
+
+        if( nt_ideal == 1 )
+        {
+    #endif
+            /*
+                The overhead cost with OpenMP is avoided in case
+                the ideal number of threads needed is 1.
+            */
+
+            norm_fp( n, x_buf, incx_buf, norm, cntx );
+
+            if ( bli_mem_is_alloc( &mem_buf_X ) )
+            {
+                #ifdef BLIS_ENABLE_MEM_TRACING
+                    printf( "bli_znorm2fv_unb_var1(): releasing mem pool block\n" );
+                #endif
+                // Return the buffer to pool.
+                bli_pba_release( &rntm_l , &mem_buf_X );
+            }
+            return;
+
+    #ifdef BLIS_ENABLE_OPENMP
+        }
+
+        /*
+            The following code-section is touched only in the case of
+            requiring multiple threads for the computation.
+
+            Every thread will calculate its own local norm, and all
+            the local results will finally be reduced as per the mandate.
+        */
+
+        mem_t mem_buf_norm = { 0 };
+
+        double *norm_per_thread = NULL;
+
+        // Calculate the size required for buffer.
+        size_t buffer_size = nt_ideal * sizeof(double);
+
+        /*
+            Acquire a buffer (nt_ideal * size(double)) from the memory broker
+            and save the associated mem_t entry to mem_buf_norm.
+        */
+
+        bli_pba_acquire_m(
+                            &rntm_l,
+                            buffer_size,
+                            BLIS_BITVAL_BUFFER_FOR_A_BLOCK,
+                            &mem_buf_norm
+                         );
+
+        /* Continue if norm buffer memory is allocated*/
+        if ( bli_mem_is_alloc( &mem_buf_norm ) )
+        {
+            norm_per_thread = bli_mem_buffer( &mem_buf_norm );
+
+            /*
+                In case the number of threads launched is not
+                equal to the number of threads required, we will
+                need to ensure that the garbage values are not part
+                of the reduction step.
+
+                Every local norm is initialized to 0.0 to avoid this.
+            */
+
+            for ( dim_t i = 0; i < nt_ideal; i++ )
+                norm_per_thread[i] = 0.0;
+
+            // Parallel code-section
+            _Pragma("omp parallel num_threads(nt_ideal)")
+            {
+                /*
+                    The number of actual threads spawned is
+                    obtained here, so as to distribute the
+                    job precisely.
+                */
+
+                dim_t n_threads = omp_get_num_threads();
+                dim_t thread_id = omp_get_thread_num();
+                dcomplex *x_start;
+
+                // Obtain the job-size and region for compute
+                dim_t job_per_thread, offset;
+
+                bli_normfv_thread_partition( n, n_threads, &offset, &job_per_thread, 2, incx_buf, thread_id );
+                x_start = x_buf + offset;
+
+                // Call to the kernel with the appropriate starting address
+                norm_fp( job_per_thread, x_start, incx_buf, ( norm_per_thread + thread_id ), cntx );
+            }
+
+            /*
+                Reduce the partial results onto a final scalar, based
+                on the mandate.
+
+                Every partial result needs to be subjected to overflow or
+                underflow handling if needed. Thus this reduction step involves
+                the same logic as the one present in the kernel. The kernel is
+                therefore reused for the reduction step.
+            */
+
+            reduce_fp( nt_ideal, norm_per_thread, 1, norm, cntx );
+
+            // Releasing the allocated memory if it was allocated
+            bli_pba_release( &rntm_l, &mem_buf_norm );
+        }
+
+        /*
+            In case of failing to acquire the buffer from the memory
+            pool, call the single-threaded kernel and return.
+        */
+        else
+        {
+            norm_fp( n, x_buf, incx_buf, norm, cntx );
+        }
+
+        /*
+            By this point, the norm value would have been set by the appropriate
+            code-section that was touched. The assignment is not abstracted outside
+            in order to avoid unnecessary conditionals.
+        */
+
+    #endif
+
+    if ( bli_mem_is_alloc( &mem_buf_X ) )
+    {
+        #ifdef BLIS_ENABLE_MEM_TRACING
+            printf( "bli_znorm2fv_unb_var1(): releasing mem pool block\n" );
+        #endif
+        // Return the buffer to pool.
+        bli_pba_release( &rntm_l , &mem_buf_X );
     }
 }
 
@@ -557,47 +875,121 @@ void bli_snormfv_unb_var1
         rntm_t*  rntm
     )
 {
-    // Early return if n=1.
+    // Early return if n = 1.
     if ( n == 1 )
     {
-        *norm = bli_fabs(*x);
+        *norm = bli_fabs( *x );
+
+        // If the value in x is 0.0, the sign bit gets inverted
+        // Reinvert the sign bit in this case.
+        if ( ( *norm ) == -0.0 ) ( *norm ) = 0.0;
         return;
     }
-    /* Disable AVX2 codepath.
-    if( bli_cpuid_is_avx2fma3_supported() == TRUE )
+
+    float *x_buf = x;
+    inc_t incx_buf = incx;
+
+    // Querying the architecture ID to deploy the appropriate kernel
+    arch_t id = bli_arch_query_id();
+    switch ( id )
     {
-        bli_snorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
-    }
-    else*/
-    {
-        float* zero       = bli_s0;
-        float* one        = bli_s1;
-        float  scale;
-        float  sumsq;
-        float  sqrt_sumsq;
+        case BLIS_ARCH_ZEN4:
+        case BLIS_ARCH_ZEN3:
+        case BLIS_ARCH_ZEN2:
+        case BLIS_ARCH_ZEN:;
+#ifdef BLIS_KERNELS_ZEN
+            // Memory pool declarations for packing vector X.
+            // Initialize mem pool buffer to NULL and size to 0.
+            // "buf" and "size" fields are assigned once memory
+            // is allocated from the pool in bli_pba_acquire_m().
+            // This will ensure bli_mem_is_alloc() will be passed on
+            // an allocated memory if created or a NULL.
+            mem_t   mem_buf_X = { 0 };
+            rntm_t  rntm_l;
+            // Packing for non-unit strided vector x.
+            if ( incx != 1 )
+            {
+                // Initialize a local runtime with global settings if necessary. Note
+                // that in the case that a runtime is passed in, we make a local copy.
+                if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); }
+                else                { rntm_l = *rntm; }
 
-        // Initialize scale and sumsq to begin the summation.
-        bli_sscopys( *zero, scale );
-        bli_sscopys( *one,  sumsq );
+                // In order to get the buffer from pool via rntm access to memory broker
+                // is needed. Following are initializations for rntm.
+                bli_rntm_set_num_threads_only( 1, &rntm_l );
+                bli_pba_rntm_set_pba( &rntm_l );
 
-        // Compute the sum of the squares of the vector.
-        bli_ssumsqv_unb_var1
-        (
-            n,
-            x,
-            incx,
-            &scale,
-            &sumsq,
-            cntx,
-            rntm
-        );
+                // Calculate the size required for "n" float elements in vector x.
+                size_t buffer_size = n * sizeof( float );
 
-        // Compute: norm = scale * sqrt( sumsq )
-        bli_ssqrt2s( sumsq, sqrt_sumsq );
-        bli_sscals( scale, sqrt_sumsq );
+                #ifdef BLIS_ENABLE_MEM_TRACING
+                    printf( "bli_snorm2fv_unb_var1_avx2(): get mem pool block\n" );
+                #endif
 
-        // Store the final value to the output variable.
-        bli_scopys( sqrt_sumsq, *norm );
+                // Acquire a Buffer(n*size(float)) from the memory broker
+                // and save the associated mem_t entry to mem_buf_X.
+                bli_pba_acquire_m
+                (
+                    &rntm_l,
+                    buffer_size,
+                    BLIS_BUFFER_FOR_B_PANEL,
+                    &mem_buf_X
+                );
+
+                // Continue packing X if buffer memory is allocated.
+                if ( bli_mem_is_alloc( &mem_buf_X ) )
+                {
+                    x_buf = bli_mem_buffer( &mem_buf_X );
+                    // Pack vector x with non-unit stride to a temp buffer x_buf with unit stride.
+                    for ( dim_t x_index = 0; x_index < n; x_index++ )
+                    {
+                        *( x_buf + x_index ) = *( x + ( x_index * incx ) );
+                    }
+                    incx_buf = 1;
+                }
+            }
+
+            bli_snorm2fv_unb_var1_avx2( n, x_buf, incx_buf, norm, cntx );
+
+            if ( bli_mem_is_alloc( &mem_buf_X ) )
+            {
+                #ifdef BLIS_ENABLE_MEM_TRACING
+                    printf( "bli_snorm2fv_unb_var1_avx2(): releasing mem pool block\n" );
+                #endif
+                // Return the buffer to pool.
+                bli_pba_release( &rntm_l , &mem_buf_X );
+            }
+            break;
+#endif
+        default:;
+            float* zero       = bli_s0;
+            float* one        = bli_s1;
+            float  scale;
+            float  sumsq;
+            float  sqrt_sumsq;
+
+            // Initialize scale and sumsq to begin the summation.
+            bli_sscopys( *zero, scale );
+            bli_sscopys( *one,  sumsq );
+
+            // Compute the sum of the squares of the vector.
+            bli_ssumsqv_unb_var1
+            (
+                n,
+                x_buf,
+                incx_buf,
+                &scale,
+                &sumsq,
+                cntx,
+                rntm
+            );
+
+            // Compute: norm = scale * sqrt( sumsq )
+            bli_ssqrt2s( sumsq, sqrt_sumsq );
+            bli_sscals( scale, sqrt_sumsq );
+
+            // Store the final value to the output variable.
+            bli_scopys( sqrt_sumsq, *norm );
     }
 }
 
@@ -611,18 +1003,42 @@ void bli_dnormfv_unb_var1
         rntm_t*  rntm
     )
 {
+    // Early return if n = 1.
+    if ( n == 1 )
+    {
+        *norm = bli_fabs( *x );
+
+        // If the value in x is 0.0, the sign bit gets inverted
+        // Reinvert the sign bit in this case.
+        if ( ( *norm ) == -0.0 ) ( *norm ) = 0.0;
+        return;
+    }
+    /*
+        Declaring a function pointer to point to the supported vectorized kernels.
+        Based on the arch_id support, the appropriate function is set to the function
+        pointer. Deployment happens post the switch cases. In case of adding any
+        AVX-512 kernel, the code for deployment remains the same.
+    */
+    void ( *norm_fp )( dim_t, double*, inc_t, double*, cntx_t* ) = NULL;
+
+    double *x_buf = x;
+    dim_t nt_ideal = -1;
     arch_t id = bli_arch_query_id();
-    switch (id)
+    switch ( id )
     {
         case BLIS_ARCH_ZEN4:
         case BLIS_ARCH_ZEN3:
         case BLIS_ARCH_ZEN2:
         case BLIS_ARCH_ZEN:
 #ifdef BLIS_KERNELS_ZEN
-            bli_dnorm2fv_unb_var1_avx2( n, x, incx, norm, cntx );
-            break;
+
+        norm_fp = bli_dnorm2fv_unb_var1_avx2;
+
+        break;
 #endif
         default:;
+            // The following call to the kernel is
+            // single threaded in this case.
             double* zero       = bli_d0;
             double* one        = bli_d1;
             double  scale;
@@ -634,7 +1050,7 @@ void bli_dnormfv_unb_var1
             bli_ddcopys( *one,  sumsq );
 
             // Compute the sum of the squares of the vector.
-            bli_dsumsqv_unb_var1 
+            bli_dsumsqv_unb_var1
             (
                 n,
                 x,
@@ -651,6 +1067,244 @@ void bli_dnormfv_unb_var1
 
             // Store the final value to the output variable.
             bli_dcopys( sqrt_sumsq, *norm );
+    }
+
+    /*
+        If the function signature to vectorized kernel was not set,
+        the default case would have been performed. Thus exit early.
+    */
+    if ( norm_fp == NULL )
+        return;
+    
+    /*
+        When the size is such that nt_ideal is 1, and packing is not
+        required( incx == 1 ), we can directly call the kernel to
+        avoid framework overheads( fast-path ).
+    */
+    else if ( ( incx == 1 ) && ( n < 4000 ) )
+    {
+        norm_fp( n, x, incx, norm, cntx );
+        return;
+    }
+
+    // Setting the ideal number of threads if support is enabled
+    #if defined( BLIS_ENABLE_OPENMP ) && defined( AOCL_DYNAMIC )
+
+        if ( n < 4000 )
+            nt_ideal = 1;
+        else if ( n < 17000 )
+            nt_ideal = 4;
+        else if ( n < 136000 )
+            nt_ideal = 8;
+        else if ( n < 365000 )
+            nt_ideal = 16;
+        else if ( n < 2950000 )
+            nt_ideal = 32;
+
+    #endif
+
+    // Initialize a local runtime with global settings if necessary. Note
+    // that in the case that a runtime is passed in, we make a local copy.
+    rntm_t rntm_l;
+    if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); }
+    else                { rntm_l = *rntm; }
+
+    /*
+        Initialize mem pool buffer to NULL and size to 0
+        "buf" and "size" fields are assigned once memory
+        is allocated from the pool in bli_pba_acquire_m().
+        This will ensure bli_mem_is_alloc() will be passed on
+        an allocated memory if created or a NULL .
+    */
+
+    mem_t mem_buf_X = { 0 };
+    inc_t incx_buf = incx;
+    dim_t nt;
+
+    nt = bli_rntm_num_threads( &rntm_l );
+
+    // nt is less than 1 if BLIS was configured with default settings for parallelism
+    nt = ( nt < 1 )? 1 : nt;
+
+    if ( ( nt_ideal == -1 ) ||  ( nt_ideal > nt ) )
+        nt_ideal = nt;
+
+    // Packing for non-unit strided vector x.
+    // In order to get the buffer from pool via rntm access to memory broker
+    // is needed. Following are initializations for rntm.
+    bli_rntm_set_num_threads_only( 1, &rntm_l );
+    bli_pba_rntm_set_pba( &rntm_l );
+
+    if ( incx == 0 )    nt_ideal = 1;
+    else if ( incx != 1 )
+    {
+        // Calculate the size required for "n" double elements in vector x.
+        size_t buffer_size = n * sizeof( double );
+
+        #ifdef BLIS_ENABLE_MEM_TRACING
+            printf( "bli_dnorm2fv_unb_var1(): get mem pool block\n" );
+        #endif
+
+        // Acquire a buffer of the required size from the memory broker
+        // and save the associated mem_t entry to mem_buf_X.
+        bli_pba_acquire_m(
+                            &rntm_l,
+                            buffer_size,
+                            BLIS_BITVAL_BUFFER_FOR_A_BLOCK,
+                            &mem_buf_X
+                         );
+
+
+        // Continue packing X if buffer memory is allocated.
+        if ( bli_mem_is_alloc( &mem_buf_X ) )
+        {
+            x_buf = bli_mem_buffer( &mem_buf_X );
+            // Pack vector x with non-unit stride to a temp buffer x_buf with unit stride.
+            for ( dim_t x_index = 0; x_index < n; x_index++ )
+            {
+                *( x_buf + x_index ) = *( x + ( x_index * incx ) );
+            }
+            incx_buf = 1;
+        }
+        else
+        {
+            nt_ideal = 1;
+        }
+    }
+
+    #ifdef BLIS_ENABLE_OPENMP
+
+        if( nt_ideal == 1 )
+        {
+    #endif
+            /*
+                The overhead cost with OpenMP is avoided in case
+                the ideal number of threads needed is 1.
+            */
+
+            norm_fp( n, x_buf, incx_buf, norm, cntx );
+
+            if ( bli_mem_is_alloc( &mem_buf_X ) )
+            {
+                #ifdef BLIS_ENABLE_MEM_TRACING
+                    printf( "bli_dnorm2fv_unb_var1(): releasing mem pool block\n" );
+                #endif
+                // Return the buffer to pool.
+                bli_pba_release( &rntm_l , &mem_buf_X );
+            }
+            return;
+
+    #ifdef BLIS_ENABLE_OPENMP
+        }
+
+        /*
+            The following code-section is touched only in the case of
+            requiring multiple threads for the computation.
+
+            Every thread will calculate its own local norm, and all
+            the local results will finally be reduced as per the mandate.
+        */
+
+        mem_t mem_buf_norm = { 0 };
+
+        double *norm_per_thread = NULL;
+
+        // Calculate the size required for buffer.
+        size_t buffer_size = nt_ideal * sizeof(double);
+
+        /*
+            Acquire a buffer (nt_ideal * size(double)) from the memory broker
+            and save the associated mem_t entry to mem_buf_norm.
+        */
+
+        bli_pba_acquire_m(
+                            &rntm_l,
+                            buffer_size,
+                            BLIS_BITVAL_BUFFER_FOR_A_BLOCK,
+                            &mem_buf_norm
+                         );
+
+        /* Continue if norm buffer memory is allocated*/
+        if ( bli_mem_is_alloc( &mem_buf_norm ) )
+        {
+            norm_per_thread = bli_mem_buffer( &mem_buf_norm );
+
+            /*
+                In case the number of threads launched is not
+                equal to the number of threads required, we will
+                need to ensure that the garbage values are not part
+                of the reduction step.
+
+                Every local norm is initialized to 0.0 to avoid this.
+            */
+
+            for ( dim_t i = 0; i < nt_ideal; i++ )
+                norm_per_thread[i] = 0.0;
+
+            // Parallel code-section
+            _Pragma("omp parallel num_threads(nt_ideal)")
+            {
+                /*
+                    The number of actual threads spawned is
+                    obtained here, so as to distribute the
+                    job precisely.
+                */
+
+                dim_t n_threads = omp_get_num_threads();
+
+                dim_t thread_id = omp_get_thread_num();
+                double *x_start;
+
+                // Obtain the job-size and region for compute
+                dim_t job_per_thread, offset;
+                bli_normfv_thread_partition( n, n_threads, &offset, &job_per_thread, 4, incx_buf, thread_id );
+
+                x_start = x_buf + offset;
+
+                // Call to the kernel with the appropriate starting address
+                norm_fp( job_per_thread, x_start, incx_buf, ( norm_per_thread + thread_id ), cntx );
+            }
+
+            /*
+                Reduce the partial results onto a final scalar, based
+                on the mandate.
+
+                Every partial result needs to be subjected to overflow or
+                underflow handling if needed. Thus this reduction step involves
+                the same logic as the one present in the kernel. The kernel is
+                therefore reused for the reduction step.
+            */
+
+            norm_fp( nt_ideal, norm_per_thread, 1, norm, cntx );
+
+            // Releasing the allocated memory if it was allocated
+            bli_pba_release( &rntm_l, &mem_buf_norm );
+        }
+
+        /*
+            In case of failing to acquire the buffer from the memory
+            pool, call the single-threaded kernel and return.
+        */
+        else
+        {
+            norm_fp( n, x_buf, incx_buf, norm, cntx );
+        }
+
+        /*
+            By this point, the norm value would have been set by the appropriate
+            code-section that was touched. The assignment is not abstracted outside
+            in order to avoid unnecessary conditionals.
+        */
+
+    #endif
+
+    if ( bli_mem_is_alloc( &mem_buf_X ) )
+    {
+        #ifdef BLIS_ENABLE_MEM_TRACING
+            printf( "bli_dnorm2fv_unb_var1(): releasing mem pool block\n" );
+        #endif
+        // Return the buffer to pool.
+        bli_pba_release( &rntm_l , &mem_buf_X );
     }
 }
 
@@ -1074,85 +1728,6 @@ INSERT_GENTFUNCR_BASIC( normim_unb_var1, norm1m_unb_var1 )
 
 
 #undef  GENTFUNC
-#define GENTFUNC( ctype, ch, opname ) \
-\
-void PASTEMAC(ch,opname) \
-     ( \
-       FILE*  file, \
-       char*  s1, \
-       dim_t  n, \
-       ctype* x, inc_t incx, \
-       char*  format, \
-       char*  s2  \
-     ) \
-{ \
-    dim_t  i; \
-    ctype* chi1; \
-    char   default_spec[32] = PASTEMAC(ch,formatspec)(); \
-\
-    if ( format == NULL ) format = default_spec; \
-\
-    chi1 = x; \
-\
-    fprintf( file, "%s\n", s1 ); \
-\
-    for ( i = 0; i < n; ++i ) \
-    { \
-        PASTEMAC(ch,fprints)( file, format, *chi1 ); \
-        fprintf( file, "\n" ); \
-\
-        chi1 += incx; \
-    } \
-\
-    fprintf( file, "%s\n", s2 ); \
-}
-
-INSERT_GENTFUNC_BASIC0_I( fprintv )
-
-
-#undef  GENTFUNC
-#define GENTFUNC( ctype, ch, opname ) \
-\
-void PASTEMAC(ch,opname) \
-     ( \
-       FILE*  file, \
-       char*  s1, \
-       dim_t  m, \
-       dim_t  n, \
-       ctype* x, inc_t rs_x, inc_t cs_x, \
-       char*  format, \
-       char*  s2  \
-     ) \
-{ \
-    dim_t  i, j; \
-    ctype* chi1; \
-    char   default_spec[32] = PASTEMAC(ch,formatspec)(); \
-\
-    if ( format == NULL ) format = default_spec; \
-\
-    fprintf( file, "%s\n", s1 ); \
-\
-    for ( i = 0; i < m; ++i ) \
-    { \
-        for ( j = 0; j < n; ++j ) \
-        { \
-            chi1 = (( ctype* ) x) + i*rs_x + j*cs_x; \
-\
-            PASTEMAC(ch,fprints)( file, format, *chi1 ); \
-            fprintf( file, " " ); \
-        } \
-\
-        fprintf( file, "\n" ); \
-    } \
-\
-    fprintf( file, "%s\n", s2 ); \
-    fflush( file ); \
-}
-
-INSERT_GENTFUNC_BASIC0_I( fprintm )
-
-
-#undef  GENTFUNC
 #define GENTFUNC( ctype, ch, varname, randmac ) \
 \
 void PASTEMAC(ch,varname) \
@@ -1461,4 +2036,239 @@ void PASTEMAC(ch,varname) \
 }
 
 INSERT_GENTFUNCR_BASIC0( sumsqv_unb_var1 )
+
+// -----------------------------------------------------------------------------
+
+#undef  GENTFUNC
+#define GENTFUNC( ctype, ch, opname ) \
+\
+bool PASTEMAC(ch,opname) \
+     ( \
+       conj_t  conjx, \
+       dim_t   n, \
+       ctype*  x, inc_t incx, \
+       ctype*  y, inc_t incy  \
+     ) \
+{ \
+	for ( dim_t i = 0; i < n; ++i ) \
+	{ \
+		ctype* chi1 = x + (i  )*incx; \
+		ctype* psi1 = y + (i  )*incy; \
+\
+		ctype chi1c; \
+\
+		if ( bli_is_conj( conjx ) ) { PASTEMAC(ch,copyjs)( *chi1, chi1c ); } \
+		else                        { PASTEMAC(ch,copys)( *chi1, chi1c ); } \
+\
+		if ( !PASTEMAC(ch,eq)( chi1c, *psi1 ) ) \
+			return FALSE; \
+	} \
+\
+	return TRUE; \
+}
+
+INSERT_GENTFUNC_BASIC0( eqv_unb_var1 )
+
+
+#undef  GENTFUNC
+#define GENTFUNC( ctype, ch, opname ) \
+\
+bool PASTEMAC(ch,opname) \
+     ( \
+       doff_t  diagoffx, \
+       diag_t  diagx, \
+       uplo_t  uplox, \
+       trans_t transx, \
+       dim_t   m, \
+       dim_t   n, \
+       ctype*  x, inc_t rs_x, inc_t cs_x, \
+       ctype*  y, inc_t rs_y, inc_t cs_y  \
+     ) \
+{ \
+	uplo_t   uplox_eff; \
+	conj_t   conjx; \
+	dim_t    n_iter; \
+	dim_t    n_elem_max; \
+	inc_t    ldx, incx; \
+	inc_t    ldy, incy; \
+	dim_t    ij0, n_shift; \
+\
+	/* Set various loop parameters. */ \
+	bli_set_dims_incs_uplo_2m \
+	( \
+	  diagoffx, diagx, transx, \
+	  uplox, m, n, rs_x, cs_x, rs_y, cs_y, \
+	  &uplox_eff, &n_elem_max, &n_iter, &incx, &ldx, &incy, &ldy, \
+	  &ij0, &n_shift \
+	); \
+\
+	/* In the odd case where we are comparing against a complete unstored
+	   matrix, we assert equality. Why? We assume the matrices are equal
+	   unless we can find two corresponding elements that are unequal. So
+	   if there are no elements, there is no inequality. Granted, this logic
+	   is strange to think about no matter what, and thankfully it should
+	   never be used under normal usage. */ \
+	if ( bli_is_zeros( uplox_eff ) ) return TRUE; \
+\
+	/* Extract the conjugation component from the transx parameter. */ \
+	conjx = bli_extract_conj( transx ); \
+\
+	/* Handle dense and upper/lower storage cases separately. */ \
+	if ( bli_is_dense( uplox_eff ) ) \
+	{ \
+		for ( dim_t j = 0; j < n_iter; ++j ) \
+		{ \
+			const dim_t n_elem = n_elem_max; \
+\
+			ctype* x1 = x + (j  )*ldx + (0  )*incx; \
+			ctype* y1 = y + (j  )*ldy + (0  )*incy; \
+\
+			for ( dim_t i = 0; i < n_elem; ++i ) \
+			{ \
+				ctype* x11 = x1 + (i  )*incx; \
+				ctype* y11 = y1 + (i  )*incy; \
+				ctype  x11c; \
+\
+				if ( bli_is_conj( conjx ) ) { PASTEMAC(ch,copyjs)( *x11, x11c ); } \
+				else                        { PASTEMAC(ch,copys)( *x11, x11c ); } \
+\
+				if ( !PASTEMAC(ch,eq)( x11c, *y11 ) ) \
+					return FALSE; \
+			} \
+		} \
+	} \
+	else \
+	{ \
+		if ( bli_is_upper( uplox_eff ) ) \
+		{ \
+			for ( dim_t j = 0; j < n_iter; ++j ) \
+			{ \
+				const dim_t n_elem = bli_min( n_shift + j + 1, n_elem_max ); \
+\
+				ctype* x1 = x + (ij0+j  )*ldx + (0  )*incx; \
+				ctype* y1 = y + (ij0+j  )*ldy + (0  )*incy; \
+\
+				for ( dim_t i = 0; i < n_elem; ++i ) \
+				{ \
+					ctype* x11 = x1 + (i  )*incx; \
+					ctype* y11 = y1 + (i  )*incy; \
+					ctype  x11c; \
+\
+					if ( bli_is_conj( conjx ) ) { PASTEMAC(ch,copyjs)( *x11, x11c ); } \
+					else                        { PASTEMAC(ch,copys)( *x11, x11c ); } \
+\
+					if ( !PASTEMAC(ch,eq)( x11c, *y11 ) ) \
+						return FALSE; \
+				} \
+			} \
+		} \
+		else if ( bli_is_lower( uplox_eff ) ) \
+		{ \
+			for ( dim_t j = 0; j < n_iter; ++j ) \
+			{ \
+				const dim_t offi   = bli_max( 0, ( doff_t )j - ( doff_t )n_shift ); \
+				const dim_t n_elem = n_elem_max - offi; \
+\
+				ctype* x1 = x + (j  )*ldx + (ij0+offi  )*incx; \
+				ctype* y1 = y + (j  )*ldy + (ij0+offi  )*incy; \
+\
+				for ( dim_t i = 0; i < n_elem; ++i ) \
+				{ \
+					ctype* x11 = x1 + (i  )*incx; \
+					ctype* y11 = y1 + (i  )*incy; \
+					ctype  x11c; \
+\
+					if ( bli_is_conj( conjx ) ) { PASTEMAC(ch,copyjs)( *x11, x11c ); } \
+					else                        { PASTEMAC(ch,copys)( *x11, x11c ); } \
+\
+					if ( !PASTEMAC(ch,eq)( x11c, *y11 ) ) \
+						return FALSE; \
+				} \
+			} \
+		} \
+	} \
+\
+	return TRUE; \
+}
+
+INSERT_GENTFUNC_BASIC0( eqm_unb_var1 )
+
+
+#undef  GENTFUNC
+#define GENTFUNC( ctype, ch, opname ) \
+\
+void PASTEMAC(ch,opname) \
+     ( \
+       FILE*  file, \
+       char*  s1, \
+       dim_t  n, \
+       ctype* x, inc_t incx, \
+       char*  format, \
+       char*  s2  \
+     ) \
+{ \
+	dim_t  i; \
+	ctype* chi1; \
+	char   default_spec[32] = PASTEMAC(ch,formatspec)(); \
+\
+	if ( format == NULL ) format = default_spec; \
+\
+	chi1 = x; \
+\
+	fprintf( file, "%s\n", s1 ); \
+\
+	for ( i = 0; i < n; ++i ) \
+	{ \
+		PASTEMAC(ch,fprints)( file, format, *chi1 ); \
+		fprintf( file, "\n" ); \
+\
+		chi1 += incx; \
+	} \
+\
+	fprintf( file, "%s\n", s2 ); \
+}
+
+INSERT_GENTFUNC_BASIC0_I( fprintv )
+
+
+#undef  GENTFUNC
+#define GENTFUNC( ctype, ch, opname ) \
+\
+void PASTEMAC(ch,opname) \
+     ( \
+       FILE*  file, \
+       char*  s1, \
+       dim_t  m, \
+       dim_t  n, \
+       ctype* x, inc_t rs_x, inc_t cs_x, \
+       char*  format, \
+       char*  s2  \
+     ) \
+{ \
+	dim_t  i, j; \
+	ctype* chi1; \
+	char   default_spec[32] = PASTEMAC(ch,formatspec)(); \
+\
+	if ( format == NULL ) format = default_spec; \
+\
+	fprintf( file, "%s\n", s1 ); \
+\
+	for ( i = 0; i < m; ++i ) \
+	{ \
+		for ( j = 0; j < n; ++j ) \
+		{ \
+			chi1 = (( ctype* ) x) + i*rs_x + j*cs_x; \
+\
+			PASTEMAC(ch,fprints)( file, format, *chi1 ); \
+			fprintf( file, " " ); \
+		} \
+\
+		fprintf( file, "\n" ); \
+	} \
+\
+	fprintf( file, "%s\n", s2 ); \
+	fflush( file ); \
+}
+
+INSERT_GENTFUNC_BASIC0_I( fprintm )
 

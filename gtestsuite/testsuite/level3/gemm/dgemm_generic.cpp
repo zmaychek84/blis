@@ -46,10 +46,10 @@ class DGemmTest :
                                                    double,
                                                    gtint_t,
                                                    gtint_t,
-                                                   gtint_t,
-                                                   char>> {};
+                                                   gtint_t>> {};
 
-TEST_P(DGemmTest, RandomData) {
+TEST_P(DGemmTest, RandomData)
+{
     using T = double;
     //----------------------------------------------------------
     // Initialize values from the parameters passed through
@@ -77,22 +77,20 @@ TEST_P(DGemmTest, RandomData) {
     gtint_t lda_inc = std::get<8>(GetParam());
     gtint_t ldb_inc = std::get<9>(GetParam());
     gtint_t ldc_inc = std::get<10>(GetParam());
-    // specifies the datatype for randomgenerators
-    char datatype   = std::get<11>(GetParam());
 
     // Set the threshold for the errors:
-    double thresh = 10*m*n*k*testinghelpers::getEpsilon<T>();
+    double thresh = 10*m*n*testinghelpers::getEpsilon<T>();
 
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_gemm<T>(storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh, datatype);
+    test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
 }
 
 class DGemmTestPrint {
 public:
     std::string operator()(
-        testing::TestParamInfo<std::tuple<char, char, char, gtint_t, gtint_t, gtint_t, double, double, gtint_t, gtint_t, gtint_t, char>> str) const {
+        testing::TestParamInfo<std::tuple<char, char, char, gtint_t, gtint_t, gtint_t, double, double, gtint_t, gtint_t, gtint_t>> str) const {
         char sfm        = std::get<0>(str.param);
         char tsa        = std::get<1>(str.param);
         char tsb        = std::get<2>(str.param);
@@ -104,13 +102,12 @@ public:
         gtint_t lda_inc = std::get<8>(str.param);
         gtint_t ldb_inc = std::get<9>(str.param);
         gtint_t ldc_inc = std::get<10>(str.param);
-        char datatype   = std::get<11>(str.param);
 #ifdef TEST_BLAS
         std::string str_name = "dgemm_";
 #elif TEST_CBLAS
         std::string str_name = "cblas_dgemm";
 #else  //#elif TEST_BLIS_TYPED
-        std::string str_name = "blis_dgemm";
+        std::string str_name = "bli_dgemm";
 #endif
         str_name = str_name + "_" + sfm+sfm+sfm;
         str_name = str_name + "_" + tsa + tsb;
@@ -124,7 +121,6 @@ public:
         str_name = str_name + "_" + std::to_string(lda_inc);
         str_name = str_name + "_" + std::to_string(ldb_inc);
         str_name = str_name + "_" + std::to_string(ldc_inc);
-        str_name = str_name + "_" + datatype;
         return str_name;
     }
 };
@@ -148,8 +144,167 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(-1.0,  1.0),                                   // beta
             ::testing::Values(gtint_t(0), gtint_t(4)),                       // increment to the leading dim of a
             ::testing::Values(gtint_t(0), gtint_t(7)),                       // increment to the leading dim of b
-            ::testing::Values(gtint_t(0), gtint_t(2)),                       // increment to the leading dim of c
-            ::testing::Values(ELEMENT_TYPE)                                  // i : integer, f : float  datatype type tested
+            ::testing::Values(gtint_t(0), gtint_t(2))                        // increment to the leading dim of c
+        ),
+        ::DGemmTestPrint()
+    );
+
+
+// Tests 5 loops
+INSTANTIATE_TEST_SUITE_P(
+        tiny_dgemm_kernel,
+        DGemmTest,
+        ::testing::Combine(
+            // No condition based on storage scheme of matrices
+            ::testing::Values('c'),                       // storage format
+            // No conditions based on trans of matrices
+            ::testing::Values('n', 't'),                       // transa
+            ::testing::Values('n', 't'),                       // transb
+
+            ::testing::Values(13, 25, 48, 60, 256, 512, 1000),       // m
+
+            ::testing::Values(8, 48, 72, 144, 237),            // n
+
+            ::testing::Values(16, 24, 48, 64, 128, 557),             // k
+            // No condition based on alpha
+            ::testing::Values( -1.0),                     // alpha
+            // No condition based on betaa
+            ::testing::Values(-1.0),                      // beta
+            ::testing::Values(0,3),                       // increment to the leading dim of a
+            ::testing::Values(0,3),                       // increment to the leading dim of b
+            ::testing::Values(0,3)                      // increment to the leading dim of c
+        ),
+        ::DGemmTestPrint()
+    );
+
+//zero beta test case
+INSTANTIATE_TEST_SUITE_P(
+        zero_beta,
+        DGemmTest,
+        ::testing::Combine(
+            // No condition based on storage scheme of matrices
+            ::testing::Values('c'),                       // storage format
+            // No conditions based on trans of matrices
+            ::testing::Values('n', 't'),                       // transa
+            ::testing::Values('n', 't'),                       // transb
+
+            ::testing::Values(13, 25, 48, 60, 256, 512, 1000),       // m
+
+            ::testing::Values(8, 48, 72, 144, 237),            // n
+
+            ::testing::Values(16, 24, 48, 64, 128, 557),             // k
+
+            ::testing::Values( -1.0),                     // alpha
+            ::testing::Values(0.0),                      // beta
+            ::testing::Values(0,3),                       // increment to the leading dim of a
+            ::testing::Values(0,3),                       // increment to the leading dim of b
+            ::testing::Values(0,3)                       // increment to the leading dim of c
+        ),
+        ::DGemmTestPrint()
+    );
+
+//zero alpha test case
+INSTANTIATE_TEST_SUITE_P(
+        zero_alpha,
+        DGemmTest,
+        ::testing::Combine(
+            // No condition based on storage scheme of matrices
+            ::testing::Values('c'),                       // storage format
+            // No conditions based on trans of matrices
+            ::testing::Values('n', 't'),                       // transa
+            ::testing::Values('n', 't'),                       // transb
+
+            ::testing::Values(13, 25, 48, 60, 256, 512, 1000),       // m
+
+            ::testing::Values(8, 48, 72, 144, 237),            // n
+
+            ::testing::Values(16, 24, 48, 64, 128, 557),             // k
+
+            ::testing::Values( 0.0),                     // alpha
+            ::testing::Values(-1.0),                      // beta
+            ::testing::Values(0,3),                       // increment to the leading dim of a
+            ::testing::Values(0,3),                       // increment to the leading dim of b
+            ::testing::Values(0,3)                       // increment to the leading dim of c
+        ),
+        ::DGemmTestPrint()
+    );
+
+//unit beta test case
+INSTANTIATE_TEST_SUITE_P(
+        unit_beta,
+        DGemmTest,
+        ::testing::Combine(
+            // No condition based on storage scheme of matrices
+            ::testing::Values('c'),                       // storage format
+            // No conditions based on trans of matrices
+            ::testing::Values('n', 't'),                       // transa
+            ::testing::Values('n', 't'),                       // transb
+
+            ::testing::Values(13, 25, 48, 60, 256, 512, 1000),       // m
+
+            ::testing::Values(8, 48, 72, 144, 237),            // n
+
+            ::testing::Values(16, 24, 48, 64, 128, 557),             // k
+
+            ::testing::Values( -1.0),                     // alpha
+            ::testing::Values(1.0),                      // beta
+            ::testing::Values(0,3),                       // increment to the leading dim of a
+            ::testing::Values(0,3),                       // increment to the leading dim of b
+            ::testing::Values(0,3)                       // increment to the leading dim of c
+        ),
+        ::DGemmTestPrint()
+    );
+
+// Covers all corner cases of tiny dgemm kernel
+INSTANTIATE_TEST_SUITE_P(
+        tiny_edge_kernels,
+        DGemmTest,
+        ::testing::Combine(
+		// To test col storage of C
+		// Storage of A and B is handled by packing
+		::testing::Values('c'),                            // storage format
+		// Tests scalar code of 8xk and 6xk pack kernels for both storage formats
+		::testing::Values('n','t'),                        // transa
+		::testing::Values('n','t'),                        // transb
+
+		::testing::Range(gtint_t(1), gtint_t(23), 1),       // m
+		::testing::Range(gtint_t(1), gtint_t(7), 1),       // n
+
+		::testing::Values(24),                              // k
+		// No condition based on alpha
+		::testing::Values( -1.0, 1.0),                          // alpha
+		// checks for beta-zero and beta non-zero cases
+		::testing::Values(0.0, 1.0, -1.0),                      // beta
+		::testing::Values(23),                             // increment to the leading dim of a
+		::testing::Values(23),                             // increment to the leading dim of b
+		::testing::Values(23)                             // increment to the leading dim of c
+        ),
+        ::DGemmTestPrint()
+    );
+
+
+//m = 0, n = 0 k = 0 testcase
+INSTANTIATE_TEST_SUITE_P(
+        mnkzero,
+        DGemmTest,
+        ::testing::Combine(
+            // No condition based on storage scheme of matrices
+            ::testing::Values('c'),                       // storage format
+            // No conditions based on trans of matrices
+            ::testing::Values('n', 't'),                       // transa
+            ::testing::Values('n', 't'),                       // transb
+
+            ::testing::Values(0, 8, 24),       // m
+
+            ::testing::Values(0, 6, 8),            // n
+
+            ::testing::Values(3),             // k
+
+            ::testing::Values( -1.0),                     // alpha
+            ::testing::Values(1.0),                      // beta
+            ::testing::Values(0,3),                       // increment to the leading dim of a
+            ::testing::Values(0,3),                       // increment to the leading dim of b
+            ::testing::Values(0,3)                       // increment to the leading dim of c
         ),
         ::DGemmTestPrint()
     );

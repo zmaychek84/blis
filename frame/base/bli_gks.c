@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -163,6 +163,16 @@ void bli_gks_init( void )
 		bli_gks_register_cntx( BLIS_ARCH_CORTEXA53,   bli_cntx_init_cortexa53,
 		                                              bli_cntx_init_cortexa53_ref,
 		                                              bli_cntx_init_cortexa53_ind );
+#endif
+#ifdef BLIS_CONFIG_ARMSVE
+		bli_gks_register_cntx( BLIS_ARCH_ARMSVE,      bli_cntx_init_armsve,
+		                                              bli_cntx_init_armsve_ref,
+		                                              bli_cntx_init_armsve_ind );
+#endif
+#ifdef BLIS_CONFIG_A64FX
+		bli_gks_register_cntx( BLIS_ARCH_A64FX,       bli_cntx_init_a64fx,
+		                                              bli_cntx_init_a64fx_ref,
+		                                              bli_cntx_init_a64fx_ind );
 #endif
 #ifdef BLIS_CONFIG_CORTEXA15
 		bli_gks_register_cntx( BLIS_ARCH_CORTEXA15,   bli_cntx_init_cortexa15,
@@ -347,6 +357,8 @@ void bli_gks_register_cntx
        void_fp ind_fp
      )
 {
+	err_t r_val;
+
 	// This function is called by bli_gks_init() for each architecture that
 	// will be supported by BLIS. It takes an architecture id and three
 	// function pointers, one to a function that initializes a native context
@@ -395,7 +407,7 @@ void bli_gks_register_cntx
 	// needs to be allocated. Allocate the memory and initialize it to
 	// zeros/NULL, storing the address of the allocated memory at the element
 	// for the current architecture id.
-	gks[ id ] = bli_calloc_intl( sizeof( cntx_t* ) * BLIS_NUM_IND_METHODS );
+	gks[ id ] = bli_calloc_intl( sizeof( cntx_t* ) * BLIS_NUM_IND_METHODS, &r_val );
 
 	// Alias the allocated array for readability.
 	cntx_t** restrict gks_id = gks[ id ];
@@ -407,7 +419,7 @@ void bli_gks_register_cntx
 	// Allocate memory for a single context and store the address at
 	// the element in the gks[ id ] array that is reserved for native
 	// execution.
-	gks_id[ BLIS_NAT ] = bli_calloc_intl( sizeof( cntx_t ) );
+	gks_id[ BLIS_NAT ] = bli_calloc_intl( sizeof( cntx_t ), &r_val );
 
 	// Alias the allocated context address for readability.
 	cntx_t* restrict gks_id_nat = gks_id[ BLIS_NAT ];
@@ -439,6 +451,36 @@ void bli_gks_register_cntx
 	blksz_t* restrict mr = bli_cntx_get_blksz( BLIS_MR, gks_id_nat );
 	blksz_t* restrict nr = bli_cntx_get_blksz( BLIS_NR, gks_id_nat );
 	blksz_t* restrict kr = bli_cntx_get_blksz( BLIS_KR, gks_id_nat );
+
+	e_val = bli_check_valid_mc_mod_mult( mc, mr ); bli_check_error_code( e_val );
+	e_val = bli_check_valid_nc_mod_mult( nc, nr ); bli_check_error_code( e_val );
+	e_val = bli_check_valid_kc_mod_mult( kc, kr ); bli_check_error_code( e_val );
+#ifndef BLIS_RELAX_MCNR_NCMR_CONSTRAINTS
+	e_val = bli_check_valid_mc_mod_mult( mc, nr ); bli_check_error_code( e_val );
+	e_val = bli_check_valid_nc_mod_mult( nc, mr ); bli_check_error_code( e_val );
+#endif
+
+
+	// Verify that cache blocksizes are whole multiples of register blocksizes for TRSM.
+	mc = bli_cntx_get_trsm_blksz( BLIS_MC, gks_id_nat );
+	nc = bli_cntx_get_trsm_blksz( BLIS_NC, gks_id_nat );
+	kc = bli_cntx_get_trsm_blksz( BLIS_KC, gks_id_nat );
+	mr = bli_cntx_get_trsm_blksz( BLIS_MR, gks_id_nat );
+	nr = bli_cntx_get_trsm_blksz( BLIS_NR, gks_id_nat );
+	kr = bli_cntx_get_trsm_blksz( BLIS_KR, gks_id_nat );
+
+	// If trsm blocksizes are not set then skip check.
+	for ( num_t dt = BLIS_DT_LO; dt <= BLIS_DT_HI; ++dt )
+	{
+		dim_t mr_dt  = bli_blksz_get_def( dt, mr );
+		dim_t nr_dt  = bli_blksz_get_def( dt, nr );
+		dim_t kr_dt  = bli_blksz_get_def( dt, kr );
+
+		if( mr_dt == 0 || nr_dt == 0 || kr_dt == 0 )
+		{
+			return;
+		}
+	}
 
 	e_val = bli_check_valid_mc_mod_mult( mc, mr ); bli_check_error_code( e_val );
 	e_val = bli_check_valid_nc_mod_mult( nc, nr ); bli_check_error_code( e_val );
@@ -504,6 +546,7 @@ cntx_t* bli_gks_query_ind_cntx
 	bli_init_once();
 
 	cntx_t* gks_id_ind;
+	err_t r_val;
 
 	// Return the address of a context that will be suited for executing a
 	// level-3 operation via the requested induced method (and datatype) for
@@ -562,7 +605,7 @@ cntx_t* bli_gks_query_ind_cntx
 			// If gks_id_ind is NULL, then we know we must allocate and then
 			// initialize the context, storing its address back to
 			// gks_id[ ind ].
-			gks_id_ind    = bli_calloc_intl( sizeof( cntx_t ) );
+			gks_id_ind    = bli_calloc_intl( sizeof( cntx_t ), &r_val );
 			gks_id[ ind ] = gks_id_ind;
 
 			// Before we can call the induced method context initialization

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -157,7 +157,7 @@ void softmax_bench_driver_ ## SOFTMAX_SFX \
 
 GEN_SOFTMAX_BENCH_DRV_FN(float,softmax_f32)
 
-inline float gelu_tanh_f32
+static inline float gelu_tanh_f32
      (
        float temp_accum
      )
@@ -168,7 +168,7 @@ inline float gelu_tanh_f32
 	return temp_accum;
 }\
 
-inline float gelu_erf_f32
+static inline float gelu_erf_f32
      (
        float temp_accum
      )
@@ -261,10 +261,11 @@ void gelu_bench_main_ ## GELU_SFX \
 		n_repeats = global_n_repeat; \
 	} \
  \
-	V_type* x = ( V_type* ) bli_malloc_user( sizeof( V_type ) * n * incx ); \
+	err_t bli_errors = BLIS_SUCCESS; \
+	V_type* x = ( V_type* ) bli_malloc_user( sizeof( V_type ) * n * incx, &bli_errors ); \
 	GEN_FUNC_NAME(fill_array_,V_type)( x, ( n * incx ) ); \
  \
-	V_type* ref_x = ( V_type* ) bli_malloc_user( sizeof( V_type ) * n * incx ); \
+	V_type* ref_x = ( V_type* ) bli_malloc_user( sizeof( V_type ) * n * incx, &bli_errors ); \
 	GEN_FUNC_NAME(fill_array_,V_type)( ref_x, ( n * incx ) ); \
  \
 	GEN_FUNC_NAME(gelu_bench_driver_,GELU_SFX)(n_repeats,n,x,incx); \
@@ -292,10 +293,11 @@ void softmax_bench_main_ ## SOFTMAX_SFX \
 		n_repeats = global_n_repeat; \
 	} \
  \
-	V_type* x = ( V_type* ) bli_malloc_user( sizeof( V_type ) * n * incx ); \
+	err_t bli_errors = BLIS_SUCCESS; \
+	V_type* x = ( V_type* ) bli_malloc_user( sizeof( V_type ) * n * incx, &bli_errors ); \
 	GEN_FUNC_NAME(fill_array_,V_type)( x, ( n * incx ) ); \
  \
-	V_type* ref_x = ( V_type* ) bli_malloc_user( sizeof( V_type ) * n * incx ); \
+	V_type* ref_x = ( V_type* ) bli_malloc_user( sizeof( V_type ) * n * incx, &bli_errors ); \
 	GEN_FUNC_NAME(fill_array_,V_type)( ref_x, ( n * incx ) ); \
  \
 	GEN_FUNC_NAME(softmax_bench_driver_,SOFTMAX_SFX)(n_repeats,n,x,incx); \

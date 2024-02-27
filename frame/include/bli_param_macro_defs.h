@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2020, Advanced Micro Devices, Inc.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -261,6 +261,12 @@ BLIS_INLINE trans_t bli_trans_toggled_conj( trans_t trans )
 	       ( trans ^ BLIS_CONJ_BIT );
 }
 
+BLIS_INLINE trans_t bli_apply_trans( trans_t transapp, trans_t trans )
+{
+	return ( trans_t )
+	       ( trans ^ transapp );
+}
+
 BLIS_INLINE void bli_toggle_trans( trans_t* trans )
 {
 	*trans = bli_trans_toggled( *trans );
@@ -418,6 +424,21 @@ BLIS_INLINE bool bli_is_unit_diag( diag_t diag )
 {
 	return ( bool )
 	       ( diag == BLIS_UNIT_DIAG );
+}
+
+
+// err_t-related
+
+BLIS_INLINE bool bli_is_success( err_t err )
+{
+	return ( bool )
+	       ( err == BLIS_SUCCESS );
+}
+
+BLIS_INLINE bool bli_is_failure( err_t err )
+{
+	return ( bool )
+	       ( err != BLIS_SUCCESS );
 }
 
 

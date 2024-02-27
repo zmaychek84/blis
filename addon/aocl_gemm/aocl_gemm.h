@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -43,7 +43,7 @@
 #include "lpgemm_post_ops.h"
 #include "lpgemm_kernels.h"
 #include "lpgemm_utils_kernels.h"
-#include "lpgemm_packb_bf16.h"
+#include "lpgemm_pack_bf16.h"
 #include "lpgemm_packb_s16.h"
 #include "lpgemm_packa.h"
 #include "lpgemm_packb.h"

@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,6 +35,9 @@
 
 #include "blis.h"
 
+// Make thread settings local to each thread calling BLIS routines.
+// (The definition resides in bli_rntm.c.)
+extern BLIS_THREAD_LOCAL rntm_t tl_rntm;
 
 //
 // Define BLAS-to-BLIS interfaces.
@@ -54,8 +57,6 @@ void PASTEF77S(ch,blasname) \
              ftype*    y, const f77_int* incy  \
      ) \
 { \
-    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1); \
-    AOCL_DTL_LOG_GEMV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *transa, *m, *n, (void*)alpha, *lda, *incx, (void*)beta, *incy); \
     trans_t blis_transa; \
     dim_t   m0, n0; \
     dim_t   m_y, n_x; \
@@ -64,6 +65,9 @@ void PASTEF77S(ch,blasname) \
     inc_t   incx0; \
     inc_t   incy0; \
     inc_t   rs_a, cs_a; \
+\
+    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1); \
+    AOCL_DTL_LOG_GEMV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *transa, *m, *n, (void*)alpha, *lda, *incx, (void*)beta, *incy); \
 \
     /* Initialize BLIS. */ \
     bli_init_auto(); \
@@ -185,6 +189,10 @@ void dgemv_blis_impl
 
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
     AOCL_DTL_LOG_GEMV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'D', *transa, *m, *n, (void*)alpha, *lda, *incx, (void*)beta, *incy);
+
+    // Initialize info_value to 0
+    gint_t info_value = 0;
+    bli_rntm_set_info_value_only( info_value, &tl_rntm );
 
     /* Perform BLAS parameter checking. */
     PASTEBLACHK(gemv)
@@ -386,6 +394,11 @@ void sgemv_blis_impl
 
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
     AOCL_DTL_LOG_GEMV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'S', *transa, *m, *n, (void*)alpha, *lda, *incx, (void*)beta, *incy);
+
+    // Initialize info_value to 0
+    gint_t info_value = 0;
+    bli_rntm_set_info_value_only( info_value, &tl_rntm );
+
     /* Perform BLAS parameter checking. */
     PASTEBLACHK(gemv)
     (
@@ -570,9 +583,6 @@ void cgemv_blis_impl
              scomplex* y, const f77_int* incy
      )
 {
-    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
-    AOCL_DTL_LOG_GEMV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'C', *transa, *m, *n, (void*)alpha, *lda, *incx, (void*)beta, *incy);
-
     trans_t    blis_transa;
     dim_t      m0, n0;
     dim_t      m_y, n_x;
@@ -581,6 +591,13 @@ void cgemv_blis_impl
     inc_t      incx0;
     inc_t      incy0;
     inc_t      rs_a, cs_a;
+
+    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
+    AOCL_DTL_LOG_GEMV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'C', *transa, *m, *n, (void*)alpha, *lda, *incx, (void*)beta, *incy);
+
+    // Initialize info_value to 0
+    gint_t info_value = 0;
+    bli_rntm_set_info_value_only( info_value, &tl_rntm );
 
     /* Perform BLAS parameter checking. */
     PASTEBLACHK(gemv)
@@ -808,9 +825,6 @@ void zgemv_blis_impl
              dcomplex* y, const f77_int* incy
      )
 {
-    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
-    AOCL_DTL_LOG_GEMV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'Z', *transa, *m, *n, (void*)alpha, *lda, *incx, (void*)beta, *incy);
-
     trans_t    blis_transa;
     dim_t      m0, n0;
     dim_t      m_y, n_x;
@@ -819,6 +833,13 @@ void zgemv_blis_impl
     inc_t      incx0;
     inc_t      incy0;
     inc_t      rs_a, cs_a;
+
+    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_1);
+    AOCL_DTL_LOG_GEMV_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'Z', *transa, *m, *n, (void*)alpha, *lda, *incx, (void*)beta, *incy);
+
+    // Initialize info_value to 0
+    gint_t info_value = 0;
+    bli_rntm_set_info_value_only( info_value, &tl_rntm );
 
     /* Perform BLAS parameter checking. */
     PASTEBLACHK(gemv)

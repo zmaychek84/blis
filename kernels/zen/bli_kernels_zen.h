@@ -110,6 +110,7 @@ SETV_KER_PROT(double,   d, setv_zen_int)
 AXPYF_KER_PROT( float,    s, axpyf_zen_int_8 )
 AXPYF_KER_PROT( double,   d, axpyf_zen_int_8 )
 AXPYF_KER_PROT( double,   d, axpyf_zen_int_16x4 )
+AXPYF_KER_PROT( double,   d, axpyf_zen_int_16x2 )
 
 AXPYF_KER_PROT( float,    s, axpyf_zen_int_5 )
 AXPYF_KER_PROT( float,    s, axpyf_zen_int_6 )
@@ -188,6 +189,33 @@ GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x16m )
 GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x8m )
 GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x4m )
 GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x2m )
+//gemmsup_rv (mkernel in m dim) for mask load/store
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x16m_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x8m_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x4m_mask )
+GEMMSUP_KER_PROT( float,   s, bli_sgemmsup_rv_zen_asm_6x8m )
+GEMMSUP_KER_PROT( float,   s, bli_sgemmsup_rv_zen_asm_6x4m )
+GEMMSUP_KER_PROT( float,   s, bli_sgemmsup_rv_zen_asm_6x2m )
+
+//gemmsup_rv (mkernel in m dim) for fringe case
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_1x16_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_2x16_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_3x16_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_4x16_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_5x16_mask )
+
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_1x8_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_2x8_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_3x8_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_4x8_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_5x8_mask )
+
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_1x4_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_2x4_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_3x4_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_4x4_mask )
+GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_5x4_mask )
+
 // gemmsup_rv (mkernel in n dim)
 
 GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x16n )
@@ -259,6 +287,20 @@ GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rv_zen_asm_1x4n )
 GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rv_zen_asm_3x2 )
 GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_rv_zen_asm_3x1 )
 
+err_t bli_dgemm_tiny
+(
+        trans_t transa,
+        trans_t transb,
+        dim_t  m,
+        dim_t  n,
+        dim_t  k,
+        const double*    alpha,
+        const double*    a, const inc_t rs_a0, const inc_t cs_a0,
+        const double*    b, const inc_t rs_b0, const inc_t cs_b0,
+        const double*    beta,
+        double*    c, const inc_t rs_c0, const inc_t cs_c0
+);
+
 err_t bli_dgemm_small
     (
       obj_t*  alpha,
@@ -303,7 +345,7 @@ err_t bli_zgemm_small_At
       cntl_t* cntl
     );
 
-void bli_dgemm_8x6_avx2_k1_nn
+err_t bli_dgemm_8x6_avx2_k1_nn
     (
       dim_t m,
       dim_t n,
@@ -315,7 +357,7 @@ void bli_dgemm_8x6_avx2_k1_nn
       double* c, const inc_t ldc
      );
 
-void bli_zgemm_4x6_avx2_k1_nn
+void bli_zgemm_4x4_avx2_k1_nn
     (
       dim_t m,
       dim_t n,
@@ -426,3 +468,8 @@ void bli_dznorm2fv_unb_var1_avx2
        double* norm,
        cntx_t*  cntx
      );
+
+GEMM_UKR_PROT( dcomplex, z, gemm_zen_asm_2x6)
+
+GEMMTRSM_UKR_PROT( dcomplex,   z, gemmtrsm_l_zen_asm_2x6)
+GEMMTRSM_UKR_PROT( dcomplex,   z, gemmtrsm_u_zen_asm_2x6)

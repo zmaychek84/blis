@@ -43,25 +43,25 @@
  */
 
 template<typename T>
-void test_amaxv( gtint_t n, gtint_t incx, double thresh, char datatype ) {
-
+void test_amaxv( gtint_t n, gtint_t incx, double thresh )
+{
     //----------------------------------------------------------
     //        Initialize vectors with random numbers.
     //----------------------------------------------------------
-    std::vector<T> x = testinghelpers::get_random_vector<T>(-10, 10, n, incx, datatype);
+    std::vector<T> x = testinghelpers::get_random_vector<T>( -10, 10, n, incx );
 
     //----------------------------------------------------------
     //    Call reference implementation to get ref results.
     //----------------------------------------------------------
-    gtint_t idx_ref = testinghelpers::ref_amaxv<T>(n, x.data(), incx);
+    gtint_t idx_ref = testinghelpers::ref_amaxv<T>( n, x.data(), incx );
 
     //----------------------------------------------------------
     //                  Call BLIS function.
     //----------------------------------------------------------
-    gtint_t idx = amaxv(n, x.data(), incx);
+    gtint_t idx = amaxv<T>( n, x.data(), incx );
 
     //----------------------------------------------------------
     //              Compute component-wise error.
     //----------------------------------------------------------
-    computediff<gtint_t>( idx, idx_ref );
+    EXPECT_EQ( idx, idx_ref );
 }

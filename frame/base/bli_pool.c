@@ -49,6 +49,8 @@ void bli_pool_init
        pool_t* restrict pool
      )
 {
+	err_t r_val;
+
 	// Make sure that block_ptrs_len is at least num_blocks.
 	block_ptrs_len = bli_max( block_ptrs_len, num_blocks );
 
@@ -67,7 +69,7 @@ void bli_pool_init
 	// well as pool blocks? If so, don't forget to s/bli_free_intl/free_fp/g.
 	pblk_t* restrict block_ptrs
 	=
-	bli_malloc_intl( block_ptrs_len * sizeof( pblk_t ) );
+	bli_malloc_intl( block_ptrs_len * sizeof( pblk_t ), &r_val );
 
 	// Allocate and initialize each entry in the block_ptrs array.
 	for ( dim_t i = 0; i < num_blocks; ++i )
@@ -127,7 +129,12 @@ void bli_pool_finalize
 	// Query the total number of blocks currently allocated.
 	const siz_t num_blocks = bli_pool_num_blocks( pool );
 
-#if 0 // Removing dead code
+	// NOTE: This sanity check has been disabled because bli_pool_reinit()
+	// is currently implemented in terms of bli_pool_finalize() followed by
+	// bli_pool_init(). If that _reinit() takes place when some blocks are
+	// checked out, then we would expect top_index != 0, and therefore this
+	// check is not universally appropriate.
+#if 0
 	// Query the top_index of the pool.
 	const siz_t top_index = bli_pool_top_index( pool );
 
@@ -147,7 +154,6 @@ void bli_pool_finalize
 		
 		//bli_abort();
 	}
-
 #endif
 
 	// Query the free() function pointer for the pool.
@@ -359,6 +365,8 @@ void bli_pool_grow
        pool_t* restrict pool
      )
 {
+	err_t r_val;
+
 	// If the requested increase is zero, return early.
 	if ( num_blocks_add == 0 ) return;
 
@@ -401,7 +409,7 @@ void bli_pool_grow
 		// well as pool blocks? If so, don't forget to s/bli_free_intl/free_fp/g.
 		pblk_t* restrict block_ptrs_new
 		=
-		bli_malloc_intl( block_ptrs_len_new * sizeof( pblk_t ) );
+		bli_malloc_intl( block_ptrs_len_new * sizeof( pblk_t ), &r_val );
 
 		// Query the top_index of the pool.
 		const siz_t top_index = bli_pool_top_index( pool );
@@ -527,6 +535,8 @@ void bli_pool_alloc_block
        pblk_t* restrict block
      )
 {
+	err_t r_val;
+
 	#ifdef BLIS_ENABLE_MEM_TRACING
 	printf( "bli_pool_alloc_block(): calling fmalloc_align(): size %d (align %d, offset %d)\n",
 	        ( int )block_size, ( int )align_size, ( int )offset_size );
@@ -540,7 +550,7 @@ void bli_pool_alloc_block
 	// that many bytes at the beginning of the allocated memory.
 	void* restrict buf
 	=
-	bli_fmalloc_align( malloc_fp, block_size + offset_size, align_size );
+	bli_fmalloc_align( malloc_fp, block_size + offset_size, align_size, &r_val );
 
 #if 0
 	// NOTE: This code is disabled because it is not needed, since

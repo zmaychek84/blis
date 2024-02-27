@@ -33,7 +33,6 @@
 */
 
 #include "blis.h"
-#include <dlfcn.h>
 #include "util/ref_nrm2.h"
 
 /*
@@ -46,29 +45,29 @@
 
 namespace testinghelpers {
 
-template <typename T, typename Treal>
-Treal ref_nrm2(gtint_t n, T* x, gtint_t incx) {
+template <typename T, typename RT>
+RT ref_nrm2(gtint_t n, T* x, gtint_t incx) {
 
-  typedef Treal (*Fptr_ref_cblas_nrm2)( f77_int, const T *, f77_int );
+  typedef RT (*Fptr_ref_cblas_nrm2)( f77_int, const T *, f77_int );
   Fptr_ref_cblas_nrm2 ref_cblas_nrm2;
 
   // Call C function
   /* Check the typename T passed to this function template and call respective function.*/
   if (typeid(T) == typeid(float))
   {
-      ref_cblas_nrm2 = (Fptr_ref_cblas_nrm2)dlsym(refCBLASModule.get( ), "cblas_snrm2");
+      ref_cblas_nrm2 = (Fptr_ref_cblas_nrm2)refCBLASModule.loadSymbol("cblas_snrm2");
   }
   else if (typeid(T) == typeid(double))
   {
-      ref_cblas_nrm2 = (Fptr_ref_cblas_nrm2)dlsym(refCBLASModule.get(), "cblas_dnrm2");
+      ref_cblas_nrm2 = (Fptr_ref_cblas_nrm2)refCBLASModule.loadSymbol("cblas_dnrm2");
   }
   else if (typeid(T) == typeid(scomplex))
   {
-      ref_cblas_nrm2 = (Fptr_ref_cblas_nrm2)dlsym(refCBLASModule.get(), "cblas_scnrm2");
+      ref_cblas_nrm2 = (Fptr_ref_cblas_nrm2)refCBLASModule.loadSymbol("cblas_scnrm2");
   }
   else if (typeid(T) == typeid(dcomplex))
   {
-      ref_cblas_nrm2 = (Fptr_ref_cblas_nrm2)dlsym(refCBLASModule.get(), "cblas_dznrm2");
+      ref_cblas_nrm2 = (Fptr_ref_cblas_nrm2)refCBLASModule.loadSymbol("cblas_dznrm2");
   }
   else
   {

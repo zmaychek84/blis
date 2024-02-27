@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-23, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -40,7 +40,8 @@
 
 // Disable BF16 kernel in cases where compilers support other avx 512
 // features except BF16 ISA.
-#if defined( BLIS_GCC ) && ( __GNUC__ < 10 )
+#if ( defined( BLIS_GCC ) && ( ( __GNUC__ < 11 ) || \
+	  ( ( __GNUC__ == 11 ) && ( __GNUC_MINOR__ < 2 ) ) ) )
 #define LPGEMM_BF16_NOT_SUPPORTED
 #endif
 

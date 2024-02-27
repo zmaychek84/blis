@@ -35,7 +35,7 @@
 #include <gtest/gtest.h>
 #include "test_gemm.h"
 
-class ZGemmTest :
+class ZGemmAccTest :
         public ::testing::TestWithParam<std::tuple<char,
                                                    char,
                                                    char,
@@ -46,10 +46,10 @@ class ZGemmTest :
                                                    dcomplex,
                                                    gtint_t,
                                                    gtint_t,
-                                                   gtint_t,
-                                                   char>> {};
+                                                   gtint_t>> {};
 
-TEST_P(ZGemmTest, RandomData) {
+TEST_P(ZGemmAccTest, Unit_Tester)
+{
     using T = dcomplex;
     //----------------------------------------------------------
     // Initialize values from the parameters passed through
@@ -77,8 +77,6 @@ TEST_P(ZGemmTest, RandomData) {
     gtint_t lda_inc = std::get<8>(GetParam());
     gtint_t ldb_inc = std::get<9>(GetParam());
     gtint_t ldc_inc = std::get<10>(GetParam());
-    // specifies the datatype for randomgenerators
-    char datatype   = std::get<11>(GetParam());
 
     // Set the threshold for the errors:
     double thresh = 10*m*n*testinghelpers::getEpsilon<T>();
@@ -86,13 +84,13 @@ TEST_P(ZGemmTest, RandomData) {
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_gemm<T>(storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh, datatype);
+    test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
 }
 
-class ZGemmTestPrint {
+class ZGemmAccPrint {
 public:
     std::string operator()(
-        testing::TestParamInfo<std::tuple<char, char, char, gtint_t, gtint_t, gtint_t, dcomplex, dcomplex, gtint_t, gtint_t, gtint_t, char>> str) const {
+        testing::TestParamInfo<std::tuple<char, char, char, gtint_t, gtint_t, gtint_t, dcomplex, dcomplex, gtint_t, gtint_t, gtint_t>> str) const {
         char sfm        = std::get<0>(str.param);
         char tsa        = std::get<1>(str.param);
         char tsb        = std::get<2>(str.param);
@@ -104,37 +102,62 @@ public:
         gtint_t lda_inc = std::get<8>(str.param);
         gtint_t ldb_inc = std::get<9>(str.param);
         gtint_t ldc_inc = std::get<10>(str.param);
-        char datatype   = std::get<11>(str.param);
 #ifdef TEST_BLAS
         std::string str_name = "zgemm_";
 #elif TEST_CBLAS
         std::string str_name = "cblas_zgemm";
 #else  //#elif TEST_BLIS_TYPED
-        std::string str_name = "blis_zgemm";
+        std::string str_name = "bli_zgemm";
 #endif
         str_name = str_name + "_" + sfm+sfm+sfm;
         str_name = str_name + "_" + tsa + tsb;
         str_name = str_name + "_" + std::to_string(m);
         str_name = str_name + "_" + std::to_string(n);
         str_name = str_name + "_" + std::to_string(k);
-        std::string alpha_str = ( alpha.real > 0) ? std::to_string(int(alpha.real)) : ("m" + std::to_string(int(std::abs(alpha.real))));
-                    alpha_str = alpha_str + "pi" + (( alpha.imag > 0) ? std::to_string(int(alpha.imag)) : ("m" + std::to_string(int(std::abs(alpha.imag)))));
-        std::string beta_str = ( beta.real > 0) ? std::to_string(int(beta.real)) : ("m" + std::to_string(int(std::abs(beta.real))));
-                    beta_str = beta_str + "pi" + (( beta.imag > 0) ? std::to_string(int(beta.imag)) : ("m" + std::to_string(int(std::abs(beta.imag)))));
-        str_name = str_name + "_a" + alpha_str;
-        str_name = str_name + "_b" + beta_str;
+        str_name = str_name + "_a" + testinghelpers::get_value_string(alpha);;
+        str_name = str_name + "_b" + testinghelpers::get_value_string(beta);;
         str_name = str_name + "_" + std::to_string(lda_inc);
         str_name = str_name + "_" + std::to_string(ldb_inc);
         str_name = str_name + "_" + std::to_string(ldc_inc);
-        str_name = str_name + "_" + datatype;
         return str_name;
     }
 };
 
+// Unit testing for bli_zgemm_4x4_avx2_k1_nn kernel
+/* From the BLAS layer(post parameter checking), the inputs will be redirected to this kernel
+   if m != 1, n !=1 and k == 1 */
+
+INSTANTIATE_TEST_SUITE_P(
+        bli_zgemm_4x4_avx2_k1_nn,
+        ZGemmAccTest,
+        ::testing::Combine(
+            ::testing::Values('c'
+#ifndef TEST_BLAS
+            ,'r'
+#endif
+            ),                                                               // storage format
+            ::testing::Values('n'),                                          // transa
+            ::testing::Values('n'),                                          // transb
+            ::testing::Range(gtint_t(2), gtint_t(8), 1),                     // m
+            ::testing::Range(gtint_t(2), gtint_t(8), 1),                     // n
+            ::testing::Values(gtint_t(1)),                                   // k
+            ::testing::Values(dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0},
+                              dcomplex{0.0, 1.0}, dcomplex{2.1, -1.9},
+                              dcomplex{0.0, 0.0}),                           // alpha
+            ::testing::Values(dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0},
+                              dcomplex{0.0, 1.0}, dcomplex{2.1, -1.9},
+                              dcomplex{0.0, 0.0}),                           // beta
+            ::testing::Values(gtint_t(0), gtint_t(3)),                       // increment to the leading dim of a
+            ::testing::Values(gtint_t(0), gtint_t(2)),                       // increment to the leading dim of b
+            ::testing::Values(gtint_t(0), gtint_t(5))                        // increment to the leading dim of c
+        ),
+        ::ZGemmAccPrint()
+    );
+
 // Black box testing.
 INSTANTIATE_TEST_SUITE_P(
         Blackbox,
-        ZGemmTest,
+        ZGemmAccTest,
         ::testing::Combine(
             ::testing::Values('c'
 #ifndef TEST_BLAS
@@ -150,8 +173,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(dcomplex{1.0,2.0}),                            // beta
             ::testing::Values(gtint_t(0), gtint_t(3)),                       // increment to the leading dim of a
             ::testing::Values(gtint_t(0), gtint_t(2)),                       // increment to the leading dim of b
-            ::testing::Values(gtint_t(0), gtint_t(5)),                       // increment to the leading dim of c
-            ::testing::Values(ELEMENT_TYPE)                                  // i : integer, f : float  datatype type tested
+            ::testing::Values(gtint_t(0), gtint_t(5))                        // increment to the leading dim of c
         ),
-        ::ZGemmTestPrint()
+        ::ZGemmAccPrint()
     );

@@ -5,7 +5,7 @@
  *               These functions are invoked though macros by
  *               end user.
  *
- * Copyright (C) 2020-2023, Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
  *
  *=======================================================================*/
 #include "blis.h"
@@ -539,11 +539,11 @@ uint64 AOCL_DTL_get_time_spent(void)
 #ifdef AOCL_DTL_AUTO_TRACE_ENABLE
 
 /*
-    Disable intrumentation for these functions as they will also be
-    called from compiler generated instumation code to trace
+    Disable instrumentation for these functions as they will also be
+    called from compiler generated instrumentation code to trace
    function execution.
 
-    It needs to be part of declration in the C file so can't be
+    It needs to be part of declaration in the C file so can't be
     moved to header file.
 
     WARNING: These functions are automatically invoked. however any function

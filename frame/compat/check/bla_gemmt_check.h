@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2020-2023, Advanced Micro Devices, Inc.
+   Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -82,6 +82,12 @@
 		bli_string_mkupper( func_str ); \
 \
 		PASTE_XERBLA( func_str, &info, (ftnlen)6 ); \
+\
+		AOCL_DTL_LOG_GEMMT_STATS(AOCL_DTL_LEVEL_TRACE_1, *dt_str, *n, *k); \
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1); \
+\
+		/* Finalize BLIS. */ \
+		bli_finalize_auto(); \
 \
 		return; \
 	} \

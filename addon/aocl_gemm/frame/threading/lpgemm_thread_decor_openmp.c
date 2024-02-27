@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -268,7 +268,7 @@ BLIS_INLINE void lpgemm_adjust_ic_jc_ways
 	}
 }
 
-BLIS_INLINE void lpgemm_u8s8s16o16_get_threading
+BLIS_INLINE void lpgemm_s16o16_get_threading
      (
        dim_t*  n_threads,
        dim_t*  ic_ways,
@@ -276,7 +276,8 @@ BLIS_INLINE void lpgemm_u8s8s16o16_get_threading
        dim_t   m,
        dim_t   n,
        dim_t   k,
-       rntm_t* rntm_g
+       rntm_t* rntm_g,
+       AOCL_OPERATION_TYPE op_type
      )
 {
 	*n_threads = bli_rntm_num_threads( rntm_g );
@@ -295,19 +296,176 @@ BLIS_INLINE void lpgemm_u8s8s16o16_get_threading
 	else if ( ( *n_threads ) > 1 )
 	{
 
-		dim_t NR = lpgemm_get_block_size_NR_global_cntx( U8S8S16OS16 );
+		dim_t NR = lpgemm_get_block_size_NR_global_cntx( op_type );
+		dim_t MR = lpgemm_get_block_size_MR_global_cntx( op_type );
+		dim_t mr_blks = ( m + MR - 1 ) / MR;
+		dim_t nr_blks = ( n + NR - 1 ) / NR;
 
 		if ( n <= NR )
 		{
-			// If n is less than micro panel dimension, allocating all threads
-			// to ic resulted in gains.
-			( *ic_ways ) = ( *n_threads );
+			( *ic_ways ) = ( mr_blks < ( *n_threads ) ) ? mr_blks : ( *n_threads );
 			( *jc_ways ) = 1;
+			( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+		}
+		else if ( m <= MR )
+		{
+			( *jc_ways ) = ( nr_blks < ( *n_threads ) ) ? nr_blks : ( *n_threads );
+			( *ic_ways ) = 1;
+			( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
 		}
 		else
 		{
 			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
 			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
+			if ( ( mr_blks < ( *ic_ways ) ) && ( nr_blks < ( *jc_ways ) ) )
+			{
+				( *ic_ways ) = mr_blks;
+				( *jc_ways ) = nr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else if ( mr_blks < ( *ic_ways ) )
+			{
+				( *ic_ways ) = mr_blks;
+				dim_t rem_jc_ways = ( dim_t )( ( *n_threads ) / ( *ic_ways ) );
+				( *jc_ways ) = ( rem_jc_ways < nr_blks ) ? rem_jc_ways : nr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else if ( nr_blks < ( *jc_ways ) )
+			{
+				( *jc_ways ) = nr_blks;
+				dim_t rem_ic_ways = ( dim_t )( ( *n_threads ) / ( *jc_ways ) );
+				( *ic_ways ) = ( rem_ic_ways < mr_blks ) ? rem_ic_ways : mr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+		}
+	}
+	else
+	{
+		// Setting all the values to 1 in case n_threads <= 1. This ensures
+		// the threading parameters are valid.
+		*n_threads = 1;
+		*jc_ways = 1;
+		*ic_ways = 1;
+	}
+}
+
+BLIS_INLINE void lpgemm_u8s8s16o16_get_threading
+     (
+       dim_t*  n_threads,
+       dim_t*  ic_ways,
+       dim_t*  jc_ways,
+       dim_t   m,
+       dim_t   n,
+       dim_t   k,
+       rntm_t* rntm_g
+     )
+{
+	lpgemm_s16o16_get_threading
+	(
+	  n_threads,
+	  ic_ways, jc_ways,
+	  m, n, k, rntm_g,
+	  U8S8S16OS16
+	);
+}
+
+BLIS_INLINE void lpgemm_s8s8s16o16_get_threading
+     (
+       dim_t*  n_threads,
+       dim_t*  ic_ways,
+       dim_t*  jc_ways,
+       dim_t   m,
+       dim_t   n,
+       dim_t   k,
+       rntm_t* rntm_g
+     )
+{
+	lpgemm_s16o16_get_threading
+	(
+	  n_threads,
+	  ic_ways, jc_ways,
+	  m, n, k, rntm_g,
+	  S8S8S16OS16
+	);
+}
+
+BLIS_INLINE void lpgemm_s32o32_get_threading
+     (
+       dim_t*  n_threads,
+       dim_t*  ic_ways,
+       dim_t*  jc_ways,
+       dim_t   m,
+       dim_t   n,
+       dim_t   k,
+       rntm_t* rntm_g,
+       AOCL_OPERATION_TYPE op_type
+     )
+{
+	*n_threads = bli_rntm_num_threads( rntm_g );
+	*jc_ways = bli_rntm_jc_ways( rntm_g );
+	*ic_ways = bli_rntm_ic_ways( rntm_g );
+
+	if ( ( ( *ic_ways ) > 0 ) || ( ( *jc_ways ) > 0 ) )
+	{
+		// If BLIS_IC_NT or JC_NT are set.
+		// Default cases.
+ 		*ic_ways = ( ( *ic_ways ) > 0 ) ? ( *ic_ways ) : 1;
+		*jc_ways = ( ( *jc_ways ) > 0 ) ? ( *jc_ways ) : 1;
+
+		*n_threads = ( *jc_ways ) * ( *ic_ways );
+	}
+	else if ( ( *n_threads ) > 1 )
+	{
+
+		dim_t NR = lpgemm_get_block_size_NR_global_cntx( op_type );
+		dim_t MR = lpgemm_get_block_size_MR_global_cntx( op_type );
+		dim_t mr_blks = ( m + MR - 1 ) / MR;
+		dim_t nr_blks = ( n + NR - 1 ) / NR;
+
+		if ( n <= NR )
+		{
+			( *ic_ways ) = ( mr_blks < ( *n_threads ) ) ? mr_blks : ( *n_threads );
+			( *jc_ways ) = 1;
+			( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+		}
+		else if ( m <= MR )
+		{
+			( *jc_ways ) = ( nr_blks < ( *n_threads ) ) ? nr_blks : ( *n_threads );
+			( *ic_ways ) = 1;
+			( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+		}
+		else
+		{
+			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
+			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
+			if ( ( mr_blks < ( *ic_ways ) ) && ( nr_blks < ( *jc_ways ) ) )
+			{
+				( *ic_ways ) = mr_blks;
+				( *jc_ways ) = nr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else if ( mr_blks < ( *ic_ways ) )
+			{
+				( *ic_ways ) = mr_blks;
+				dim_t rem_jc_ways = ( dim_t )( ( *n_threads ) / ( *ic_ways ) );
+				( *jc_ways ) = ( rem_jc_ways < nr_blks ) ? rem_jc_ways : nr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else if ( nr_blks < ( *jc_ways ) )
+			{
+				( *jc_ways ) = nr_blks;
+				dim_t rem_ic_ways = ( dim_t )( ( *n_threads ) / ( *jc_ways ) );
+				( *ic_ways ) = ( rem_ic_ways < mr_blks ) ? rem_ic_ways : mr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else
+			{
+				lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
+				(
+				  MR, NR, m, n,
+				  n_threads, ic_ways, jc_ways
+				);
+			}
 		}
 	}
 	else
@@ -331,52 +489,33 @@ BLIS_INLINE void lpgemm_u8s8s32o32_get_threading
        rntm_t* rntm_g
      )
 {
-	*n_threads = bli_rntm_num_threads( rntm_g );
-	*jc_ways = bli_rntm_jc_ways( rntm_g );
-	*ic_ways = bli_rntm_ic_ways( rntm_g );
+	lpgemm_s32o32_get_threading
+	(
+	  n_threads,
+	  ic_ways, jc_ways,
+	  m, n, k, rntm_g,
+	  U8S8S32OS32
+	);
+}
 
-	if ( ( ( *ic_ways ) > 0 ) || ( ( *jc_ways ) > 0 ) )
-	{
-		// If BLIS_IC_NT or JC_NT are set.
-		// Default cases.
- 		*ic_ways = ( ( *ic_ways ) > 0 ) ? ( *ic_ways ) : 1;
-		*jc_ways = ( ( *jc_ways ) > 0 ) ? ( *jc_ways ) : 1;
-
-		*n_threads = ( *jc_ways ) * ( *ic_ways );
-	}
-	else if ( ( *n_threads ) > 1 )
-	{
-
-		dim_t NR = lpgemm_get_block_size_NR_global_cntx( U8S8S32OS32 );
-		dim_t MR = lpgemm_get_block_size_MR_global_cntx( U8S8S32OS32 );
-
-		if ( n <= NR )
-		{
-			// If n is less than micro panel dimension, allocating all threads
-			// to ic resulted in gains.
-			( *ic_ways ) = ( *n_threads );
-			( *jc_ways ) = 1;
-		}
-		else
-		{
-			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
-			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
-
-			lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
-			(
-			  MR, NR, m, n,
-			  n_threads, ic_ways, jc_ways
-			);
-		}
-	}
-	else
-	{
-		// Setting all the values to 1 in case n_threads <= 1. This ensures
-		// the threading parameters are valid.
-		*n_threads = 1;
-		*jc_ways = 1;
-		*ic_ways = 1;
-	}
+BLIS_INLINE void lpgemm_s8s8s32o32_get_threading
+     (
+       dim_t*  n_threads,
+       dim_t*  ic_ways,
+       dim_t*  jc_ways,
+       dim_t   m,
+       dim_t   n,
+       dim_t   k,
+       rntm_t* rntm_g
+     )
+{
+	lpgemm_s32o32_get_threading
+	(
+	  n_threads,
+	  ic_ways, jc_ways,
+	  m, n, k, rntm_g,
+	  S8S8S32OS32
+	);
 }
 
 BLIS_INLINE void lpgemm_bf16bf16f32of32_get_threading
@@ -408,24 +547,53 @@ BLIS_INLINE void lpgemm_bf16bf16f32of32_get_threading
 
 		dim_t NR = lpgemm_get_block_size_NR_global_cntx( BF16BF16F32OF32 );
 		dim_t MR = lpgemm_get_block_size_MR_global_cntx( BF16BF16F32OF32 );
+		dim_t mr_blks = ( m + MR - 1 ) / MR;
+		dim_t nr_blks = ( n + NR - 1 ) / NR;
 
 		if ( n <= NR )
 		{
-			// If n is less than micro panel dimension, allocating all threads
-			// to ic resulted in gains.
-			( *ic_ways ) = ( *n_threads );
+			( *ic_ways ) = ( mr_blks < ( *n_threads ) ) ? mr_blks : ( *n_threads );
 			( *jc_ways ) = 1;
+			( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+		}
+		else if ( m <= MR )
+		{
+			( *jc_ways ) = ( nr_blks < ( *n_threads ) ) ? nr_blks : ( *n_threads );
+			( *ic_ways ) = 1;
+			( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
 		}
 		else
 		{
 			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
 			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
-
-			lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
-			(
-			  MR, NR, m, n,
-			  n_threads, ic_ways, jc_ways
-			);
+			if ( ( mr_blks < ( *ic_ways ) ) && ( nr_blks < ( *jc_ways ) ) )
+			{
+				( *ic_ways ) = mr_blks;
+				( *jc_ways ) = nr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else if ( mr_blks < ( *ic_ways ) )
+			{
+				( *ic_ways ) = mr_blks;
+				dim_t rem_jc_ways = ( dim_t )( ( *n_threads ) / ( *ic_ways ) );
+				( *jc_ways ) = ( rem_jc_ways < nr_blks ) ? rem_jc_ways : nr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else if ( nr_blks < ( *jc_ways ) )
+			{
+				( *jc_ways ) = nr_blks;
+				dim_t rem_ic_ways = ( dim_t )( ( *n_threads ) / ( *jc_ways ) );
+				( *ic_ways ) = ( rem_ic_ways < mr_blks ) ? rem_ic_ways : mr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else
+			{
+				lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
+				(
+					MR, NR, m, n,
+					n_threads, ic_ways, jc_ways
+				);
+			}
 		}
 	}
 	else
@@ -485,15 +653,55 @@ BLIS_INLINE void lpgemm_f32f32f32of32_get_threading
 	}
 	else if ( ( *n_threads ) > 1 )
 	{
-		// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
-		bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
+		dim_t mr_blks = ( m + MR - 1 ) / MR;
+		dim_t nr_blks = ( n + NR - 1 ) / NR;
 
-		lpgemm_adjust_ic_jc_ways
-		(
-		  m, n, k,
-		  MC, NC, KC, MR, NR,
-		  n_threads, ic_ways, jc_ways, 5
-		);
+		if ( n <= NR )
+		{
+			( *ic_ways ) = ( mr_blks < ( *n_threads ) ) ? mr_blks : ( *n_threads );
+			( *jc_ways ) = 1;
+			( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+		}
+		else if ( m <= MR )
+		{
+			( *jc_ways ) = ( nr_blks < ( *n_threads ) ) ? nr_blks : ( *n_threads );
+			( *ic_ways ) = 1;
+			( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+		}
+		else
+		{
+			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
+			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
+			if ( ( mr_blks < ( *ic_ways ) ) && ( nr_blks < ( *jc_ways ) ) )
+			{
+				( *ic_ways ) = mr_blks;
+				( *jc_ways ) = nr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else if ( mr_blks < ( *ic_ways ) )
+			{
+				( *ic_ways ) = mr_blks;
+				dim_t rem_jc_ways = ( dim_t )( ( *n_threads ) / ( *ic_ways ) );
+				( *jc_ways ) = ( rem_jc_ways < nr_blks ) ? rem_jc_ways : nr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else if ( nr_blks < ( *jc_ways ) )
+			{
+				( *jc_ways ) = nr_blks;
+				dim_t rem_ic_ways = ( dim_t )( ( *n_threads ) / ( *jc_ways ) );
+				( *ic_ways ) = ( rem_ic_ways < mr_blks ) ? rem_ic_ways : mr_blks;
+				( *n_threads ) = ( *ic_ways ) * ( *jc_ways );
+			}
+			else
+			{
+		       	lpgemm_adjust_ic_jc_ways
+		      	(
+		  			m, n, k,
+		  			MC, NC, KC, MR, NR,
+		  			n_threads, ic_ways, jc_ways, 5
+				);
+			}
+		}
 	}
 	else
 	{
@@ -513,127 +721,14 @@ BLIS_INLINE void lpgemm_f32f32f32of32_get_threading
 
 	if ( ( m >= MT ) && ( n >= NT ) && ( k >= KT ) )
 	{
-		if ( ( k > page_size_b_floatx2 ) ||
-			 ( ( k <= page_size_b_floatx2 ) &&
-			   ( m_ic > MT_2 ) && ( n_jc >= NT ) ) )
+		if (((k <= page_size_b_floatx2 ) && ( m_ic > MT_2 ) && ( n_jc >= NT ) ) ||
+		    ((bli_cpuid_is_avx512_supported() == FALSE ) && (k > page_size_b_floatx2)))
 		{
 			bli_rntm_set_pack_b( 1, rntm_g );
 			bli_rntm_set_pack_a( 1, rntm_g );
 		}
 	}
 }
-
-BLIS_INLINE void lpgemm_s8s8s32o32_get_threading
-     (
-       dim_t*  n_threads,
-       dim_t*  ic_ways,
-       dim_t*  jc_ways,
-       dim_t   m,
-       dim_t   n,
-       dim_t   k,
-       rntm_t* rntm_g
-     )
-{
-	*n_threads = bli_rntm_num_threads( rntm_g );
-	*jc_ways = bli_rntm_jc_ways( rntm_g );
-	*ic_ways = bli_rntm_ic_ways( rntm_g );
-
-	if ( ( ( *ic_ways ) > 0 ) || ( ( *jc_ways ) > 0 ) )
-	{
-		// If BLIS_IC_NT or JC_NT are set.
-		// Default cases.
- 		*ic_ways = ( ( *ic_ways ) > 0 ) ? ( *ic_ways ) : 1;
-		*jc_ways = ( ( *jc_ways ) > 0 ) ? ( *jc_ways ) : 1;
-
-		*n_threads = ( *jc_ways ) * ( *ic_ways );
-	}
-	else if ( ( *n_threads ) > 1 )
-	{
-
-		dim_t NR = lpgemm_get_block_size_NR_global_cntx( S8S8S32OS32 );
-		dim_t MR = lpgemm_get_block_size_MR_global_cntx( S8S8S32OS32 );
-
-		if ( n <= NR )
-		{
-			// If n is less than micro panel dimension, allocating all threads
-			// to ic resulted in gains.
-			( *ic_ways ) = ( *n_threads );
-			( *jc_ways ) = 1;
-		}
-		else
-		{
-			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
-			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
-
-			lpgemm_pnl_wrk_heur_adjust_ic_jc_ways
-			(
-			  MR, NR, m, n,
-			  n_threads, ic_ways, jc_ways
-			);
-		}
-	}
-	else
-	{
-		// Setting all the values to 1 in case n_threads <= 1. This ensures
-		// the threading parameters are valid.
-		*n_threads = 1;
-		*jc_ways = 1;
-		*ic_ways = 1;
-	}
-}
-
-BLIS_INLINE void lpgemm_s8s8s16o16_get_threading
-     (
-       dim_t*  n_threads,
-       dim_t*  ic_ways,
-       dim_t*  jc_ways,
-       dim_t   m,
-       dim_t   n,
-       dim_t   k,
-       rntm_t* rntm_g
-     )
-{
-	*n_threads = bli_rntm_num_threads( rntm_g );
-	*jc_ways = bli_rntm_jc_ways( rntm_g );
-	*ic_ways = bli_rntm_ic_ways( rntm_g );
-
-	if ( ( ( *ic_ways ) > 0 ) || ( ( *jc_ways ) > 0 ) )
-	{
-		// If BLIS_IC_NT or JC_NT are set.
-		// Default cases.
- 		*ic_ways = ( ( *ic_ways ) > 0 ) ? ( *ic_ways ) : 1;
-		*jc_ways = ( ( *jc_ways ) > 0 ) ? ( *jc_ways ) : 1;
-
-		*n_threads = ( *jc_ways ) * ( *ic_ways );
-	}
-	else if ( ( *n_threads ) > 1 )
-	{
-
-		dim_t NR = lpgemm_get_block_size_NR_global_cntx( S8S8S16OS16 );
-
-		if ( n <= NR )
-		{
-			// If n is less than micro panel dimension, allocating all threads
-			// to ic resulted in gains.
-			( *ic_ways ) = ( *n_threads );
-			( *jc_ways ) = 1;
-		}
-		else
-		{
-			// If BLIS_NUM_THREADS are set, generate jc,ic from the same.
-			bli_thread_partition_2x2( ( *n_threads ), m, n, ic_ways, jc_ways );
-		}
-	}
-	else
-	{
-		// Setting all the values to 1 in case n_threads <= 1. This ensures
-		// the threading parameters are valid.
-		*n_threads = 1;
-		*jc_ways = 1;
-		*ic_ways = 1;
-	}
-}
-
 
 #define GEN_LPGEMM_OPENMP_DECORATOR(A_type,B_type,C_type,LPGEMM_SFX) \
 void lpgemm_ ## LPGEMM_SFX ## _openmp_thread_decorator \
@@ -657,7 +752,7 @@ void lpgemm_ ## LPGEMM_SFX ## _openmp_thread_decorator \
        rntm_t*               rntm_g, \
        lpgemm_cntx_t*        lcntx, \
        lpgemm_post_op*       post_op_list, \
-       bool                  c_downscale \
+       AOCL_STORAGE_TYPE     c_downscale \
      ) \
 { \
 	dim_t n_threads; \
@@ -676,14 +771,15 @@ void lpgemm_ ## LPGEMM_SFX ## _openmp_thread_decorator \
 	/* Set the packing block allocator field of the rntm. This will be
 	 * inherited by all of the child threads when they make local copies of
 	 * the rntm below.*/ \
-	bli_membrk_rntm_set_membrk( rntm_g ); \
+	bli_pba_rntm_set_pba( rntm_g ); \
  \
 	thrcomm_t static_lpgemm_comms[BLIS_LPGEMM_NUM_STATIC_COMMS]; \
 	thrcomm_t* cur_lpgemm_comms = static_lpgemm_comms; \
+	err_t bli_errors = BLIS_SUCCESS; \
  \
 	if ( jc_ways > BLIS_LPGEMM_NUM_STATIC_COMMS ) \
 	{ \
-		cur_lpgemm_comms = bli_malloc_intl( jc_ways * sizeof( thrcomm_t ) ); \
+		cur_lpgemm_comms = bli_malloc_intl( jc_ways * sizeof( thrcomm_t ), &bli_errors ); \
 	} \
 	for ( dim_t i = 0; i < jc_ways; ++i ) \
 	{ \
@@ -758,7 +854,7 @@ void lpgemm_ ## LPGEMM_SFX ## _thread_decorator \
        rntm_t*               rntm_g, \
        lpgemm_cntx_t*        lcntx, \
        lpgemm_post_op*       post_op_list, \
-       bool                  c_downscale \
+       AOCL_STORAGE_TYPE     c_downscale \
      ) \
 { \
 	dim_t n_threads = 1; \
@@ -770,7 +866,7 @@ void lpgemm_ ## LPGEMM_SFX ## _thread_decorator \
 	/* Set the packing block allocator field of the rntm. This will be
 	 * inherited by all of the child threads when they make local copies of
 	 * the rntm below.*/ \
-	bli_membrk_rntm_set_membrk( rntm_g ); \
+	bli_pba_rntm_set_pba( rntm_g ); \
  \
 	thrcomm_t static_lpgemm_comm; \
 	thrcomm_t* cur_lpgemm_comm = &static_lpgemm_comm; \

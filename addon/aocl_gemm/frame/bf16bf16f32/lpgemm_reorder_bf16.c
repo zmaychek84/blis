@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,7 +35,7 @@
 #include "blis.h"
 #include "lpgemm_utils.h"
 #include "lpgemm_reorder_bf16.h"
-#include "lpgemm_packb_bf16.h"
+#include "lpgemm_pack_bf16.h"
 #include "lpgemm_config.h"
 #include "aocl_bf16_type.h"
 
@@ -53,6 +53,7 @@ void reorderb_nr64_bf16bf16f32of32
 
 	// Extracting the matrix properties from the lpgemm object
 	dim_t rs_b = b->rs;
+	dim_t cs_b = b->cs;
 	dim_t n = b->width;
 	dim_t k = b->length;
 
@@ -148,14 +149,14 @@ void reorderb_nr64_bf16bf16f32of32
 				// st = ( jc_cur_loop * k )    <traverse blocks 1,2,3,4>
 				//    + ( n_sub_updated * pc ) <traverse block 5>
 				//    + ( NC' * kc0_updated)   <traverse block 6>
-				( ( packb_bf16 )lcntx->packb_fun_ptr )
+				( ( pack_bf16 )lcntx->packb_fun_ptr )
 				(
-				  ( ( ( bfloat16* )b_reorder->storage.aligned_buffer ) +
-					( jc_cur_loop * k_updated ) + ( n_sub_updated * pc ) +
-					( jc_cur_loop_rem * kc0_updated ) ),
+				  ( ( bfloat16* )b_reorder->storage.aligned_buffer ) +
+				  ( jc_cur_loop * k_updated ) + ( n_sub_updated * pc ) +
+				  ( jc_cur_loop_rem * kc0_updated ),
 				  ( ( ( bfloat16* )b->storage.aligned_buffer ) +
-					( rs_b * pc ) + jc ),
-				  rs_b, nc0, kc0, &rs_b_reorder, &cs_b_reorder
+				  ( rs_b * pc ) + (jc * cs_b)),
+				  rs_b, cs_b, nc0, kc0, &rs_b_reorder, &cs_b_reorder
 				);
 			}
 

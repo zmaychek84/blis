@@ -37,7 +37,7 @@
 
 // The global rntm_t structure, which holds the global thread settings
 // along with a few other key parameters.
-rntm_t global_rntm;
+rntm_t global_rntm = BLIS_RNTM_INITIALIZER;
 
 // Make thread settings local to each thread calling BLIS routines
 BLIS_THREAD_LOCAL rntm_t tl_rntm = BLIS_RNTM_INITIALIZER;
@@ -1606,14 +1606,22 @@ static void aocl_dscalv_dynamic
 		case BLIS_ARCH_ZEN2:
 		case BLIS_ARCH_ZEN3:
 
-			if ( n_elem <= 10000 )
+			if ( n_elem <= 30000)
 				*nt_ideal = 1;
-			else if (n_elem <= 20000)
+			else if (n_elem <= 100000)
 				*nt_ideal = 2;
-			else if (n_elem <= 50000)
-				*nt_ideal = 4;
-			else
+			else if (n_elem <= 500000)
 				*nt_ideal = 8;
+			else if (n_elem <= 4000000)
+				*nt_ideal = 12;
+			else if (n_elem <= 2500000)
+				*nt_ideal = 16;
+			else if(n_elem <= 7000000)
+				*nt_ideal = 24;
+			else if(n_elem <= 10000000)
+				*nt_ideal = 32;
+			else
+				*nt_ideal = 64;
 
 			break;
 
@@ -1741,16 +1749,18 @@ static void aocl_daxpyv_dynamic
 		case BLIS_ARCH_ZEN2:
 		case BLIS_ARCH_ZEN3:
 
-			if ( n_elem <= 100 )
+			if ( n_elem <= 4000 )
 				*nt_ideal = 1;
-			else if (n_elem <= 10000)
-				*nt_ideal = 2;
-			else if (n_elem <= 250000)
+			else if (n_elem <= 11000)
+				*nt_ideal = 4;
+			else if (n_elem <= 300000)
 				*nt_ideal = 8;
 			else if (n_elem <= 750000)
 				*nt_ideal = 16;
-			else if (n_elem <= 2000000)
+			else if (n_elem <= 2600000)
 				*nt_ideal = 32;
+			else if (n_elem <= 4000000)
+				*nt_ideal = 64;
 			else
 				// For sizes in this range, AOCL dynamic does not make any change
 				*nt_ideal = -1;

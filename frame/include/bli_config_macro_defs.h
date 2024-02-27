@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -149,16 +149,6 @@
   #define BLIS_RELAX_MCNR_NCMR_CONSTRAINTS
 #endif
 
-// Stay initialized after auto-initialization, unless and until the user
-// explicitly calls bli_finalize().
-#ifdef BLIS_DISABLE_STAY_AUTO_INITIALIZED
-  #undef BLIS_ENABLE_STAY_AUTO_INITIALIZED
-#else
-  // Default behavior is enabled.
-  #undef  BLIS_ENABLE_STAY_AUTO_INITIALIZED // In case user explicitly enabled.
-  #define BLIS_ENABLE_STAY_AUTO_INITIALIZED
-#endif
-
 
 // -- BLAS COMPATIBILITY LAYER -------------------------------------------------
 
@@ -241,7 +231,7 @@
       #ifdef BLIS_IS_BUILDING_LIBRARY
         #define BLIS_EXPORT __declspec(dllexport)
       #else
-        #define BLIS_EXPORT __declspec(dllimport)
+        #define BLIS_EXPORT
       #endif
     #elif defined(__GNUC__) && __GNUC__ >= 4
       #define BLIS_EXPORT __attribute__ ((visibility ("default")))

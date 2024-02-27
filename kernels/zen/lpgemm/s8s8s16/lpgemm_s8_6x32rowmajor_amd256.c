@@ -151,7 +151,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
 			__m256i b1 = 
 					_mm256_loadu_si256((__m256i const *)(b + (64 * kr) + (NR * 1)));
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			__m256i inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -168,7 +168,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );    
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -185,7 +185,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );    
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 			// Perform column direction mat-mul with k = 2.
 			// c[0,0-31] = a[0,kr:kr+2]*b[kr:kr+2,0-31]
@@ -201,7 +201,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );    
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -218,7 +218,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );    
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -236,7 +236,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );    
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -262,7 +262,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			__m256i inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -278,7 +278,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -294,7 +294,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -311,7 +311,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -327,7 +327,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -343,7 +343,7 @@ LPGEMM_MAIN_KERN(int8_t,int8_t,int16_t,s8s8s16o16_6x32)
             //convert signed int8 to uint8 for u8s8s16 FMA ops
 			a_int32_0 = _mm256_add_epi8( a_int32_0, vec_uint8 );
 
-			// Seperate register for intermediate op
+			// Separate register for intermediate op
 			inter_vec = _mm256_maddubs_epi16(a_int32_0, b0);
 
 			// Perform column direction mat-mul with k = 2.
@@ -775,13 +775,28 @@ POST_OPS_DOWNSCALE_6x32:
 				(float *)post_ops_list_temp->scale_factor +
 				post_ops_attr.post_op_c_j + (1 * 8));
 
+			// Load zero points (2 byte values).
+			__m128i _zero_point_0 =
+				_mm_loadu_si128(
+				( __m128i const* )( ( int8_t* )post_ops_list_temp->op_args1 +
+				post_ops_attr.post_op_c_j + ( 0 * 16 ) ) );
+			__m256i zero_point_0 = _mm256_setzero_si256();
+			if ( post_ops_attr.c_stor_type == S8 )
+			{
+				zero_point_0 = _mm256_cvtepi8_epi16( _zero_point_0 );
+			}
+			else if ( post_ops_attr.c_stor_type == U8 )
+			{
+				zero_point_0 = _mm256_cvtepu8_epi16( _zero_point_0 );
+			}
+
 			// Scale first 16 columns of the 6 rows.
-			CVT_MULRND_CVT16(c_int16_0p0, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_1p0, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_2p0, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_3p0, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_4p0, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_5p0, scale_1, scale_2)
+			CVT_MULRND_CVT16(c_int16_0p0, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_1p0, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_2p0, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_3p0, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_4p0, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_5p0, scale_1, scale_2, zero_point_0)
 
 			scale_1 =
 				_mm256_loadu_ps(
@@ -792,13 +807,26 @@ POST_OPS_DOWNSCALE_6x32:
 				(float *)post_ops_list_temp->scale_factor +
 				post_ops_attr.post_op_c_j + (3 * 8));
 
+			_zero_point_0 =
+				_mm_loadu_si128(
+				( __m128i const* )( ( int8_t* )post_ops_list_temp->op_args1 +
+				post_ops_attr.post_op_c_j + ( 1 * 16 ) ) );
+			if ( post_ops_attr.c_stor_type == S8 )
+			{
+				zero_point_0 = _mm256_cvtepi8_epi16( _zero_point_0 );
+			}
+			else if ( post_ops_attr.c_stor_type == U8 )
+			{
+				zero_point_0 = _mm256_cvtepu8_epi16( _zero_point_0 );
+			}
+
 			// Scale next 16 columns of the 6 rows.
-			CVT_MULRND_CVT16(c_int16_0p1, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_1p1, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_2p1, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_3p1, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_4p1, scale_1, scale_2)
-			CVT_MULRND_CVT16(c_int16_5p1, scale_1, scale_2)
+			CVT_MULRND_CVT16(c_int16_0p1, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_1p1, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_2p1, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_3p1, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_4p1, scale_1, scale_2, zero_point_0)
+			CVT_MULRND_CVT16(c_int16_5p1, scale_1, scale_2, zero_point_0)
 
 			POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
 		}

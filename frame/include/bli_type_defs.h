@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2016, Hewlett Packard Enterprise Development LP
-   Copyright (C) 2021-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -118,7 +118,11 @@ typedef   gint_t dim_t;      // dimension type
 #endif
 typedef   gint_t inc_t;      // increment/stride type
 typedef   gint_t doff_t;     // diagonal offset type
-typedef  guint_t siz_t;      // byte size type
+#ifdef BLIS_ARCH_64
+typedef uint64_t siz_t;      // byte size type
+#else
+typedef uint32_t siz_t;      // byte size type
+#endif
 typedef uint32_t objbits_t;  // object information bit field
 
 // -- Real types --
@@ -156,7 +160,7 @@ typedef uint32_t objbits_t;  // object information bit field
 	// interoperability with BLIS.
 	#ifndef _DEFINED_SCOMPLEX
 	#define _DEFINED_SCOMPLEX
-	typedef struct
+	typedef struct scomplex
 	{
 		float  real;
 		float  imag;
@@ -167,7 +171,7 @@ typedef uint32_t objbits_t;  // object information bit field
 	// interoperability with BLIS.
 	#ifndef _DEFINED_DCOMPLEX
 	#define _DEFINED_DCOMPLEX
-	typedef struct
+	typedef struct dcomplex
 	{
 		double real;
 		double imag;
@@ -204,15 +208,18 @@ typedef double    f77_double;
 typedef scomplex  f77_scomplex;
 typedef dcomplex  f77_dcomplex;
 
-// -- Void function pointer types --
+// -- Misc. function pointer types --
 
 // Note: This type should be used in any situation where the address of a
 // *function* will be conveyed or stored prior to it being typecast back
 // to the correct function type. It does not need to be used when conveying
 // or storing the address of *data* (such as an array of float or double).
-
 //typedef void (*void_fp)( void );
 typedef void* void_fp;
+
+// Typedef function pointer types for malloc() and free() substitutes.
+typedef void* (*malloc_ft)( size_t size );
+typedef void  (*free_ft)  ( void*  p    );
 
 
 //
@@ -463,7 +470,8 @@ typedef enum
 	BLIS_NO_TRANSPOSE      = 0x0,
 	BLIS_TRANSPOSE         = BLIS_BITVAL_TRANS,
 	BLIS_CONJ_NO_TRANSPOSE = BLIS_BITVAL_CONJ,
-	BLIS_CONJ_TRANSPOSE    = BLIS_BITVAL_CONJ_TRANS
+	BLIS_CONJ_TRANSPOSE    = BLIS_BITVAL_CONJ_TRANS,
+	BLIS_PACKED            = BLIS_BITVAL_PACKED_UNSPEC
 } trans_t;
 
 typedef enum
@@ -1025,6 +1033,8 @@ typedef enum
 	BLIS_ARCH_BULLDOZER,
 
 	// ARM
+	BLIS_ARCH_ARMSVE,
+	BLIS_ARCH_A64FX,
 	BLIS_ARCH_THUNDERX2,
 	BLIS_ARCH_CORTEXA57,
 	BLIS_ARCH_CORTEXA53,
@@ -1037,14 +1047,12 @@ typedef enum
 	BLIS_ARCH_POWER7,
 	BLIS_ARCH_BGQ,
 
-	// Dummy value, always the last one.
-	// In config_name in bli_arch.c this is also set to "generic"
-	BLIS_ARCH_GENERIC_LAST
+	// The total number of defined architectures. This must be last in the
+	// list of enums since its definition assumes that the previous enum
+	// value is given index num_archs-1.
+	BLIS_NUM_ARCHS
 
 } arch_t;
-
-#define BLIS_NUM_ARCHS (BLIS_ARCH_GENERIC_LAST + 1)
-
 
 typedef enum
 {
@@ -1064,22 +1072,20 @@ typedef enum
 	BLIS_MODEL_MILAN,
 	BLIS_MODEL_MILAN_X,
 
-	// Dummy value, always the last one.
-	// In config_name in bli_arch.c this is also set to "generic"
-	BLIS_MODEL_DEFAULT_LAST
+	// The total number of defined models. This must be last in the
+	// list of enums since its definition assumes that the previous enum
+	// value is given index num_models-1.
+	BLIS_NUM_MODELS
 
 } model_t;
-
-#define BLIS_NUM_MODELS (BLIS_MODEL_DEFAULT_LAST + 1)
 
 //
 // -- BLIS misc. structure types -----------------------------------------------
 //
 
-// These headers must be included here (or earlier) because definitions they
-// provide are needed in the pool_t and related structs.
+// This header must be included here (or earlier) because definitions it
+// provides are needed in the pool_t and related structs.
 #include "bli_pthread.h"
-#include "bli_malloc.h"
 
 // -- Pool block type --
 
@@ -1137,7 +1143,7 @@ typedef struct
 
 // -- packing block allocator: Locked set of pools type --
 
-typedef struct membrk_s
+typedef struct pba_s
 {
 	pool_t              pools[3];
 	bli_pthread_mutex_t mutex;
@@ -1147,7 +1153,7 @@ typedef struct membrk_s
 	malloc_ft           malloc_fp;
 	free_ft             free_fp;
 
-} membrk_t;
+} pba_t;
 
 
 // -- Memory object type --
@@ -1268,6 +1274,47 @@ typedef struct constdata_s
 // -- BLIS object type definitions ---------------------------------------------
 //
 
+// Forward declarations for function pointer types
+struct obj_s;
+struct cntx_s;
+struct rntm_s;
+struct thrinfo_s;
+
+typedef void (*obj_pack_fn_t)
+    (
+      mdim_t            mat,
+      mem_t*            mem,
+      struct obj_s*     a,
+      struct obj_s*     ap,
+      struct cntx_s*    cntx,
+      struct rntm_s*    rntm,
+      struct thrinfo_s* thread
+    );
+
+typedef void (*obj_ker_fn_t)
+    (
+      struct obj_s*     a,
+      struct obj_s*     b,
+      struct obj_s*     c,
+      struct cntx_s*    cntx,
+      struct rntm_s*    rntm,
+      struct thrinfo_s* thread
+    );
+
+typedef void (*obj_ukr_fn_t)
+    (
+      dim_t                   m,
+      dim_t                   n,
+      dim_t                   k,
+      void*          restrict alpha,
+      void*          restrict a, inc_t rs_a, inc_t cs_a,
+      void*          restrict b, inc_t rs_b, inc_t cs_b,
+      void*          restrict beta,
+      void*          restrict c, inc_t rs_c, inc_t cs_c,
+      auxinfo_t*     restrict data,
+      struct cntx_s* restrict cntx
+    );
+
 typedef struct obj_s
 {
 	// Basic fields
@@ -1297,6 +1344,15 @@ typedef struct obj_s
 	                        // usually MR or NR)
 	dim_t         m_panel;  // m dimension of a "full" panel
 	dim_t         n_panel;  // n dimension of a "full" panel
+
+	// User data pointer
+	void*         user_data;
+
+	// Function pointers
+	obj_pack_fn_t pack;
+	obj_ker_fn_t  ker;
+	obj_ukr_fn_t  ukr;
+
 } obj_t;
 
 // Pre-initializors. Things that must be set afterwards:
@@ -1333,7 +1389,13 @@ typedef struct obj_s
 	.ps        = 0, \
 	.pd        = 0, \
 	.m_panel   = 0, \
-	.n_panel   = 0  \
+	.n_panel   = 0, \
+\
+	.user_data = NULL, \
+\
+	.pack      = NULL, \
+	.ker       = NULL, \
+	.ukr       = NULL  \
 }
 
 #define BLIS_OBJECT_INITIALIZER_1X1 \
@@ -1361,7 +1423,13 @@ typedef struct obj_s
 	.ps        = 0, \
 	.pd        = 0, \
 	.m_panel   = 0, \
-	.n_panel   = 0  \
+	.n_panel   = 0, \
+\
+	.user_data = NULL, \
+\
+	.pack      = NULL, \
+	.ker       = NULL, \
+	.ukr       = NULL  \
 }
 
 // Define these macros here since they must be updated if contents of
@@ -1395,6 +1463,12 @@ BLIS_INLINE void bli_obj_init_full_shallow_copy_of( obj_t* a, obj_t* b )
 	b->pd        = a->pd;
 	b->m_panel   = a->m_panel;
 	b->n_panel   = a->n_panel;
+
+	b->user_data = a->user_data;
+
+	b->pack      = a->pack;
+	b->ker       = a->ker;
+	b->ukr       = a->ukr;
 }
 
 BLIS_INLINE void bli_obj_init_subpart_from( obj_t* a, obj_t* b )
@@ -1428,6 +1502,12 @@ BLIS_INLINE void bli_obj_init_subpart_from( obj_t* a, obj_t* b )
 	b->pd        = a->pd;
 	b->m_panel   = a->m_panel;
 	b->n_panel   = a->n_panel;
+
+	b->user_data = a->user_data;
+
+	b->pack      = a->pack;
+	b->ker       = a->ker;
+	b->ukr       = a->ukr;
 }
 
 // Initializors for global scalar constants.
@@ -1481,8 +1561,11 @@ typedef struct cntx_s
 	blksz_t   l3_sup_thresh[ BLIS_NUM_THRESH ];
 	void*     l3_sup_handlers[ BLIS_NUM_LEVEL3_OPS ];
 	blksz_t   l3_sup_blkszs[ BLIS_NUM_BLKSZS ];
+	blksz_t   l3_sup_tri_blkszs[ BLIS_NUM_BLKSZS ];
 	func_t    l3_sup_kers[ BLIS_NUM_3OP_RC_COMBOS ];
+	func_t    l3_sup_tri_kers[ BLIS_NUM_3OP_RC_COMBOS ];
 	mbool_t   l3_sup_kers_prefs[ BLIS_NUM_3OP_RC_COMBOS ];
+	mbool_t   l3_sup_tri_kers_prefs[ BLIS_NUM_3OP_RC_COMBOS ];
 
 	func_t    l1f_kers[ BLIS_NUM_LEVEL1F_KERS ];
 	func_t    l1v_kers[ BLIS_NUM_LEVEL1V_KERS ];
@@ -1503,7 +1586,7 @@ typedef struct cntx_s
 // NOTE: The order of these fields must be kept consistent with the definition
 // of the BLIS_RNTM_INITIALIZER macro in bli_rntm.h.
 
-typedef struct rntm_s
+typedef struct __attribute__((aligned(64))) rntm_s
 {
 	// "External" fields: these may be queried by the end-user.
 	bool      auto_factor;
@@ -1522,7 +1605,13 @@ typedef struct rntm_s
 	pool_t*   sba_pool;
 
 	// The packing block allocator, which is attached in the l3 thread decorator.
-	membrk_t* membrk;
+	pba_t*    pba;
+
+	// Store values of environment variables to control BLIS version of xerbla
+	// and error code from xerbla
+	bool      stop_on_error;
+	bool      print_on_error;
+	gint_t    info_value;
 
 } rntm_t;
 

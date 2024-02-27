@@ -5,7 +5,7 @@
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2020-2023, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -355,11 +355,12 @@ print_usage()
 	echo " "
 	echo "   --enable-blis-arch-type, --disable-blis-arch-type"
 	echo " "
-	echo "                 Disable (Enabled by default) support for BLIS_ARCH_TYPE and BLIS_MODEL_TYPE"
-	echo "                 environment variables, which allows user to select"
+	echo "                 Disable support for AOCL_ENABLE_INSTRUCTIONS, BLIS_ARCH_TYPE and"
+	echo "                 BLIS_MODEL_TYPE environment variables, which allows user to select"
 	echo "                 architecture specific code path and optimizations at runtime."
 	echo "                 If disabled, in builds with multiple code paths, BLIS"
 	echo "                 will still select path and optimizations automatically."
+	echo "                 Default: Enabled in builds with multiple code paths, else disabled."
 	echo " "
 	echo "   --rename-blis-arch-type=STRING"
 	echo " "
@@ -811,7 +812,8 @@ read_registry_file()
 					# canonicalize whitespace, and then remove duplicate kernel
 					# set names, if they exist. Finally, update the kernel registry
 					# with the new kernel list.
-					newklist=$(echo -e "${klisttmp}" | sed -e "s/${ker}/${kers_ker}/g")
+					#newklist=$(echo -e "${klisttmp}" | sed -e "s/${ker}/${kers_ker}/g")
+					newklist=$(substitute_words "${ker}" "${kers_ker}" "${klisttmp}")
 					newklist=$(canonicalize_ws "${newklist}")
 					newklist=$(rm_duplicate_words "${newklist}")
 
@@ -831,6 +833,26 @@ read_registry_file()
 			done
 		done
 	done
+}
+
+substitute_words()
+{
+	local word new_words list newlist
+
+	word="$1"
+	new_words="$2"
+	list="$3"
+
+	for str in ${list}; do
+
+		if [ "${str}" == "${word}" ]; then
+			newlist="${newlist} ${new_words}"
+		else
+			newlist="${newlist} ${str}"
+		fi
+	done
+
+	echo "${newlist}"
 }
 
 build_kconfig_registry()
@@ -1453,7 +1475,7 @@ get_compiler_version()
 		cc_version=$(${cc} -dumpversion)
 	# If compiler is AOCC, first grep for clang and then the version number.
 	elif [ "${cc_vendor}" = "clang" ]; then
-		cc_version=$(echo "${vendor_string}" | egrep -o 'clang version [0-9]+\.[0-9]+\.?[0-9]*' | egrep -o '[0-9]+\.[0-9]+\.?[0-9]*')
+		cc_version=$(echo "${vendor_string}" | egrep -o '(clang|LLVM) version [0-9]+\.[0-9]+\.?[0-9]*' | egrep -o '[0-9]+\.[0-9]+\.?[0-9]*')
 	elif [ "${cc_vendor}" = "oneAPI" ]; then
 		# Treat Intel oneAPI's clang as clang, not icc.
 		cc_vendor="clang"
@@ -1519,6 +1541,8 @@ check_compiler()
 	#   cortexa15: any
 	#   cortexa9: any
 	#
+	#   armsve: clang11+, gcc10+
+	#
 	#   generic: any
 	#
 	# Note: These compiler requirements were originally modeled after similar
@@ -1563,6 +1587,9 @@ check_compiler()
 			blacklistcc_add "skx"
 			# gcc 5.x may support POWER9 but it is unverified.
 			blacklistcc_add "power9"
+		fi
+		if [ ${cc_major} -lt 10 ]; then
+			blacklistcc_add "armsve"
 		fi
 	fi
 
@@ -1625,6 +1652,9 @@ check_compiler()
 				# See comment above regarding zen support.
 				#blacklistcc_add "zen"
 				: # explicit no-op since bash can't handle empty loop bodies.
+			fi
+			if [ ${cc_major} -lt 11 ]; then
+				blacklistcc_add "armsve"
 			fi
 		fi
 	fi
@@ -2047,7 +2077,7 @@ main()
 	enable_aocl_dynamic='yes'
 	force_version='no'
 	complex_return='default'
-	disable_blis_arch_type='no'
+	disable_blis_arch_type='unset'
 	rename_blis_arch_type='BLIS_ARCH_TYPE'
 	rename_blis_model_type='BLIS_MODEL_TYPE'
 
@@ -2427,6 +2457,11 @@ main()
 
 	echo "${script_name}: using '${found_cc}' C compiler."
 
+	# Also check the compiler to see if we are (cross-)compiling for Windows
+	if ${found_cc} -dM -E - < /dev/null 2> /dev/null | grep -q _WIN32; then
+		is_win=yes
+	fi
+
 
 	# -- Find a C++ compiler ---------------------------------------------------
 
@@ -2776,6 +2811,19 @@ main()
 
 	fi
 
+	# Based on the number of sub-configurations, set default value for disable_blis_arch_type
+	# (if user hasn't set option). BLIS_ARCH_TYPE functionality only makes sense for use with
+	# processor families containing multiple sub-configurations, but user can force the 
+	# functionality to be enabled/disabled with --enable-blis-arch-type/--disable-blis-arch-type
+	# configure options.
+	if [ "x${disable_blis_arch_type}" = "xunset"  ]; then
+		config_list_count=$(echo ${config_list} |wc -w)
+		if [ "x${config_list_count}" = "x1"  ]; then
+			disable_blis_arch_type='yes'
+		else
+			disable_blis_arch_type='no'
+		fi
+	fi
 
 	echo "${script_name}: checking sub-configurations:"
 
@@ -3267,7 +3315,8 @@ main()
 	fi
 
 	if [ "x${disable_blis_arch_type}" = "xyes"  ]; then
-		echo "${script_name}: user selection of code path using BLIS_ARCH_TYPE and BLIS_MODEL_TYPE env vars is disabled."
+		echo "${script_name}: user selection of code path using AOCL_ENABLE_INSTRUCTIONS,"
+		echo "${script_name}:    BLIS_ARCH_TYPE and BLIS_MODEL_TYPE env vars is disabled."
 		disable_blis_arch_type_01='1'
 	else
 		disable_blis_arch_type_01='0'
@@ -3332,10 +3381,11 @@ main()
 	uconf=$(echo ${config_name} | tr '[:lower:]' '[:upper:]')
 	config_name_define="#define BLIS_FAMILY_${uconf}\n"
 
-	#create a AOCL specific #define
-	#This macro is enabled only for zen family configurations.
-	#This enables us to use different cache block sizes for TRSM instead of common level-3 block sizes.
-	uconf=$(echo ${config_name} | grep -c 'zen\|amd64' | cut -d. -f1)
+	# Create a AOCL specific #define
+	# This macro is enabled only for zen family configurations.
+	# This enables us to use different cache block sizes for TRSM instead of common level-3 block sizes.
+	# Note: amd64_legacy is for pre-zen architectures.
+	uconf=$(echo ${config_name} | grep -v amd64_legacy |grep -c 'zen\|amd64\|x86_64' | cut -d. -f1)
 	if [[ $uconf == 1 ]]; then
 		enable_aocl_zen='yes'
 		enable_aocl_zen_01=1
@@ -3818,6 +3868,23 @@ main()
 			ln -sf "${dist_path}/Makefile"
 		else
 			echo "${script_name}: Non-symbolic link file or directory 'Makefile' blocks creation of symlink."
+			echo "${script_name}: *** Please remove this entity and re-run configure."
+			exit 1
+		fi
+
+		# If 'blis.pc.in' symlink does not already exist in the current
+		# directory, create a symbolic link to it. If one does exist, we
+		# use -f to force creation of a new link.
+		if [ ! -e "./blis.pc.in" ]; then
+
+			echo "${script_name}: creating symbolic link to blis.pc.in."
+			ln -s "${dist_path}/blis.pc.in"
+
+		elif [ -h "./blis.pc.in" ]; then
+			echo "${script_name}: symbolic link to blis.pc.in already exists; forcing creation of new link."
+			ln -sf "${dist_path}/blis.pc.in"
+		else
+			echo "${script_name}: Non-symbolic link file or directory 'blis.pc.in' blocks creation of symlink."
 			echo "${script_name}: *** Please remove this entity and re-run configure."
 			exit 1
 		fi

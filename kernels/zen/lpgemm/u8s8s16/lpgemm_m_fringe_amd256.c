@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-23, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -95,7 +95,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		// Broadcast a[1,kr:kr+2].
 		a_int32_1 = _mm256_set1_epi16(*(uint16_t *)(a + (rs_a * 1) + (cs_a * offset)));
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[0] = _mm256_maddubs_epi16(a_int32_0, b0);
 		inter_vec[1] = _mm256_maddubs_epi16(a_int32_0, b1);
 
@@ -107,7 +107,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		// Broadcast a[2,kr:kr+2].
 		a_int32_0 = _mm256_set1_epi16(*(uint16_t *)(a + (rs_a * 2) + (cs_a * offset)));
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[2] = _mm256_maddubs_epi16(a_int32_1, b0);
 		inter_vec[3] = _mm256_maddubs_epi16(a_int32_1, b1);
 
@@ -119,7 +119,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		// Broadcast a[3,kr:kr+2].
 		a_int32_1 = _mm256_set1_epi16(*(uint16_t *)(a + (rs_a * 3) + (cs_a * offset)));
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[0] = _mm256_maddubs_epi16(a_int32_0, b0);
 		inter_vec[1] = _mm256_maddubs_epi16(a_int32_0, b1);
 
@@ -128,7 +128,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		c_int16_2p0 = _mm256_add_epi16(inter_vec[0], c_int16_2p0);
 		c_int16_2p1 = _mm256_add_epi16(inter_vec[1], c_int16_2p1);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[2] = _mm256_maddubs_epi16(a_int32_1, b0);
 		inter_vec[3] = _mm256_maddubs_epi16(a_int32_1, b1);
 
@@ -149,7 +149,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		a_kfringe = *(a + (rs_a * 0) + (cs_a * (k_full_pieces * 2)));
 		a_int32_0 = _mm256_set1_epi8(a_kfringe);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[0] = _mm256_maddubs_epi16(a_int32_0, b0);
 		inter_vec[1] = _mm256_maddubs_epi16(a_int32_0, b1);
 
@@ -161,7 +161,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		a_kfringe = *(a + (rs_a * 1) + (cs_a * (k_full_pieces * 2)));
 		a_int32_1 = _mm256_set1_epi8(a_kfringe);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[2] = _mm256_maddubs_epi16(a_int32_1, b0);
 		inter_vec[3] = _mm256_maddubs_epi16(a_int32_1, b1);
 
@@ -173,7 +173,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		a_kfringe = *(a + (rs_a * 2) + (cs_a * (k_full_pieces * 2)));
 		a_int32_0 = _mm256_set1_epi8(a_kfringe);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[0] = _mm256_maddubs_epi16(a_int32_0, b0);
 		inter_vec[1] = _mm256_maddubs_epi16(a_int32_0, b1);
 
@@ -185,7 +185,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		a_kfringe = *(a + (rs_a * 3) + (cs_a * (k_full_pieces * 2)));
 		a_int32_1 = _mm256_set1_epi8(a_kfringe);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[2] = _mm256_maddubs_epi16(a_int32_1, b0);
 		inter_vec[3] = _mm256_maddubs_epi16(a_int32_1, b1);
 
@@ -223,29 +223,58 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_4x32)
 		if ( ( post_ops_attr.buf_downscale != NULL ) &&
 			 ( post_ops_attr.is_first_k == TRUE ) )
 		{
-			// c[0,0-15]
-			S8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
+			if ( post_ops_attr.c_stor_type == S8 )
+			{
+				// c[0,0-15]
+				S8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
 
-			// c[0, 16-31]
-			S8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
+				// c[0, 16-31]
+				S8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
 
-			// c[1,0-15]
-			S8_S16_BETA_OP(c_int16_1p0,0,1,0,selector1,selector2)
+				// c[1,0-15]
+				S8_S16_BETA_OP(c_int16_1p0,0,1,0,selector1,selector2)
 
-			// c[1,16-31]
-			S8_S16_BETA_OP(c_int16_1p1,0,1,1,selector1,selector2)
+				// c[1,16-31]
+				S8_S16_BETA_OP(c_int16_1p1,0,1,1,selector1,selector2)
 
-			// c[2,0-15]
-			S8_S16_BETA_OP(c_int16_2p0,0,2,0,selector1,selector2)
+				// c[2,0-15]
+				S8_S16_BETA_OP(c_int16_2p0,0,2,0,selector1,selector2)
 
-			// c[2,16-31]
-			S8_S16_BETA_OP(c_int16_2p1,0,2,1,selector1,selector2)
+				// c[2,16-31]
+				S8_S16_BETA_OP(c_int16_2p1,0,2,1,selector1,selector2)
 
-			// c[3,0-15]
-			S8_S16_BETA_OP(c_int16_3p0,0,3,0,selector1,selector2)
+				// c[3,0-15]
+				S8_S16_BETA_OP(c_int16_3p0,0,3,0,selector1,selector2)
 
-			// c[3,16-31]
-			S8_S16_BETA_OP(c_int16_3p1,0,3,1,selector1,selector2)
+				// c[3,16-31]
+				S8_S16_BETA_OP(c_int16_3p1,0,3,1,selector1,selector2)
+			}
+			else if ( post_ops_attr.c_stor_type == U8 )
+			{
+				// c[0,0-15]
+				U8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
+
+				// c[0, 16-31]
+				U8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
+
+				// c[1,0-15]
+				U8_S16_BETA_OP(c_int16_1p0,0,1,0,selector1,selector2)
+
+				// c[1,16-31]
+				U8_S16_BETA_OP(c_int16_1p1,0,1,1,selector1,selector2)
+
+				// c[2,0-15]
+				U8_S16_BETA_OP(c_int16_2p0,0,2,0,selector1,selector2)
+
+				// c[2,16-31]
+				U8_S16_BETA_OP(c_int16_2p1,0,2,1,selector1,selector2)
+
+				// c[3,0-15]
+				U8_S16_BETA_OP(c_int16_3p0,0,3,0,selector1,selector2)
+
+				// c[3,16-31]
+				U8_S16_BETA_OP(c_int16_3p1,0,3,1,selector1,selector2)
+			}
 		}
 		else
 		{
@@ -473,6 +502,8 @@ POST_OPS_DOWNSCALE_4x32:
 		__m256i temp_32[2];
 		__m256 temp_float[2];
 		__m256 scale_1, scale_2;
+		__m128i _zero_point_0;
+		__m256i zero_point_0 = _mm256_setzero_si256();
 		__m256 res_1, res_2;
 
 		/* Load the scale vector values into the register*/
@@ -485,11 +516,25 @@ POST_OPS_DOWNSCALE_4x32:
 			(float *)post_ops_list_temp->scale_factor +
 			post_ops_attr.post_op_c_j + (1 * 8));
 
+		// Load zero points (2 byte values).
+		_zero_point_0 =
+			_mm_loadu_si128(
+			( __m128i const* )( ( int8_t* )post_ops_list_temp->op_args1 +
+			post_ops_attr.post_op_c_j + ( 0 * 16 ) ) );
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			zero_point_0 = _mm256_cvtepi8_epi16( _zero_point_0 );
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			zero_point_0 = _mm256_cvtepu8_epi16( _zero_point_0 );
+		}
+
 		// Scale first 16 columns of the 4 rows.
-		CVT_MULRND_CVT16(c_int16_0p0, scale_1, scale_2)
-		CVT_MULRND_CVT16(c_int16_1p0, scale_1, scale_2)
-		CVT_MULRND_CVT16(c_int16_2p0, scale_1, scale_2)
-		CVT_MULRND_CVT16(c_int16_3p0, scale_1, scale_2)
+		CVT_MULRND_CVT16(c_int16_0p0, scale_1, scale_2, zero_point_0)
+		CVT_MULRND_CVT16(c_int16_1p0, scale_1, scale_2, zero_point_0)
+		CVT_MULRND_CVT16(c_int16_2p0, scale_1, scale_2, zero_point_0)
+		CVT_MULRND_CVT16(c_int16_3p0, scale_1, scale_2, zero_point_0)
 
 		scale_1 =
 			_mm256_loadu_ps(
@@ -500,11 +545,24 @@ POST_OPS_DOWNSCALE_4x32:
 			(float *)post_ops_list_temp->scale_factor +
 			post_ops_attr.post_op_c_j + (3 * 8));
 
+		_zero_point_0 =
+			_mm_loadu_si128(
+			( __m128i const* )( ( int8_t* )post_ops_list_temp->op_args1 +
+			post_ops_attr.post_op_c_j + ( 1 * 16 ) ) );
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			zero_point_0 = _mm256_cvtepi8_epi16( _zero_point_0 );
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			zero_point_0 = _mm256_cvtepu8_epi16( _zero_point_0 );
+		}
+
 		// Scale next 16 columns of the 4 rows.
-		CVT_MULRND_CVT16(c_int16_0p1, scale_1, scale_2)
-		CVT_MULRND_CVT16(c_int16_1p1, scale_1, scale_2)
-		CVT_MULRND_CVT16(c_int16_2p1, scale_1, scale_2)
-		CVT_MULRND_CVT16(c_int16_3p1, scale_1, scale_2)
+		CVT_MULRND_CVT16(c_int16_0p1, scale_1, scale_2, zero_point_0)
+		CVT_MULRND_CVT16(c_int16_1p1, scale_1, scale_2, zero_point_0)
+		CVT_MULRND_CVT16(c_int16_2p1, scale_1, scale_2, zero_point_0)
+		CVT_MULRND_CVT16(c_int16_3p1, scale_1, scale_2, zero_point_0)
 
 		POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
 	}
@@ -516,18 +574,36 @@ POST_OPS_4x32_DISABLE:
 	if ( ( post_ops_attr.buf_downscale != NULL ) &&
 		 ( post_ops_attr.is_last_k == TRUE ) )
 	{
-		// Store the results in downscaled type (int8 instead of int32).
-		// c[0,0-31]
-		CVT_STORE_S16_S8(c_int16_0p0, c_int16_0p1, 0, 0);
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			// Store the results in downscaled type (int8 instead of int16).
+			// c[0,0-31]
+			CVT_STORE_S16_S8(c_int16_0p0, c_int16_0p1, 0, 0);
 
-		// c[1,0-31]
-		CVT_STORE_S16_S8(c_int16_1p0, c_int16_1p1, 1, 0);
+			// c[1,0-31]
+			CVT_STORE_S16_S8(c_int16_1p0, c_int16_1p1, 1, 0);
 
-		// c[2,0-31]
-		CVT_STORE_S16_S8(c_int16_2p0, c_int16_2p1, 2, 0);
+			// c[2,0-31]
+			CVT_STORE_S16_S8(c_int16_2p0, c_int16_2p1, 2, 0);
 
-		// c[3,0-31]
-		CVT_STORE_S16_S8(c_int16_3p0, c_int16_3p1, 3, 0);
+			// c[3,0-31]
+			CVT_STORE_S16_S8(c_int16_3p0, c_int16_3p1, 3, 0);
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			// Store the results in downscaled type (uint8 instead of int16).
+			// c[0,0-31]
+			CVT_STORE_S16_U8(c_int16_0p0, c_int16_0p1, 0, 0);
+
+			// c[1,0-31]
+			CVT_STORE_S16_U8(c_int16_1p0, c_int16_1p1, 1, 0);
+
+			// c[2,0-31]
+			CVT_STORE_S16_U8(c_int16_2p0, c_int16_2p1, 2, 0);
+
+			// c[3,0-31]
+			CVT_STORE_S16_U8(c_int16_3p0, c_int16_3p1, 3, 0);
+		}
 	}
 	// Case where the output C matrix is s16 or is the temp buffer used to
 	// store intermediate s16 accumulated values for downscaled (C-s8) api.
@@ -611,7 +687,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_2x32)
 		// Broadcast a[1,kr:kr+2].
 		a_int32_1 = _mm256_set1_epi16(*(uint16_t *)(a + (rs_a * 1) + (cs_a * offset)));
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[0] = _mm256_maddubs_epi16(a_int32_0, b0);
 		inter_vec[1] = _mm256_maddubs_epi16(a_int32_0, b1);
 
@@ -620,7 +696,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_2x32)
 		c_int16_0p0 = _mm256_add_epi16(inter_vec[0], c_int16_0p0);
 		c_int16_0p1 = _mm256_add_epi16(inter_vec[1], c_int16_0p1);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[2] = _mm256_maddubs_epi16(a_int32_1, b0);
 		inter_vec[3] = _mm256_maddubs_epi16(a_int32_1, b1);
 
@@ -640,7 +716,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_2x32)
 		a_kfringe = *(a + (rs_a * 0) + (cs_a * (k_full_pieces * 2)));
 		a_int32_0 = _mm256_set1_epi8(a_kfringe);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[0] = _mm256_maddubs_epi16(a_int32_0, b0);
 		inter_vec[1] = _mm256_maddubs_epi16(a_int32_0, b1);
 
@@ -652,7 +728,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_2x32)
 		a_kfringe = *(a + (rs_a * 1) + (cs_a * (k_full_pieces * 2)));
 		a_int32_1 = _mm256_set1_epi8(a_kfringe);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[2] = _mm256_maddubs_epi16(a_int32_1, b0);
 		inter_vec[3] = _mm256_maddubs_epi16(a_int32_1, b1);
 
@@ -684,17 +760,34 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_2x32)
 		if ( ( post_ops_attr.buf_downscale != NULL ) &&
 			 ( post_ops_attr.is_first_k == TRUE ) )
 		{
-			// c[0,0-15]
-			S8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
+			if ( post_ops_attr.c_stor_type == S8 )
+			{
+				// c[0,0-15]
+				S8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
 
-			// c[0, 16-31]
-			S8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
+				// c[0, 16-31]
+				S8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
 
-			// c[1,0-15]
-			S8_S16_BETA_OP(c_int16_1p0,0,1,0,selector1,selector2)
+				// c[1,0-15]
+				S8_S16_BETA_OP(c_int16_1p0,0,1,0,selector1,selector2)
 
-			// c[1,16-31]
-			S8_S16_BETA_OP(c_int16_1p1,0,1,1,selector1,selector2)
+				// c[1,16-31]
+				S8_S16_BETA_OP(c_int16_1p1,0,1,1,selector1,selector2)
+			}
+			else if ( post_ops_attr.c_stor_type == U8 )
+			{
+				// c[0,0-15]
+				U8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
+
+				// c[0, 16-31]
+				U8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
+
+				// c[1,0-15]
+				U8_S16_BETA_OP(c_int16_1p0,0,1,0,selector1,selector2)
+
+				// c[1,16-31]
+				U8_S16_BETA_OP(c_int16_1p1,0,1,1,selector1,selector2)
+			}
 		}
 		else
 		{
@@ -838,6 +931,8 @@ POST_OPS_DOWNSCALE_2x32:
 		__m256i temp_32[2];
 		__m256 temp_float[2];
 		__m256 scale_1, scale_2;
+		__m128i _zero_point_0;
+		__m256i zero_point_0 = _mm256_setzero_si256();
 		__m256 res_1, res_2;
 
 		/* Load the scale vector values into the register*/
@@ -850,9 +945,23 @@ POST_OPS_DOWNSCALE_2x32:
 			(float *)post_ops_list_temp->scale_factor +
 			post_ops_attr.post_op_c_j + (1 * 8));
 
+		// Load zero points (2 byte values).
+		_zero_point_0 =
+			_mm_loadu_si128(
+			( __m128i const* )( ( int8_t* )post_ops_list_temp->op_args1 +
+			post_ops_attr.post_op_c_j + ( 0 * 16 ) ) );
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			zero_point_0 = _mm256_cvtepi8_epi16( _zero_point_0 );
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			zero_point_0 = _mm256_cvtepu8_epi16( _zero_point_0 );
+		}
+
 		// Scale first 16 columns of the 4 rows.
-		CVT_MULRND_CVT16(c_int16_0p0, scale_1, scale_2)
-		CVT_MULRND_CVT16(c_int16_1p0, scale_1, scale_2)
+		CVT_MULRND_CVT16(c_int16_0p0, scale_1, scale_2, zero_point_0)
+		CVT_MULRND_CVT16(c_int16_1p0, scale_1, scale_2, zero_point_0)
 
 		scale_1 =
 			_mm256_loadu_ps(
@@ -863,9 +972,22 @@ POST_OPS_DOWNSCALE_2x32:
 			(float *)post_ops_list_temp->scale_factor +
 			post_ops_attr.post_op_c_j + (3 * 8));
 
+		_zero_point_0 =
+			_mm_loadu_si128(
+			( __m128i const* )( ( int8_t* )post_ops_list_temp->op_args1 +
+			post_ops_attr.post_op_c_j + ( 1 * 16 ) ) );
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			zero_point_0 = _mm256_cvtepi8_epi16( _zero_point_0 );
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			zero_point_0 = _mm256_cvtepu8_epi16( _zero_point_0 );
+		}
+
 		// Scale next 16 columns of the 4 rows.
-		CVT_MULRND_CVT16(c_int16_0p1, scale_1, scale_2)
-		CVT_MULRND_CVT16(c_int16_1p1, scale_1, scale_2)
+		CVT_MULRND_CVT16(c_int16_0p1, scale_1, scale_2, zero_point_0)
+		CVT_MULRND_CVT16(c_int16_1p1, scale_1, scale_2, zero_point_0)
 
 		POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
 	}
@@ -877,12 +999,24 @@ POST_OPS_2x32_DISABLE:
 	if ( ( post_ops_attr.buf_downscale != NULL ) &&
 		 ( post_ops_attr.is_last_k == TRUE ) )
 	{
-		// Store the results in downscaled type (int8 instead of int32).
-		// c[0,0-31]
-		CVT_STORE_S16_S8(c_int16_0p0, c_int16_0p1, 0, 0);
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			// Store the results in downscaled type (int8 instead of int16).
+			// c[0,0-31]
+			CVT_STORE_S16_S8(c_int16_0p0, c_int16_0p1, 0, 0);
 
-		// c[1,0-31]
-		CVT_STORE_S16_S8(c_int16_1p0, c_int16_1p1, 1, 0);
+			// c[1,0-31]
+			CVT_STORE_S16_S8(c_int16_1p0, c_int16_1p1, 1, 0);
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			// Store the results in downscaled type (uint8 instead of int16).
+			// c[0,0-31]
+			CVT_STORE_S16_U8(c_int16_0p0, c_int16_0p1, 0, 0);
+
+			// c[1,0-31]
+			CVT_STORE_S16_U8(c_int16_1p0, c_int16_1p1, 1, 0);
+		}
 	}
 	// Case where the output C matrix is s16 or is the temp buffer used to
 	// store intermediate s16 accumulated values for downscaled (C-s8) api.
@@ -946,7 +1080,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_1x32)
 		b0 = _mm256_loadu_si256((__m256i const *)(b + (64 * kr) + (NR * 0)));
 		b1 = _mm256_loadu_si256((__m256i const *)(b + (64 * kr) + (NR * 1)));
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[0] = _mm256_maddubs_epi16(a_int32_0, b0);
 		inter_vec[1] = _mm256_maddubs_epi16(a_int32_0, b1);
 
@@ -966,7 +1100,7 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_1x32)
 		a_kfringe = *(a + (rs_a * 0) + (cs_a * (k_full_pieces * 2)));
 		a_int32_0 = _mm256_set1_epi8(a_kfringe);
 
-		// Seperate register for intermediate op
+		// Separate register for intermediate op
 		inter_vec[0] = _mm256_maddubs_epi16(a_int32_0, b0);
 		inter_vec[1] = _mm256_maddubs_epi16(a_int32_0, b1);
 
@@ -995,11 +1129,22 @@ LPGEMM_M_FRINGE_KERN(uint8_t,int8_t,int16_t,u8s8s16o16_1x32)
 		if ( ( post_ops_attr.buf_downscale != NULL ) &&
 			 ( post_ops_attr.is_first_k == TRUE ) )
 		{
-			// c[0,0-15]
-			S8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
+			if ( post_ops_attr.c_stor_type == S8 )
+			{
+				// c[0,0-15]
+				S8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
 
-			// c[0, 16-31]
-			S8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
+				// c[0, 16-31]
+				S8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
+			}
+			else if ( post_ops_attr.c_stor_type == U8 )
+			{
+				// c[0,0-15]
+				U8_S16_BETA_OP(c_int16_0p0,0,0,0,selector1,selector2)
+
+				// c[0, 16-31]
+				U8_S16_BETA_OP(c_int16_0p1,0,0,1,selector1,selector2)
+			}
 		}
 		else
 		{
@@ -1101,6 +1246,8 @@ POST_OPS_DOWNSCALE_1x32:
 		__m256i temp_32[2];
 		__m256 temp_float[2];
 		__m256 scale_1, scale_2;
+		__m128i _zero_point_0;
+		__m256i zero_point_0 = _mm256_setzero_si256();
 		__m256 res_1, res_2;
 
 		/* Load the scale vector values into the register*/
@@ -1113,8 +1260,22 @@ POST_OPS_DOWNSCALE_1x32:
 			(float *)post_ops_list_temp->scale_factor +
 			post_ops_attr.post_op_c_j + (1 * 8));
 
+		// Load zero points (2 byte values).
+		_zero_point_0 =
+			_mm_loadu_si128(
+			( __m128i const* )( ( int8_t* )post_ops_list_temp->op_args1 +
+			post_ops_attr.post_op_c_j + ( 0 * 16 ) ) );
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			zero_point_0 = _mm256_cvtepi8_epi16( _zero_point_0 );
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			zero_point_0 = _mm256_cvtepu8_epi16( _zero_point_0 );
+		}
+
 		// Scale first 16 columns of the 4 rows.
-		CVT_MULRND_CVT16(c_int16_0p0, scale_1, scale_2)
+		CVT_MULRND_CVT16(c_int16_0p0, scale_1, scale_2, zero_point_0)
 
 		scale_1 =
 			_mm256_loadu_ps(
@@ -1125,8 +1286,21 @@ POST_OPS_DOWNSCALE_1x32:
 			(float *)post_ops_list_temp->scale_factor +
 			post_ops_attr.post_op_c_j + (3 * 8));
 
+		_zero_point_0 =
+			_mm_loadu_si128(
+			( __m128i const* )( ( int8_t* )post_ops_list_temp->op_args1 +
+			post_ops_attr.post_op_c_j + ( 1 * 16 ) ) );
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			zero_point_0 = _mm256_cvtepi8_epi16( _zero_point_0 );
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			zero_point_0 = _mm256_cvtepu8_epi16( _zero_point_0 );
+		}
+
 		// Scale next 16 columns of the 4 rows.
-		CVT_MULRND_CVT16(c_int16_0p1, scale_1, scale_2)
+		CVT_MULRND_CVT16(c_int16_0p1, scale_1, scale_2, zero_point_0)
 
 		POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
 	}
@@ -1138,9 +1312,18 @@ POST_OPS_1x32_DISABLE:
 	if ( ( post_ops_attr.buf_downscale != NULL ) &&
 		 ( post_ops_attr.is_last_k == TRUE ) )
 	{
-		// Store the results in downscaled type (int8 instead of int32).
-		// c[0,0-31]
-		CVT_STORE_S16_S8(c_int16_0p0, c_int16_0p1, 0, 0);
+		if ( post_ops_attr.c_stor_type == S8 )
+		{
+			// Store the results in downscaled type (int8 instead of int16).
+			// c[0,0-31]
+			CVT_STORE_S16_S8(c_int16_0p0, c_int16_0p1, 0, 0);
+		}
+		else if ( post_ops_attr.c_stor_type == U8 )
+		{
+			// Store the results in downscaled type (uint8 instead of int16).
+			// c[0,0-31]
+			CVT_STORE_S16_U8(c_int16_0p0, c_int16_0p1, 0, 0);
+		}
 	}
 	// Case where the output C matrix is s16 or is the temp buffer used to
 	// store intermediate s16 accumulated values for downscaled (C-s8) api.

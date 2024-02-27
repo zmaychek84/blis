@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -39,8 +39,9 @@ AMAXV_KER_PROT( float,    s, amaxv_zen_int_avx512 )
 AMAXV_KER_PROT( double,   d, amaxv_zen_int_avx512 )
 
 // scalv (AVX512 intrinsics)
-SCALV_KER_PROT( float,   s, scalv_zen_int_avx512 )
-SCALV_KER_PROT( double,  d, scalv_zen_int_avx512 )
+SCALV_KER_PROT( float,     s, scalv_zen_int_avx512 )
+SCALV_KER_PROT( double,    d, scalv_zen_int_avx512 )
+SCALV_KER_PROT( dcomplex,  z, dscalv_zen_int_avx512) // ZDSCAL kernel
 
 // dotv (intrinsics)
 DOTV_KER_PROT( float,    s, dotv_zen_int_avx512 )
@@ -54,6 +55,8 @@ GEMMTRSM_UKR_PROT( double,   d, gemmtrsm_l_zen_asm_16x14)
 GEMMTRSM_UKR_PROT( double,   d, gemmtrsm_u_zen_asm_16x14)
 GEMMTRSM_UKR_PROT( double,   d, gemmtrsm_l_zen4_asm_8x24)
 GEMMTRSM_UKR_PROT( double,   d, gemmtrsm_u_zen4_asm_8x24)
+GEMMTRSM_UKR_PROT( dcomplex, z, gemmtrsm_l_zen4_asm_4x12)
+GEMMTRSM_UKR_PROT( dcomplex, z, gemmtrsm_u_zen4_asm_4x12)
 
 //packing kernels
 PACKM_KER_PROT( double,   d, packm_zen4_asm_16xk )
@@ -68,6 +71,8 @@ PACKM_KER_PROT( dcomplex, z, packm_zen4_asm_4xk )
 GEMM_UKR_PROT( double,   d, gemm_zen4_asm_32x6 )
 GEMM_UKR_PROT( double,   d, gemm_zen4_asm_8x24 )
 GEMM_UKR_PROT( dcomplex, z, gemm_zen4_asm_12x4 )
+GEMM_UKR_PROT( dcomplex, z, gemm_zen4_asm_4x12 )
+
 
 //sgemm rv sup
 GEMMSUP_KER_PROT( float,   s, gemmsup_rv_zen_asm_6x64m_avx512 )
@@ -199,6 +204,18 @@ GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_cv_zen4_asm_2x3 )
 GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_cv_zen4_asm_2x2 )
 GEMMSUP_KER_PROT( dcomplex,   z, gemmsup_cv_zen4_asm_2x1 )
 
+err_t bli_dgemm_24x8_avx512_k1_nn
+    (
+      dim_t m,
+      dim_t n,
+      dim_t k,
+      double* alpha,
+      double* a, const inc_t lda,
+      double* b, const inc_t ldb,
+      double* beta,
+      double* c, const inc_t ldc
+     );
+
 // threshold functions
 bool bli_cntx_gemmsup_thresh_is_met_zen4
 	 (
@@ -207,3 +224,6 @@ bool bli_cntx_gemmsup_thresh_is_met_zen4
 		obj_t*  c,
 		cntx_t* cntx
 	 );
+
+// function for resetting zmm registers after L3 apis
+void bli_zero_zmm();

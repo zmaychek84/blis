@@ -37,27 +37,25 @@
 #include "hemv.h"
 #include "level2/ref_hemv.h"
 #include "inc/check_error.h"
-#include "inc/utils.h"
 #include <stdexcept>
 #include <algorithm>
 
 template<typename T>
 void test_hemv( char storage, char uploa, char conja, char conjx, gtint_t n,
-    T alpha, gtint_t lda_inc, gtint_t incx, T beta, gtint_t incy,
-    double thresh, char datatype ) {
-
+    T alpha, gtint_t lda_inc, gtint_t incx, T beta, gtint_t incy, double thresh )
+{
     // Compute the leading dimensions of a.
-    gtint_t lda = testinghelpers::get_leading_dimension(storage, 'n', n, n, lda_inc);
+    gtint_t lda = testinghelpers::get_leading_dimension( storage, 'n', n, n, lda_inc );
 
     //----------------------------------------------------------
     //        Initialize matrics with random integer numbers.
     //----------------------------------------------------------
-    std::vector<T> a = testinghelpers::get_random_matrix<T>(-2, 5, storage, 'n', n, n, lda, datatype);
-    std::vector<T> x = testinghelpers::get_random_vector<T>(-3, 3, n, incx, datatype);
-    std::vector<T> y = testinghelpers::get_random_vector<T>(-3, 3, n, incy, datatype);
+    std::vector<T> a = testinghelpers::get_random_matrix<T>( -2, 5, storage, 'n', n, n, lda );
+    std::vector<T> x = testinghelpers::get_random_vector<T>( -3, 3, n, incx );
+    std::vector<T> y = testinghelpers::get_random_vector<T>( -3, 3, n, incy );
 
-    mkherm<T>( storage, uploa, n, a.data(), lda );
-    mktrim<T>( storage, uploa, n, a.data(), lda );
+    testinghelpers::make_herm<T>( storage, uploa, n, a.data(), lda );
+    testinghelpers::make_triangular<T>( storage, uploa, n, a.data(), lda );
 
     // Create a copy of c so that we can check reference results.
     std::vector<T> y_ref(y);

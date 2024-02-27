@@ -36,7 +36,7 @@
 #include "test_nrm2.h"
 
 class snrm2Test :
-        public ::testing::TestWithParam<std::tuple<gtint_t, gtint_t, char>> {};
+        public ::testing::TestWithParam<std::tuple<gtint_t, gtint_t>> {};
 
 TEST_P( snrm2Test, RandomData )
 {
@@ -49,8 +49,6 @@ TEST_P( snrm2Test, RandomData )
     gtint_t n = std::get<0>(GetParam());
     // stride size for x:
     gtint_t incx = std::get<1>(GetParam());
-    // specifies the datatype for randomgenerators
-    char datatype = std::get<2>(GetParam());
 
     // Set the threshold for the errors:
     double thresh = 2*n*testinghelpers::getEpsilon<T>();
@@ -58,17 +56,16 @@ TEST_P( snrm2Test, RandomData )
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_nrm2<T>(n, incx, thresh, datatype);
+    test_nrm2<T>( n, incx, thresh );
 }
 
 // Prints the test case combination
 class snrm2TestPrint {
 public:
     std::string operator()(
-        testing::TestParamInfo<std::tuple<gtint_t, gtint_t, char>> str) const {
+        testing::TestParamInfo<std::tuple<gtint_t, gtint_t>> str) const {
         gtint_t n     = std::get<0>(str.param);
         gtint_t incx  = std::get<1>(str.param);
-        char datatype = std::get<2>(str.param);
 #ifdef TEST_BLAS
         std::string str_name = "snrm2_";
 #elif TEST_CBLAS
@@ -79,23 +76,44 @@ public:
         str_name    = str_name + "_" + std::to_string(n);
         std::string incx_str = ( incx > 0) ? std::to_string(incx) : "m" + std::to_string(std::abs(incx));
         str_name    = str_name + "_" + incx_str;
-        str_name    = str_name + "_" + datatype;
         return str_name;
     }
 };
 
-// Black box testing.
+/**
+ * Note: snrm2 scalar ONLY implementation is used, but we write the test 
+ * using values that worked for the vectorized path for the future.
+ * 
+ * scnrm2 implementation is composed by two parts:
+ * - vectorized path for n>=64
+ *      - for-loop for multiples of 32 (F32)
+ *      - for-loop for multiples of 24 (F24)
+ *      - for-loop for multiples of 16 (F16)
+ * - scalar path for n<64 (S)
+*/
 INSTANTIATE_TEST_SUITE_P(
-        Blackbox,
+        AT,
         snrm2Test,
         ::testing::Combine(
-            ::testing::Range(gtint_t(10), gtint_t(101), 10),                 // m size of vector takes values from 10 to 100 with step size of 10.
-            ::testing::Values(gtint_t(1), gtint_t(2)
+            // m size of vector
+            ::testing::Values(gtint_t(1),  // trivial case n=1
+                              gtint_t(35), // will only go through S
+                              gtint_t(64), // 2*32 - will only go through F32
+                              gtint_t(76), // 2*32 + 12 - will go through F32 & S
+                              gtint_t(80), // 2*32 + 16 - will go through F32 & F16
+                              gtint_t(85), // 2*32 + 16 + 5 - will go through F32 & F16 & S
+                              gtint_t(88), // 2*32 + 24 - will go through F32 & F24
+                              gtint_t(91), // 2*32 + 24 + 3 - will go through F32 & F24 & S
+                              gtint_t(124), // a few bigger numbers
+                              gtint_t(167),
+                              gtint_t(259)
+            ),
+            // stride size for x
+            ::testing::Values(gtint_t(1), gtint_t(3)
 #ifndef TEST_BLIS_TYPED
-            ,gtint_t(-1), gtint_t(-2)
+            , gtint_t(-1), gtint_t(-5)
 #endif
-        ),                                                                   // stride size for x
-            ::testing::Values('i')                                           // i : integer, f : float  datatype type tested
+        )                                                                    // stride size for x
         ),
         ::snrm2TestPrint()
     );

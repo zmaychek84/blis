@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -183,6 +183,7 @@
 #include "bla_trmm.h"
 #include "bla_trsm.h"
 #include "bla_gemmt.h"
+#include "bla_gemm_compute.h"
 
 #include "bla_gemm_check.h"
 #include "bla_hemm_check.h"
@@ -194,11 +195,15 @@
 #include "bla_trmm_check.h"
 #include "bla_trsm_check.h"
 #include "bla_gemmt_check.h"
+#include "bla_gemm_pack_compute_check.h"
 
 // -- Batch Extension prototypes --
 #include "bla_gemm_batch.h"
 #include "bla_gemm3m.h"
 #include "bla_gemm3m_check.h"
+#include "bla_gemm_pack_get_size.h"
+#include "bla_gemm_pack.h"
+
 // -- Transpose and Copy Routines --
 #include "bla_omatadd.h"
 #include "bla_omatcopy.h"

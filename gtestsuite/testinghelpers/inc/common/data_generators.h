@@ -62,34 +62,46 @@ void randomgenerators(int from, int to, T* alpha, char fp);
  *               if fp=='f' the elements will have random float values.
  */
 template<typename T>
-void randomgenerators(int from, int to, gtint_t n, gtint_t incx, T* x, char fp);
+void randomgenerators(int from, int to, gtint_t n, gtint_t incx, T* x, char fp = BLIS_ELEMENT_TYPE);
 
 template<typename T>
-void randomgenerators(int from, int to, char storage, gtint_t m, gtint_t n, T* a, gtint_t lda, char fp);
+void randomgenerators(int from, int to, char storage, gtint_t m, gtint_t n, T* a, gtint_t lda, char fp = BLIS_ELEMENT_TYPE);
 
 template<typename T>
-void randomgenerators(int from, int to, char storage, gtint_t m, gtint_t n, T* a, char transa, gtint_t lda, char fp);
+void randomgenerators(int from, int to, char storage, gtint_t m, gtint_t n, T* a, char transa, gtint_t lda, char fp = BLIS_ELEMENT_TYPE);
 
 template<typename T>
 void randomgenerators(int from, int to, char storage, char uplo, gtint_t m,
-                    T* a, gtint_t lda, char datatype);
+                    T* a, gtint_t lda, char fp = BLIS_ELEMENT_TYPE );
 } //end of namespace datagenerators
 
 template<typename T>
 std::vector<T> get_random_matrix(int from, int to, char storage, char trans, gtint_t m, gtint_t n,
-                    gtint_t lda, char datatype);
+                    gtint_t lda, char datatype = BLIS_ELEMENT_TYPE );
 
 template<typename T>
 std::vector<T> get_random_matrix(int from, int to, char storage, char uplo, gtint_t k,
-                    gtint_t lda, char datatype);
+                    gtint_t lda, char datatype = BLIS_ELEMENT_TYPE );
 
 template<typename T>
-std::vector<T> get_random_vector(int from, int to, gtint_t n, gtint_t incx, char datatype);
+std::vector<T> get_random_vector(int from, int to, gtint_t n, gtint_t incx,char datatype = BLIS_ELEMENT_TYPE);
 
 template<typename T>
 std::vector<T> get_vector( gtint_t n, gtint_t incx, T value );
 
 template<typename T>
 std::vector<T> get_matrix( char storage, char trans, gtint_t m, gtint_t n, gtint_t lda, T value );
+
+template<typename T>
+void set_vector( gtint_t n, gtint_t incx, T* x, T value );
+
+template<typename T>
+void set_matrix( char storage, gtint_t m, gtint_t n, T* a, char transa, gtint_t lda, T value );
+
+// Function template to set the exception value exval on matrix m, at indices (i, j)
+// In case of transposition, this function internally swaps the indices, and thus they can be
+// passed without swapping on the instantiator.
+template<typename T>
+void set_ev_mat( char storage, char trns, gtint_t ld, gtint_t i, gtint_t j, T exval, T* m );
 
 } //end of namespace testinghelpers

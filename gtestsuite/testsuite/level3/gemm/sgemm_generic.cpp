@@ -46,10 +46,10 @@ class SGemmTest :
                                                    float,
                                                    gtint_t,
                                                    gtint_t,
-                                                   gtint_t,
-                                                   char>> {};
+                                                   gtint_t>> {};
 
-TEST_P(SGemmTest, RandomData) {
+TEST_P(SGemmTest, RandomData)
+{
     using T = float;
     //----------------------------------------------------------
     // Initialize values from the parameters passed through
@@ -77,8 +77,6 @@ TEST_P(SGemmTest, RandomData) {
     gtint_t lda_inc = std::get<8>(GetParam());
     gtint_t ldb_inc = std::get<9>(GetParam());
     gtint_t ldc_inc = std::get<10>(GetParam());
-    // specifies the datatype for randomgenerators
-    char datatype   = std::get<11>(GetParam());
 
     // Set the threshold for the errors:
     double thresh = 10*m*n*testinghelpers::getEpsilon<T>();
@@ -86,13 +84,13 @@ TEST_P(SGemmTest, RandomData) {
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_gemm<T>(storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh, datatype);
+    test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
 }
 
 class SGemmTestPrint {
 public:
     std::string operator()(
-        testing::TestParamInfo<std::tuple<char, char, char, gtint_t, gtint_t, gtint_t, float, float, gtint_t, gtint_t, gtint_t,char>> str) const {
+        testing::TestParamInfo<std::tuple<char, char, char, gtint_t, gtint_t, gtint_t, float, float, gtint_t, gtint_t, gtint_t>> str) const {
         char sfm        = std::get<0>(str.param);
         char tsa        = std::get<1>(str.param);
         char tsb        = std::get<2>(str.param);
@@ -104,13 +102,12 @@ public:
         gtint_t lda_inc = std::get<8>(str.param);
         gtint_t ldb_inc = std::get<9>(str.param);
         gtint_t ldc_inc = std::get<10>(str.param);
-        char datatype   = std::get<11>(str.param);
 #ifdef TEST_BLAS
         std::string str_name = "sgemm_";
 #elif TEST_CBLAS
         std::string str_name = "cblas_sgemm";
 #else  //#elif TEST_BLIS_TYPED
-        std::string str_name = "blis_sgemm";
+        std::string str_name = "bli_sgemm";
 #endif
         str_name = str_name + "_" + sfm+sfm+sfm;
         str_name = str_name + "_" + tsa + tsb;
@@ -124,14 +121,13 @@ public:
         str_name = str_name + "_" + std::to_string(lda_inc);
         str_name = str_name + "_" + std::to_string(ldb_inc);
         str_name = str_name + "_" + std::to_string(ldc_inc);
-        str_name = str_name + "_" + datatype;
         return str_name;
     }
 };
 
 // Black box testing.
 INSTANTIATE_TEST_SUITE_P(
-        Blackbox,
+        sgemm_sup_10_30,
         SGemmTest,
         ::testing::Combine(
             ::testing::Values('c'
@@ -148,8 +144,56 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(-1.0,  1.0),                                   // beta
             ::testing::Values(gtint_t(0), gtint_t(2)),                       // increment to the leading dim of a
             ::testing::Values(gtint_t(0), gtint_t(3)),                       // increment to the leading dim of b
-            ::testing::Values(gtint_t(0), gtint_t(7)),                       // increment to the leading dim of c
-            ::testing::Values(ELEMENT_TYPE)                                  // i : integer, f : float  datatype type tested
+            ::testing::Values(gtint_t(0), gtint_t(7))                        // increment to the leading dim of c
+        ),
+        ::SGemmTestPrint()
+    );
+
+// Black box testing.
+INSTANTIATE_TEST_SUITE_P(
+        sgemm_sup_alpha_beta,
+        SGemmTest,
+        ::testing::Combine(
+            ::testing::Values('c'
+#ifndef TEST_BLAS
+            ,'r'
+#endif
+            ),                                                               // storage format
+            ::testing::Values('n','t'),                                      // transa
+            ::testing::Values('n','t'),                                      // transb
+            ::testing::Range(gtint_t(1), gtint_t(20), 1),                  // m
+            ::testing::Range(gtint_t(1), gtint_t(50), 1),                 // n
+            ::testing::Range(gtint_t(1), gtint_t(10), 1),                  // k
+            ::testing::Values(0.0, 1.0, -1.0, 5.3, -10.0),                                   // alpha
+            ::testing::Values(0.0, 1.0, -1.0, 6.4, -19.0),                                   // beta
+            ::testing::Values(gtint_t(2)),                       // increment to the leading dim of a
+            ::testing::Values(gtint_t(3)),                       // increment to the leading dim of b
+            ::testing::Values(gtint_t(7))                        // increment to the leading dim of c
+        ),
+        ::SGemmTestPrint()
+    );
+
+
+// Black box testing.
+INSTANTIATE_TEST_SUITE_P(
+        sgemm_sup_m_n_k_100,
+        SGemmTest,
+        ::testing::Combine(
+            ::testing::Values('c'
+#ifndef TEST_BLAS
+            ,'r'
+#endif
+            ),                                                               // storage format
+            ::testing::Values('n'),                                      // transa
+            ::testing::Values('n'),                                      // transb
+            ::testing::Range(gtint_t(1), gtint_t(20), 1),                   // m
+            ::testing::Range(gtint_t(1), gtint_t(50), 1),                   // n
+            ::testing::Range(gtint_t(1), gtint_t(20), 1),                   // k
+            ::testing::Values( -2.0),                                   // alpha
+            ::testing::Values( 5.0),                                   // beta
+            ::testing::Values(gtint_t(2)),                       // increment to the leading dim of a
+            ::testing::Values(gtint_t(3)),                       // increment to the leading dim of b
+            ::testing::Values(gtint_t(7))                        // increment to the leading dim of c
         ),
         ::SGemmTestPrint()
     );

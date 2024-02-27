@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -85,10 +85,32 @@ AOCL_GEMM_GET_REORDER_BUF_SIZE(bf16bf16f32of32)
 
 AOCL_GEMM_REORDER(bfloat16, bf16bf16f32of32)
 {
+	trans_t blis_trans;
+
+	/* Map BLAS chars to their corresponding BLIS enumerated type value. */
+	bli_param_map_netlib_to_blis_trans( trans, &blis_trans );
+
 	if ( ( input_buf_addr == NULL ) || ( reorder_buf_addr == NULL ) ||
-	     ( k <= 0 ) || ( n <= 0 ) || ( ldb < n ) )
+	     ( k <= 0 ) || ( n <= 0 ) || ( bli_is_notrans( blis_trans ) && ( ldb < n ) ) ||
+	    ( bli_is_trans( blis_trans ) && ( ldb < k ) ) )
 	{
 		return; // Error.
+	}
+
+	inc_t rs_b, cs_b;
+	if( ( order == 'r') || ( order == 'R' ) )
+	{
+		rs_b = bli_is_notrans( blis_trans ) ? ldb : 1;
+		cs_b = bli_is_notrans( blis_trans ) ? 1 : ldb;
+	}
+	else if ( ( order == 'c' ) || ( order == 'C' ) )
+	{
+		rs_b = bli_is_notrans( blis_trans ) ? 1 : ldb;
+		cs_b = bli_is_notrans( blis_trans ) ? ldb : 1;
+	}
+	else
+	{
+		return; // Error
 	}
 
 	// Check if avx512_bf16 ISA is supported, lpgemm matmul only works with it.
@@ -117,7 +139,7 @@ AOCL_GEMM_REORDER(bfloat16, bf16bf16f32of32)
 	// that in the case that a runtime is passed in, we make a local copy.
 	rntm_t rntm_g;
 	bli_rntm_init_from_global( &rntm_g );
-	bli_membrk_rntm_set_membrk( &rntm_g );
+	bli_pba_rntm_set_pba( &rntm_g );
 
 	lpgemm_cntx_t* lcntx_g = lpgemm_get_global_cntx_obj( BF16BF16F32OF32 );
 
@@ -128,7 +150,8 @@ AOCL_GEMM_REORDER(bfloat16, bf16bf16f32of32)
 	// Create dummy original b obj;
 	lpgemm_obj_t b;
 	b.storage.aligned_buffer = ( void* )input_buf_addr;
-	b.rs = ldb;
+	b.rs = rs_b;
+	b.cs = cs_b;
 	b.width = n;
 	b.length = k;
 

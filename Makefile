@@ -5,7 +5,7 @@
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -320,6 +320,7 @@ BLASTEST_INPUT_PATH    := $(DIST_PATH)/$(BLASTEST_DIR)/input
 
 # The location of the BLAS test suite object directory.
 BASE_OBJ_BLASTEST_PATH := $(BASE_OBJ_PATH)/$(BLASTEST_DIR)
+BASE_EXE_BLASTEST_PATH := $(BASE_OBJ_BLASTEST_PATH)/$(MK_USE_LIB)
 
 # The locations of the BLAS test suite source code (f2c and drivers).
 BLASTEST_F2C_SRC_PATH  := $(DIST_PATH)/$(BLASTEST_DIR)/f2c
@@ -347,7 +348,7 @@ BLASTEST_DRV_BASES     := $(basename $(notdir $(BLASTEST_DRV_OBJS)))
 
 # The binary executable driver names.
 BLASTEST_DRV_BINS      := $(addsuffix .x,$(BLASTEST_DRV_BASES))
-BLASTEST_DRV_BIN_PATHS := $(addprefix $(BASE_OBJ_BLASTEST_PATH)/,$(BLASTEST_DRV_BINS))
+BLASTEST_DRV_BIN_PATHS := $(addprefix $(BASE_EXE_BLASTEST_PATH)/,$(BLASTEST_DRV_BINS))
 
 # Binary executable driver "run-" names
 BLASTEST_DRV_BINS_R    := $(addprefix run-,$(BLASTEST_DRV_BASES))
@@ -393,6 +394,7 @@ TESTSUITE_SALT_OPS_PATH := $(DIST_PATH)/$(TESTSUITE_DIR)/$(TESTSUITE_SALT_OPS)
 # directory.
 TESTSUITE_SRC_PATH      := $(DIST_PATH)/$(TESTSUITE_DIR)/src
 BASE_OBJ_TESTSUITE_PATH := $(BASE_OBJ_PATH)/$(TESTSUITE_DIR)
+BASE_EXE_TESTSUITE_PATH := $(BASE_OBJ_PATH)/$(TESTSUITE_DIR)/$(MK_USE_LIB)
 
 # Convert source file paths to object file paths by replacing the base source
 # directories with the base object directories, and also replacing the source
@@ -414,7 +416,7 @@ MK_TESTSUITE_OBJS       := $(sort \
 # unusual environments (e.g. ARM) can run the testsuite through some other
 # binary. See .travis.yml for details on how the variable is employed in
 # practice.
-TESTSUITE_BIN           := test_$(LIBBLIS).x
+TESTSUITE_BIN           := $(BASE_EXE_TESTSUITE_PATH)/test_$(LIBBLIS).x
 TESTSUITE_WRAPPER       ?=
 
 # The location of the script that checks the BLIS testsuite output.
@@ -504,7 +506,7 @@ endif
 
 flat-header: check-env $(BLIS_H_FLAT)
 
-$(BLIS_H_FLAT): $(FRAME_H99_FILES)
+$(BLIS_H_FLAT): $(ALL_H99_FILES)
 ifeq ($(ENABLE_VERBOSE),yes)
 	$(FLATTEN_H) -c -v1 $(BLIS_H_SRC_PATH) $@ "./$(INCLUDE_DIR)" "$(ALL_H99_DIRPATHS)"
 else
@@ -820,7 +822,7 @@ blastest-bin: check-env blastest-f2c $(BLASTEST_DRV_BIN_PATHS)
 blastest-run: $(BLASTEST_DRV_BINS_R)
 
 # f2c object file rule.
-$(BASE_OBJ_BLASTEST_PATH)/%.o: $(BLASTEST_F2C_SRC_PATH)/%.c
+$(BASE_OBJ_BLASTEST_PATH)/%.o: $(BLASTEST_F2C_SRC_PATH)/%.c $(BLIS_H_FLAT)
 ifeq ($(ENABLE_VERBOSE),yes)
 	$(CC) $(call get-user-cflags-for,$(CONFIG_NAME)) $(BLAT_CFLAGS) -c $< -o $@
 else
@@ -829,7 +831,7 @@ else
 endif
 
 # driver object file rule.
-$(BASE_OBJ_BLASTEST_PATH)/%.o: $(BLASTEST_DRV_SRC_PATH)/%.c
+$(BASE_OBJ_BLASTEST_PATH)/%.o: $(BLASTEST_DRV_SRC_PATH)/%.c $(BLIS_H_FLAT)
 ifeq ($(ENABLE_VERBOSE),yes)
 	$(CC) $(call get-user-cflags-for,$(CONFIG_NAME)) $(BLAT_CFLAGS) -c $< -o $@
 else
@@ -850,7 +852,8 @@ endif
 
 # first argument: the base name of the BLAS test driver.
 define make-blat-rule
-$(BASE_OBJ_BLASTEST_PATH)/$(1).x: $(BASE_OBJ_BLASTEST_PATH)/$(1).o $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK)
+$(BASE_EXE_BLASTEST_PATH)/$(1).x: $(BASE_OBJ_BLASTEST_PATH)/$(1).o $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK)
+	@mkdir -p $(BASE_EXE_BLASTEST_PATH)
 ifeq ($(ENABLE_VERBOSE),yes)
 	$(LINKER) $(BASE_OBJ_BLASTEST_PATH)/$(1).o $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK) $(LDFLAGS) -o $$@
 else
@@ -864,12 +867,12 @@ $(foreach name, $(BLASTEST_DRV_BASES), $(eval $(call make-blat-rule,$(name))))
 
 # A rule to run ?blat1.x driver files.
 define make-run-blat1-rule
-run-$(1): $(BASE_OBJ_BLASTEST_PATH)/$(1).x
+run-$(1): $(BASE_EXE_BLASTEST_PATH)/$(1).x
 ifeq ($(ENABLE_VERBOSE),yes)
-	$(TESTSUITE_WRAPPER) $(BASE_OBJ_BLASTEST_PATH)/$(1).x > out.$(1)
+	$(TESTSUITE_WRAPPER) $(BASE_EXE_BLASTEST_PATH)/$(1).x > out.$(1)
 else
 	@echo "Running $(1).x > 'out.$(1)'"
-	@$(TESTSUITE_WRAPPER) $(BASE_OBJ_BLASTEST_PATH)/$(1).x > out.$(1)
+	@$(TESTSUITE_WRAPPER) $(BASE_EXE_BLASTEST_PATH)/$(1).x > out.$(1)
 endif
 endef
 
@@ -878,12 +881,12 @@ $(foreach name, $(BLASTEST_DRV1_BASES), $(eval $(call make-run-blat1-rule,$(name
 
 # A rule to run ?blat2.x and ?blat3.x driver files.
 define make-run-blat23-rule
-run-$(1): $(BASE_OBJ_BLASTEST_PATH)/$(1).x
+run-$(1): $(BASE_EXE_BLASTEST_PATH)/$(1).x
 ifeq ($(ENABLE_VERBOSE),yes)
-	$(TESTSUITE_WRAPPER) $(BASE_OBJ_BLASTEST_PATH)/$(1).x < $(BLASTEST_INPUT_PATH)/$(1).in
+	$(TESTSUITE_WRAPPER) $(BASE_EXE_BLASTEST_PATH)/$(1).x < $(BLASTEST_INPUT_PATH)/$(1).in
 else
 	@echo "Running $(1).x < '$(BLASTEST_INPUT_PATH)/$(1).in' (output to 'out.$(1)')"
-	@$(TESTSUITE_WRAPPER) $(BASE_OBJ_BLASTEST_PATH)/$(1).x < $(BLASTEST_INPUT_PATH)/$(1).in
+	@$(TESTSUITE_WRAPPER) $(BASE_EXE_BLASTEST_PATH)/$(1).x < $(BLASTEST_INPUT_PATH)/$(1).in
 endif
 endef
 
@@ -916,7 +919,7 @@ testsuite: testsuite-run
 testsuite-bin: check-env $(TESTSUITE_BIN)
 
 # Object file rule.
-$(BASE_OBJ_TESTSUITE_PATH)/%.o: $(TESTSUITE_SRC_PATH)/%.c
+$(BASE_OBJ_TESTSUITE_PATH)/%.o: $(TESTSUITE_SRC_PATH)/%.c $(BLIS_H_FLAT)
 ifeq ($(ENABLE_VERBOSE),yes)
 	$(CC) $(call get-user-cflags-for,$(CONFIG_NAME)) -c $< -o $@
 else
@@ -926,6 +929,7 @@ endif
 
 # Testsuite binary rule.
 $(TESTSUITE_BIN): $(MK_TESTSUITE_OBJS) $(LIBBLIS_LINK)
+	@mkdir -p $(BASE_EXE_TESTSUITE_PATH)
 ifeq ($(ENABLE_VERBOSE),yes)
 	$(LINKER) $(MK_TESTSUITE_OBJS) $(LIBBLIS_LINK) $(LDFLAGS) -o $@
 else
@@ -936,13 +940,13 @@ endif
 # A rule to run the testsuite using the normal input.* files.
 testsuite-run: testsuite-bin
 ifeq ($(ENABLE_VERBOSE),yes)
-	$(TESTSUITE_WRAPPER) ./$(TESTSUITE_BIN) -g $(TESTSUITE_CONF_GEN_PATH) \
+	$(TESTSUITE_WRAPPER) $(TESTSUITE_BIN) -g $(TESTSUITE_CONF_GEN_PATH) \
 	                   -o $(TESTSUITE_CONF_OPS_PATH) \
 	                    > $(TESTSUITE_OUT_FILE)
 
 else
 	@echo "Running $(TESTSUITE_BIN) with output redirected to '$(TESTSUITE_OUT_FILE)'"
-	@$(TESTSUITE_WRAPPER) ./$(TESTSUITE_BIN) -g $(TESTSUITE_CONF_GEN_PATH) \
+	@$(TESTSUITE_WRAPPER) $(TESTSUITE_BIN) -g $(TESTSUITE_CONF_GEN_PATH) \
 	                    -o $(TESTSUITE_CONF_OPS_PATH) \
 	                     > $(TESTSUITE_OUT_FILE)
 endif
@@ -1285,7 +1289,7 @@ ifeq ($(IS_CONFIGURED),yes)
 ifeq ($(ENABLE_VERBOSE),yes)
 	- $(RM_F) $(BLASTEST_F2C_OBJS) $(BLASTEST_DRV_OBJS)
 	- $(RM_F) $(BLASTEST_F2C_LIB)
-	- $(RM_F) $(BLASTEST_DRV_BIN_PATHS)
+	- $(RM_RF) $(BASE_OBJ_BLASTEST_PATH)/{shared,static}
 	- $(RM_F) $(addprefix out.,$(BLASTEST_DRV_BASES))
 else
 	@echo "Removing object files from $(BASE_OBJ_BLASTEST_PATH)"
@@ -1293,7 +1297,7 @@ else
 	@echo "Removing libf2c.a from $(BASE_OBJ_BLASTEST_PATH)"
 	@- $(RM_F) $(BLASTEST_F2C_LIB)
 	@echo "Removing binaries from $(BASE_OBJ_BLASTEST_PATH)"
-	@- $(RM_F) $(BLASTEST_DRV_BIN_PATHS)
+	@- $(RM_RF) $(BASE_OBJ_BLASTEST_PATH)/{shared,static}
 	@echo "Removing driver output files 'out.*'"
 	@- $(RM_F) $(addprefix out.,$(BLASTEST_DRV_BASES))
 endif # ENABLE_VERBOSE
@@ -1328,13 +1332,13 @@ cleanblistesttop:
 ifeq ($(IS_CONFIGURED),yes)
 ifeq ($(ENABLE_VERBOSE),yes)
 	- $(RM_F) $(MK_TESTSUITE_OBJS)
-	- $(RM_F) $(TESTSUITE_BIN)
+	- $(RM_RF) $(BASE_OBJ_TESTSUITE_PATH)/{shared,static}
 	- $(RM_F) $(TESTSUITE_OUT_FILE)
 else
 	@echo "Removing object files from $(BASE_OBJ_TESTSUITE_PATH)"
 	@- $(RM_F) $(MK_TESTSUITE_OBJS)
 	@echo "Removing binary $(TESTSUITE_BIN)"
-	@- $(RM_F) $(TESTSUITE_BIN)
+	@- $(RM_RF) $(BASE_OBJ_TESTSUITE_PATH)/{shared,static}
 	@echo "Removing $(TESTSUITE_OUT_FILE)"
 	@- $(RM_F) $(TESTSUITE_OUT_FILE)
 endif # ENABLE_VERBOSE
@@ -1344,13 +1348,13 @@ cleanblistestdir:
 ifeq ($(IS_CONFIGURED),yes)
 ifeq ($(ENABLE_VERBOSE),yes)
 	- $(FIND) $(TESTSUITE_DIR)/$(OBJ_DIR) -name "*.o" | $(XARGS) $(RM_F)
-	- $(RM_F) $(TESTSUITE_DIR)/$(TESTSUITE_BIN)
+	- $(RM_RF) $(BASE_OBJ_TESTSUITE_PATH)/{shared,static}
 	- $(MAKE) -C $(VEND_TESTCPP_DIR) clean
 else
 	@echo "Removing object files from $(TESTSUITE_DIR)/$(OBJ_DIR)"
 	@- $(FIND) $(TESTSUITE_DIR)/$(OBJ_DIR) -name "*.o" | $(XARGS) $(RM_F)
-	@echo "Removing binary $(TESTSUITE_DIR)/$(TESTSUITE_BIN)"
-	@- $(RM_F) $(TESTSUITE_DIR)/$(TESTSUITE_BIN)
+	@echo "Removing binary $(TESTSUITE_BIN)"
+	@- $(RM_RF) $(BASE_OBJ_TESTSUITE_PATH)/{shared,static}
 	@$(MAKE) -C $(VEND_TESTCPP_DIR) clean
 endif # ENABLE_VERBOSE
 endif # IS_CONFIGURED

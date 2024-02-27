@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 23, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -674,6 +674,7 @@ siz_t bli_thread_range_mdim
 {
 	bszid_t  bszid  = bli_cntl_bszid( cntl );
 	opid_t   family = bli_cntl_family( cntl );
+	blksz_t* bmult;
 
 	// This is part of trsm's current implementation, whereby right side
 	// cases are implemented in left-side micro-kernels, which requires
@@ -681,11 +682,20 @@ siz_t bli_thread_range_mdim
 	// packing A and B.
 	if ( family == BLIS_TRSM )
 	{
+		bmult = bli_cntx_get_trsm_bmult( bszid, cntx);
+		// if trsm blockszs are not set then use global blockszs
+		if (bli_blksz_get_def( bli_obj_dt( a ) , bmult ) == 0)
+		{
+			bmult  = bli_cntx_get_bmult( bszid, cntx );
+		}
 		if ( bli_obj_root_is_triangular( a ) ) bszid = BLIS_MR;
 		else                                   bszid = BLIS_NR;
 	}
+	else
+	{
+		bmult  = bli_cntx_get_bmult( bszid, cntx );
+	}
 
-	blksz_t* bmult  = bli_cntx_get_bmult( bszid, cntx );
 	obj_t*   x;
 	bool     use_weighted;
 
@@ -734,6 +744,7 @@ siz_t bli_thread_range_ndim
 {
 	bszid_t  bszid  = bli_cntl_bszid( cntl );
 	opid_t   family = bli_cntl_family( cntl );
+	blksz_t* bmult;
 
 	// This is part of trsm's current implementation, whereby right side
 	// cases are implemented in left-side micro-kernels, which requires
@@ -741,11 +752,21 @@ siz_t bli_thread_range_ndim
 	// packing A and B.
 	if ( family == BLIS_TRSM )
 	{
+		bmult = bli_cntx_get_trsm_bmult( bszid, cntx);
+
+		// if trsm blockszs are not set then use global blockszs
+		if (bli_blksz_get_def( bli_obj_dt( a ) , bmult ) == 0)
+		{
+			bmult  = bli_cntx_get_bmult( bszid, cntx );
+		}
 		if ( bli_obj_root_is_triangular( b ) ) bszid = BLIS_MR;
 		else                                   bszid = BLIS_NR;
 	}
+	else
+	{
+		bmult  = bli_cntx_get_bmult( bszid, cntx );
+	}
 
-	blksz_t* bmult  = bli_cntx_get_bmult( bszid, cntx );
 	obj_t*   x;
 	bool     use_weighted;
 
@@ -1832,6 +1853,35 @@ void bli_thread_init_rntm_from_env
 
 #endif // BLIS_ENABLE_MULTITHREADING
 
+	// Check environment for options to control xerbla
+
+	// Default: Don't stop on error
+	gint_t bli_stop_on_error_int  = bli_env_get_var( "BLIS_STOP_ON_ERROR", 0 );
+	bool bli_stop_on_error;
+
+	if ( bli_stop_on_error_int != 0 )
+	{
+		bli_stop_on_error = TRUE;
+	}
+	else
+	{
+		bli_stop_on_error = FALSE;
+	}
+	bli_rntm_set_stop_on_error_only(bli_stop_on_error, rntm);
+
+	// Default: print on error
+	gint_t bli_print_on_error_int = bli_env_get_var( "BLIS_PRINT_ON_ERROR", 1 );
+	bool bli_print_on_error;
+	if (bli_print_on_error_int  != 0 )
+        {
+		bli_print_on_error = TRUE;
+	}
+	else
+        {
+		bli_print_on_error = FALSE;
+	}
+	bli_rntm_set_print_on_error_only(bli_print_on_error, rntm);
+
 	// Save the results back in the runtime object.
 	bli_rntm_set_auto_factor_only( auto_factor, rntm );
 	bli_rntm_set_num_threads_only( nt, rntm );
@@ -2004,6 +2054,10 @@ void bli_thread_update_rntm_from_env
 	bli_rntm_set_ways_only( jc, pc, ic, jr, ir, rntm );
 	bli_rntm_set_blis_mt_only( blis_mt, rntm );
 
+	// Initialize info_value to 0
+	gint_t info_value = 0;
+	bli_rntm_set_info_value_only( info_value, rntm );
+
 #ifdef PRINT_THREADING
 	printf( "bli_thread_update_rntm_from_env(): tl_rntm\n" );
 	bli_rntm_print( rntm );
@@ -2097,4 +2151,92 @@ void bli_thread_vector_partition
 			}
 		}
 	}
+}
+
+/*
+	Functionality :
+	--------------
+	This function calculated the amount of work the calling thread is supposed
+	to perform on a vector, in case of the norm api.
+
+	Function signature
+	-------------------
+
+	This function takes the following input:
+
+	* n_elem  	  - Number of element in the vector
+	* t_count 	  - Number of threads in the group
+	* start       - Vector start index (where the thread should start its processing)
+	* compute_len - Size of the chunk it needs to process
+	* block_size  - The factor by which the size should be a multiple for the AVX-2
+					code-section alone to be executed in the kernel.
+	* incx 		  - Increment of the vector
+	* thread_id   - ID of the thread
+
+	Exception
+	----------
+
+	None
+*/
+void bli_normfv_thread_partition
+	 (
+		dim_t 	n_elem,
+		dim_t 	t_count,
+		dim_t* 	start,
+		dim_t* 	compute_len,
+		dim_t  	block_size,
+		dim_t 	incx,
+		dim_t 	thread_id
+	 )
+{
+	dim_t job_per_thread = n_elem / t_count;
+	dim_t job_rem = n_elem % t_count;
+	dim_t job_rem_per_thread = job_per_thread % block_size;
+	dim_t thread_lim_excess = 0;
+
+	// Code-section to make job_per_thread as its nearset multiple of block_size
+	if( job_rem_per_thread )
+	{
+		job_rem += t_count * job_rem_per_thread;
+		job_per_thread -= job_rem_per_thread;
+	}
+
+	// Limit for the thread index, until which each thread gets block_size more elements
+	thread_lim_excess = job_rem / block_size;
+
+	// Add block_size to a thread's job size if its thread_id is within the thread limit
+	if ( thread_id < thread_lim_excess )
+	{
+		job_per_thread += block_size;
+		*start = thread_id * job_per_thread * incx;
+	}
+
+	// The last thread that has to deal with fringe cases, if they are present
+	else if ( thread_id == ( t_count - 1 ) )
+	{
+		*start = ( thread_lim_excess * block_size + thread_id * job_per_thread ) * incx;
+		job_per_thread += job_rem % block_size;
+	}
+
+	// Job allocation to the remaining threads
+	else
+	{
+		*start = ( thread_lim_excess * block_size + thread_id * job_per_thread ) * incx;
+	}
+
+	/*
+		As an example, let us consider the case where n_elem is 57 and t_count is 4.
+		Let us take block_size to be 4.
+
+		Thread 0 - 16
+		Thread 1 - 16
+		Thread 2 - 12
+		Thread 3 - 13
+
+		Here, only thread-3(last thread) has to deal with fringe cases. Every other thread has their
+		job size being the nearest upper/lower multiple of 4(block_size). Thus, the maximum
+		job difference between any two threads is 4(block_size).
+	*/
+
+	*compute_len = job_per_thread;
 }

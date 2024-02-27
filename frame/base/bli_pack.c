@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2021, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -57,22 +57,22 @@ void bli_pack_finalize( void )
 
 // -----------------------------------------------------------------------------
 
-dim_t bli_pack_get_pack_a( void )
+void bli_pack_get_pack_a( bool* pack_a )
 {
 	// We must ensure that global_rntm has been initialized.
 	bli_init_once();
 
-	return bli_rntm_pack_a( &global_rntm );
+	*pack_a = bli_rntm_pack_a( &global_rntm );
 }
 
 // -----------------------------------------------------------------------------
 
-dim_t bli_pack_get_pack_b( void )
+void bli_pack_get_pack_b( bool* pack_b )
 {
 	// We must ensure that global_rntm has been initialized.
 	bli_init_once();
 
-	return bli_rntm_pack_b( &global_rntm );
+	*pack_b = bli_rntm_pack_b( &global_rntm );
 }
 
 // ----------------------------------------------------------------------------

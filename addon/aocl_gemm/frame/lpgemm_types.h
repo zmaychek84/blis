@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -41,6 +41,24 @@ typedef enum
 	INT16 = 1,
 	INT32 = 2
 } AOCL_ARRAY_TYPE;
+
+// Enum to denote the storage data type (output matrix).
+// It is expected that the enum entries are in ascending order of
+// storage data type size.
+typedef enum
+{
+	S8 = 0,
+	U8 = 1,
+	S16 = 2,
+	U16 = 3,
+	BF16 = 4,
+	S32 = 5,
+	U32 = 6,
+	F32 = 7,
+	S64 = 8,
+	U64 = 9,
+	F64 = 10
+} AOCL_STORAGE_TYPE;
 
 // Enum name template:A_mat_type ## B_mat_type ## Accumulate_type ## C_mat_type.
 typedef enum

@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -34,10 +34,30 @@
 */
 
 #ifdef BLIS_CONFIGURETIME_CPUID
+
+  // NOTE: If you need to make any changes to this cpp branch, it's probably
+  // the case that you also need to modify bli_arch.c, bli_cpuid.c, and
+  // bli_env.c. Don't forget to update these other files as needed!
+
+  // The BLIS_ENABLE_SYSTEM macro must be defined so that the correct cpp
+  // branch in bli_system.h is processed. (This macro is normally defined in
+  // bli_config.h.)
+  #define BLIS_ENABLE_SYSTEM
+
+  // Use C-style static inline functions for any static inline functions that
+  // happen to be defined by the headers below. (This macro is normally defined
+  // in bli_config_macro_defs.h.)
   #define BLIS_INLINE static
+
+  // Since we're not building a shared library, we can forgo the use of the
+  // BLIS_EXPORT_BLIS annotations by #defining them to be nothing. (This macro
+  // is normally defined in bli_config_macro_defs.h.)
   #define BLIS_EXPORT_BLIS
+
   #include "bli_system.h"
   #include "bli_type_defs.h"
+  //#include "bli_arch.h"
+  //#include "bli_cpuid.h"
   #include "bli_env.h"
 #else
   #include "blis.h"
@@ -163,6 +183,44 @@ gint_t bli_env_get_var_arch_type( const char* env, gint_t fallback )
 			{
 				r_val = BLIS_ARCH_BULLDOZER;
 			}
+			// Some aliases for mapping AMD and Intel ISA
+			// names to a suitable sub-configuration.
+#if defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64) || defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_ZEN3) || defined(BLIS_FAMILY_ZEN2) || defined(BLIS_FAMILY_ZEN)
+			else if (strcmp(str, "avx512") == 0)
+			{
+				r_val = BLIS_ARCH_ZEN4;
+			}
+#endif
+#if defined(BLIS_FAMILY_INTEL64) || defined(BLIS_FAMILY_SKX) || defined(BLIS_FAMILY_HASWELL)
+			else if (strcmp(str, "avx512") == 0)
+			{
+				r_val = BLIS_ARCH_SKX;
+			}
+#endif
+#if defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64) || defined(BLIS_FAMILY_ZEN4) ||defined(BLIS_FAMILY_ZEN3)
+			else if (strcmp(str, "avx2") == 0)
+			{
+				r_val = BLIS_ARCH_ZEN3;
+			}
+#endif
+#if defined(BLIS_FAMILY_ZEN2)
+			else if (strcmp(str, "avx2") == 0)
+			{
+				r_val = BLIS_ARCH_ZEN2;
+			}
+#endif
+#if defined(BLIS_FAMILY_ZEN)
+			else if (strcmp(str, "avx2") == 0)
+			{
+				r_val = BLIS_ARCH_ZEN;
+			}
+#endif
+#if defined(BLIS_FAMILY_INTEL64) || defined(BLIS_FAMILY_SKX) || defined(BLIS_FAMILY_HASWELL)
+			else if (strcmp(str, "avx2") == 0)
+			{
+				r_val = BLIS_ARCH_HASWELL;
+			}
+#endif
 			// ARM
 			else if (strcmp(str, "thunderx2") == 0)
 			{

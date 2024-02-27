@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019-2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2023, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -40,6 +40,24 @@
 // Define BLAS-to-BLIS interfaces.
 //
 
+#if defined(BLIS_KERNELS_ZEN4)
+
+    #define TRSM_BLIS_IMPL(ch, blasname) \
+        PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
+        arch_t id = bli_arch_query_id(); \
+        if (id == BLIS_ARCH_ZEN4) \
+        { \
+            bli_zero_zmm(); \
+        } \
+
+#else
+
+    #define TRSM_BLIS_IMPL(ch, blasname) \
+        PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
+
+#endif
+
+
 #ifdef BLIS_BLAS3_CALLS_TAPI
 
 #undef  GENTFUNC
@@ -58,7 +76,10 @@ void PASTEF77S(ch,blasname) \
              ftype*    b, const f77_int* ldb  \
      ) \
 { \
-        AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO)    \
+    AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO) \
+    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), \
+                             *side, *uploa,*transa, *diaga, *m, *n, \
+                            (void*)alpha,*lda, *ldb); \
 \
     side_t  blis_side; \
     uplo_t  blis_uploa; \
@@ -89,6 +110,7 @@ void PASTEF77S(ch,blasname) \
     /* Quick return if possible. */ \
     if ( *m == 0 || *n == 0 ) \
     { \
+        AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
         AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO); \
         /* Finalize BLIS. */ \
         bli_finalize_auto(); \
@@ -123,7 +145,8 @@ void PASTEF77S(ch,blasname) \
 								(ftype*) b, rs_b, cs_b, \
 								NULL, NULL \
 							  ); \
-		 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
+		AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
 		/* Finalize BLIS. */ \
 		bli_finalize_auto(); \
 		return; \
@@ -145,6 +168,7 @@ void PASTEF77S(ch,blasname) \
       NULL  \
     ); \
 \
+    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO) \
     /* Finalize BLIS. */ \
     bli_finalize_auto(); \
@@ -163,7 +187,7 @@ void PASTEF77(ch,blasname) \
              ftype*    b, const f77_int* ldb  \
      ) \
 { \
-    PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
+    TRSM_BLIS_IMPL(ch,blasname) \
 } \
 )
 #else
@@ -216,6 +240,7 @@ void PASTEF77S(ch,blasname) \
     /* Quick return if possible. */ \
     if ( *m == 0 || *n == 0 ) \
     { \
+        AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
         AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO); \
         /* Finalize BLIS. */ \
         bli_finalize_auto(); \
@@ -251,6 +276,7 @@ void PASTEF77S(ch,blasname) \
 								(ftype*) b, rs_b, cs_b, \
 								NULL, NULL \
 							  ); \
+		AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
 		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1) \
 		/* Finalize BLIS. */ \
 		bli_finalize_auto(); \
@@ -299,6 +325,7 @@ void PASTEF77S(ch,blasname) \
                     (ftype*)b, rs_b, \
                     NULL \
                 ); \
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)  \
                 return; \
             } \
@@ -315,6 +342,7 @@ void PASTEF77S(ch,blasname) \
                     (ftype*)b, rs_b, \
                     NULL \
                 ); \
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)  \
                 return; \
             } \
@@ -340,6 +368,7 @@ void PASTEF77S(ch,blasname) \
                     PASTEMAC(ch,invscals)( a_conj, b[indx] ); \
                 } \
             }\
+            AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
             AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)  \
             return; \
         } \
@@ -363,6 +392,7 @@ void PASTEF77S(ch,blasname) \
                     (ftype*)a, cs_a, rs_a, \
                     (ftype*)b, cs_b, \
                     NULL); \
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)  \
                 return; \
             } \
@@ -381,6 +411,7 @@ void PASTEF77S(ch,blasname) \
                     (ftype*)a, cs_a, rs_a, \
                     (ftype*)b, cs_b, \
                     NULL); \
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)  \
                 return; \
             } \
@@ -406,6 +437,7 @@ void PASTEF77S(ch,blasname) \
                     PASTEMAC(ch,invscals)( a_conj, b[indx*cs_b] ); \
                 }\
             } \
+            AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
             AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)  \
             return; \
         } \
@@ -442,6 +474,7 @@ void PASTEF77S(ch,blasname) \
       NULL  \
     ); \
 \
+    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(ch), *side, *m, *n); \
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)  \
     /* Finalize BLIS. */ \
     bli_finalize_auto(); \
@@ -459,7 +492,7 @@ void PASTEF77(ch,blasname) \
              ftype*    b, const f77_int* ldb  \
      ) \
 { \
-    PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
+    TRSM_BLIS_IMPL(ch, blasname) \
 } \
 
 #endif
@@ -479,7 +512,7 @@ void strsm_blis_impl
 )
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO)
-    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 's',
+    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s),
                              *side, *uploa,*transa, *diaga, *m, *n,
                             (void*)alpha,*lda, *ldb);
 
@@ -511,6 +544,7 @@ void strsm_blis_impl
     /* Quick return if possible. */
     if ( *m == 0 || *n == 0 )
     {
+        AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
         AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
         /* Finalize BLIS. */
         bli_finalize_auto();
@@ -546,6 +580,7 @@ void strsm_blis_impl
 								(float*) b, rs_b, cs_b,
 								NULL, NULL
 							  );
+		AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
 		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
 		/* Finalize BLIS. */
 		bli_finalize_auto();
@@ -569,6 +604,7 @@ void strsm_blis_impl
                     (float*)b, rs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -585,6 +621,7 @@ void strsm_blis_impl
                     (float*)b, rs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -609,6 +646,7 @@ void strsm_blis_impl
                     b[indx] = ( inva * b[indx] );
                 }
             }
+            AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
             AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
             return;
         }
@@ -635,6 +673,7 @@ void strsm_blis_impl
                     (float*)b, cs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -656,6 +695,7 @@ void strsm_blis_impl
                     (float*)b, cs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -680,6 +720,7 @@ void strsm_blis_impl
                     b[indx*cs_b] = (inva * b[indx*cs_b] );
                 }
             }
+            AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
             AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
             return;
         }
@@ -731,6 +772,7 @@ void strsm_blis_impl
 			     );
 		    if (status == BLIS_SUCCESS)
 		    {
+			    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
 			    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
 			    /* Finalize BLIS. */
 			    bli_finalize_auto();
@@ -750,6 +792,7 @@ void strsm_blis_impl
         NULL
     );
 
+    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
     /* Finalize BLIS. */
     bli_finalize_auto();
@@ -769,6 +812,13 @@ void strsm_
 )
 {
     strsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
+#if defined(BLIS_KERNELS_ZEN4)
+    arch_t id = bli_arch_query_id();
+    if (id == BLIS_ARCH_ZEN4)
+    {
+        bli_zero_zmm();
+    }
+#endif
 }
 #endif
 void dtrsm_blis_impl
@@ -785,7 +835,7 @@ void dtrsm_blis_impl
 )
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO)
-    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'd',
+    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d),
                              *side, *uploa,*transa, *diaga, *m, *n,
                             (void*)alpha,*lda, *ldb);
 
@@ -817,6 +867,7 @@ void dtrsm_blis_impl
     /* Quick return if possible. */
     if ( *m == 0 || *n == 0 )
     {
+        AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
         AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
         /* Finalize BLIS. */
         bli_finalize_auto();
@@ -852,6 +903,7 @@ void dtrsm_blis_impl
 								(double*) b, rs_b, cs_b,
 								NULL, NULL
 							  );
+		AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
 		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
 		/* Finalize BLIS. */
 		bli_finalize_auto();
@@ -875,6 +927,7 @@ void dtrsm_blis_impl
                     (double*)b, rs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -891,6 +944,7 @@ void dtrsm_blis_impl
                     (double*)b, rs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -915,6 +969,7 @@ void dtrsm_blis_impl
                     b[indx] = ( inva * b[indx] );
                 }
             }
+            AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
             AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
             return;
         }
@@ -941,6 +996,7 @@ void dtrsm_blis_impl
                     (double*)b, cs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -962,6 +1018,7 @@ void dtrsm_blis_impl
                     (double*)b, cs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -986,6 +1043,7 @@ void dtrsm_blis_impl
                     b[indx*cs_b] = (inva * b[indx*cs_b] );
                 }
             }
+            AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
             AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
             return;
         }
@@ -1053,7 +1111,7 @@ void dtrsm_blis_impl
          * is doing better than small multithread and native multithread */
         bool is_parallel = bli_thread_get_is_parallel();
         if ((!is_parallel && ((dim_a < 1500) && (size_b < 5e6)) ) ||
-            (is_parallel && (m0+n0)<320))
+            (is_parallel && (m0+n0)<200))
         {
             switch(id)
             {
@@ -1107,6 +1165,7 @@ void dtrsm_blis_impl
         }
         if (status == BLIS_SUCCESS)
         {
+            AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
             AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
             /* Finalize BLIS. */
             bli_finalize_auto();
@@ -1124,7 +1183,7 @@ void dtrsm_blis_impl
         NULL,
         NULL
     );
-
+    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
     /* Finalize BLIS. */
     bli_finalize_auto();
@@ -1144,6 +1203,13 @@ void dtrsm_
 )
 {
     dtrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
+#if defined(BLIS_KERNELS_ZEN4)
+    arch_t id = bli_arch_query_id();
+    if (id == BLIS_ARCH_ZEN4)
+    {
+        bli_zero_zmm();
+    }
+#endif
 }
 #endif
 
@@ -1161,7 +1227,7 @@ void ztrsm_blis_impl
 )
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO)
-    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'z',
+    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z),
                              *side, *uploa,*transa, *diaga, *m, *n,
                             (void*)alpha,*lda, *ldb);
 
@@ -1193,6 +1259,7 @@ void ztrsm_blis_impl
     /* Quick return if possible. */
     if ( *m == 0 || *n == 0 )
     {
+        AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
         AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
         /* Finalize BLIS. */
         bli_finalize_auto();
@@ -1228,6 +1295,7 @@ void ztrsm_blis_impl
 								(dcomplex*) b, rs_b, cs_b,
 								NULL, NULL
 							  );
+		AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
 		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
 		/* Finalize BLIS. */
 		bli_finalize_auto();
@@ -1251,6 +1319,7 @@ void ztrsm_blis_impl
                     (dcomplex*)b, rs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -1267,6 +1336,7 @@ void ztrsm_blis_impl
                     (dcomplex*)b, rs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -1292,7 +1362,7 @@ void ztrsm_blis_impl
 		     * As the dimension of A is 1x1, there's going to
 		     * be only one 1 element of A.
 		     */
-		    if(*transa == 'C' && *diaga == 'N')
+		    if(blis_transa == BLIS_CONJ_TRANSPOSE)
 		    {
 			    a_dup.real = a->real;
 			    a_dup.imag = a->imag * -1.0;
@@ -1321,6 +1391,7 @@ void ztrsm_blis_impl
 
 	    }
 
+	    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
 	    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
 	    return;
 	}
@@ -1347,6 +1418,7 @@ void ztrsm_blis_impl
                     (dcomplex*)b, cs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -1368,6 +1440,7 @@ void ztrsm_blis_impl
                     (dcomplex*)b, cs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -1393,7 +1466,7 @@ void ztrsm_blis_impl
 		 * As the dimension of A is 1x1, there's going to
 		 * be only one 1 element of A.
 		 */
-                if(*transa == 'C' && *diaga == 'N')
+                if(blis_transa == BLIS_CONJ_TRANSPOSE)
                 {
                         a_dup.real = a->real;
                         a_dup.imag = a->imag * -1.0;
@@ -1421,6 +1494,7 @@ void ztrsm_blis_impl
                 }
             }
 
+	    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
 	    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
 	    return;
 
@@ -1458,9 +1532,15 @@ void ztrsm_blis_impl
         * In case of multithread when [m,n]<=128 single thread implementation
         * is doing better than native multithread */
         bool is_parallel = bli_thread_get_is_parallel();
+        dim_t dim_a = n0;
+        if (blis_side == BLIS_LEFT)
+            dim_a = m0;
 
+        // size of output matrix(B)
+        dim_t size_b = m0*n0;
         if((!is_parallel && m0<=500 && n0<=500) ||
-           (is_parallel && (m0+n0)<128))
+           (is_parallel && (m0+n0)<128) || 
+           (dim_a<35 && size_b<3500))
         {
             err_t status;
             status = bli_trsm_small
@@ -1475,6 +1555,7 @@ void ztrsm_blis_impl
                     );
             if (status == BLIS_SUCCESS)
             {
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 /* Finalize BLIS. */
                 bli_finalize_auto();
@@ -1494,6 +1575,7 @@ void ztrsm_blis_impl
         NULL
     );
 
+    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
     /* Finalize BLIS. */
     bli_finalize_auto();
@@ -1513,6 +1595,13 @@ void ztrsm_
 )
 {
     ztrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
+#if defined(BLIS_KERNELS_ZEN4)
+    arch_t id = bli_arch_query_id();
+    if (id == BLIS_ARCH_ZEN4)
+    {
+        bli_zero_zmm();
+    }
+#endif
 }
 #endif
 
@@ -1530,7 +1619,7 @@ void ctrsm_blis_impl
 )
 {
     AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_INFO)
-    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, 'c',
+    AOCL_DTL_LOG_TRSM_INPUTS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c),
                              *side, *uploa,*transa, *diaga, *m, *n,
                             (void*)alpha,*lda, *ldb);
 
@@ -1562,6 +1651,7 @@ void ctrsm_blis_impl
     /* Quick return if possible. */
     if ( *m == 0 || *n == 0 )
     {
+        AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
         AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
         /* Finalize BLIS. */
         bli_finalize_auto();
@@ -1597,6 +1687,7 @@ void ctrsm_blis_impl
 								(scomplex*) b, rs_b, cs_b,
 								NULL, NULL
 							  );
+		AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
 		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1)
 		/* Finalize BLIS. */
 		bli_finalize_auto();
@@ -1620,6 +1711,7 @@ void ctrsm_blis_impl
                     (scomplex*)b, rs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -1636,6 +1728,7 @@ void ctrsm_blis_impl
                     (scomplex*)b, rs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -1661,7 +1754,7 @@ void ctrsm_blis_impl
 		 * As the dimension of A is 1x1, there's going to
 		 * be only one 1 element of A.
 		 */
-                if(*transa == 'C' && *diaga == 'N')
+                if(blis_transa == BLIS_CONJ_TRANSPOSE)
                 {
                         a_dup.real = a->real;
                         a_dup.imag = a->imag * -1.0;
@@ -1689,6 +1782,7 @@ void ctrsm_blis_impl
                 }
             }
 
+	    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
 	    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
 	    return;
 
@@ -1716,6 +1810,7 @@ void ctrsm_blis_impl
                     (scomplex*)b, cs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -1737,6 +1832,7 @@ void ctrsm_blis_impl
                     (scomplex*)b, cs_b,
                     NULL
                 );
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 return;
             }
@@ -1762,7 +1858,7 @@ void ctrsm_blis_impl
 		 * As the dimension of A is 1x1, there's going to
 		 * be only one 1 element of A.
 		 */
-                if(*transa == 'C' && *diaga == 'N')
+                if(blis_transa == BLIS_CONJ_TRANSPOSE)
                 {
                         a_dup.real = a->real;
                         a_dup.imag = a->imag * -1.0;
@@ -1790,6 +1886,7 @@ void ctrsm_blis_impl
                 }
             }
 
+	    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
 	    AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
 	    return;
         }
@@ -1842,6 +1939,7 @@ void ctrsm_blis_impl
                     );
             if (status == BLIS_SUCCESS)
             {
+                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
                 AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
                 /* Finalize BLIS. */
                 bli_finalize_auto();
@@ -1861,6 +1959,7 @@ void ctrsm_blis_impl
         NULL
     );
 
+    AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
     /* Finalize BLIS. */
     bli_finalize_auto();
@@ -1880,6 +1979,13 @@ void ctrsm_
 )
 {
     ctrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
+#if defined(BLIS_KERNELS_ZEN4)
+    arch_t id = bli_arch_query_id();
+    if (id == BLIS_ARCH_ZEN4)
+    {
+        bli_zero_zmm();
+    }
+#endif
 }
 
 #endif

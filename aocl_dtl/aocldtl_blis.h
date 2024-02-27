@@ -3,7 +3,7 @@
  *
  * Description : BLIS library specific debug helpes.
  *
- * Copyright (C) 2020-2022, Advanced Micro Devices, Inc. All rights reserved.
+ * Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
  *
  *==================================================================*/
 
@@ -33,9 +33,16 @@ void AOCL_DTL_log_gemm_sizes(int8 loglevel,
                              int line);
 
 void AOCL_DTL_log_gemm_stats(int8 loglevel,
+                             char dt_type,
                              const f77_int m,
                              const f77_int n,
                              const f77_int k);
+
+void AOCL_DTL_log_trsm_stats(int8 loglevel,
+                             char dt_type,
+                             f77_char side,
+                             const f77_int m,
+                             const f77_int n);
 
 void AOCL_DTL_log_trsm_sizes(int8 loglevel,
                              char dt,
@@ -67,6 +74,11 @@ void AOCL_DTL_log_gemmt_sizes(int8 loglevel,
                              const char* filename,
                              const char* function_name,
                              int line);
+
+void AOCL_DTL_log_gemmt_stats(int8 loglevel,
+                             char dt_type,
+                             const f77_int n,
+                             const f77_int k);
 
 void AOCL_DTL_log_hemm_sizes(int8 loglevel,
                              char dt_type,
@@ -243,6 +255,10 @@ void AOCL_DTL_log_nrm2_sizes( int8 loglevel,
                               const char* function_name,
                               int line);
 
+void AOCL_DTL_log_nrm2_stats(int8 loglevel,
+                             char dt_type,
+                             const f77_int n);
+
 void AOCL_DTL_log_amax_sizes ( int8 loglevel,
                               char dt_type,
                               const f77_int  n,
@@ -389,14 +405,22 @@ void AOCL_DTL_log_trmm_sizes(int8 loglevel,
         AOCL_DTL_log_gemm_sizes(loglevel, dt, transa, transb, m, n, k, alpha, lda, ldb, beta, ldc, \
                                 __FILE__, __FUNCTION__, __LINE__);
 
-#define AOCL_DTL_LOG_GEMM_STATS(loglevel, m, n, k)    \
+#define AOCL_DTL_LOG_GEMM_STATS(loglevel, dt_type, m, n, k)    \
     if (gbIsLoggingEnabled) \
-        AOCL_DTL_log_gemm_stats(loglevel, m, n, k);
+        AOCL_DTL_log_gemm_stats(loglevel, dt_type, m, n, k);
+
+#define AOCL_DTL_LOG_GEMMT_STATS(loglevel, dt_type, n, k)    \
+    if (gbIsLoggingEnabled) \
+        AOCL_DTL_log_gemmt_stats(loglevel, dt_type, n, k);
 
 #define AOCL_DTL_LOG_TRSM_INPUTS(loglevel, dt, side, uploa, transa, diaga, m, n, alpha, lda, ldb)     \
     if (gbIsLoggingEnabled) \
         AOCL_DTL_log_trsm_sizes(loglevel, dt, side, uploa, transa, diaga, m, n, alpha, lda, ldb, \
                                 __FILE__, __FUNCTION__, __LINE__);
+
+#define AOCL_DTL_LOG_TRSM_STATS(loglevel, dt_type, side, m, n)    \
+    if (gbIsLoggingEnabled) \
+        AOCL_DTL_log_trsm_stats(loglevel, dt_type, side, m, n);
 
 #define AOCL_DTL_LOG_GEMMT_INPUTS(loglevel, dt, uplo, transa, transb, n, k, alpha, lda, ldb, beta, ldc)  \
     if (gbIsLoggingEnabled) \
@@ -459,6 +483,10 @@ void AOCL_DTL_log_trmm_sizes(int8 loglevel,
 #define AOCL_DTL_LOG_NRM2_INPUTS(loglevel, dt_type, n, incx)\
     if (gbIsLoggingEnabled) \
         AOCL_DTL_log_nrm2_sizes(loglevel, dt_type, n, incx, __FILE__,__FUNCTION__,__LINE__);
+
+#define AOCL_DTL_LOG_NRM2_STATS(loglevel, dt_type, n)    \
+    if (gbIsLoggingEnabled) \
+        AOCL_DTL_log_nrm2_stats(loglevel, dt_type, n);
 
 #define AOCL_DTL_LOG_HEMV_INPUTS(loglevel, dt_type, uploa, m, alpha, lda, incx, beta, incy) \
     if (gbIsLoggingEnabled) \
@@ -531,11 +559,15 @@ void AOCL_DTL_log_trmm_sizes(int8 loglevel,
 
 #define AOCL_DTL_LOG_GEMM_INPUTS(loglevel, dt, transa, transb, m, n, k, alpha, lda, ldb, beta, ldc)
 
-#define AOCL_DTL_LOG_GEMM_STATS(loglevel, m, n, k)
+#define AOCL_DTL_LOG_GEMM_STATS(loglevel, dt_type, m, n, k)
 
 #define AOCL_DTL_LOG_TRSM_INPUTS(loglevel, dt, side, uploa, transa, diaga, m, n, alpha, lda, ldb)
 
+#define AOCL_DTL_LOG_TRSM_STATS(loglevel, dt_type, side, m, n)
+
 #define AOCL_DTL_LOG_GEMMT_INPUTS(loglevel, dt, uplo, transa, transb, n, k, alpha, lda, ldb, beta, ldc)
+
+#define AOCL_DTL_LOG_GEMMT_STATS(loglevel, dt_type, n, k)
 
 #define AOCL_DTL_LOG_HEMM_INPUTS(loglevel, dt_type, side, uplo, m, n, alpha, lda, ldb, beta, ldc)
 
@@ -560,6 +592,8 @@ void AOCL_DTL_log_trmm_sizes(int8 loglevel,
 #define AOCL_DTL_LOG_SWAP_INPUTS(loglevel, dt_type, n, incx, incy)
 
 #define AOCL_DTL_LOG_NRM2_INPUTS(loglevel, dt_type, n, incx)
+
+#define AOCL_DTL_LOG_NRM2_STATS(loglevel, dt_type, n)
 
 #define AOCL_DTL_LOG_HEMV_INPUTS(loglevel, dt_type, uploa, m, alpha, lda, incx, beta, incy)
 

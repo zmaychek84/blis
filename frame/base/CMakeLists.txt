@@ -1,4 +1,4 @@
-##Copyright (C) 2021, Advanced Micro Devices, Inc. All rights reserved.##
+##Copyright (C) 2021 - 2023, Advanced Micro Devices, Inc. All rights reserved.##
 
 target_sources("${PROJECT_NAME}"
     PUBLIC
@@ -22,7 +22,7 @@ target_sources("${PROJECT_NAME}"
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_machval.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_malloc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_mbool.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/bli_membrk.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bli_pba.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_memsys.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_obj.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_obj_scalar.c
@@ -34,10 +34,12 @@ target_sources("${PROJECT_NAME}"
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_query.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_rntm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_sba.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/bli_setgetij.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bli_setgetijm.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bli_setgetijv.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_setri.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_string.c
     ${CMAKE_CURRENT_SOURCE_DIR}/bli_winsys.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bli_pack_compute_utils.c
     )
 
 #Add all subdirectories
