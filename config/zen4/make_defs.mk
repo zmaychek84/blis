@@ -4,7 +4,7 @@
 #  An object-based framework for developing high-performance BLAS-like
 #  libraries.
 #
-#  Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -73,6 +73,8 @@ endif
 # NOTE: The -fomit-frame-pointer option is needed for some kernels because
 # they make explicit use of the rbp register.
 CKOPTFLAGS     := $(COPTFLAGS) -fomit-frame-pointer
+# Additional flag which is required for lpgemm kernels
+CKLPOPTFLAGS   :=
 
 # gcc or clang version must be at least 4.0
 ifeq ($(CC_VENDOR),gcc)
@@ -87,23 +89,27 @@ ifeq ($(CC_VENDOR),gcc)
     # in suboptimal code generation for instrinsic based kernels.
     # The -ftree-loop-vectorize results in inefficient code gen
     # for amd optimized l1 kernels based on instrinsics.
-    CKOPTFLAGS += -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize
+    CKLPOPTFLAGS += -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize
   else ifeq ($(shell test $(GCC_VERSION) -ge 11; echo $$?),0)
     # gcc 11.0 or later
-    CKVECFLAGS += -march=znver3 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512bf16
+    CKVECFLAGS += -march=znver3 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512bf16 -mavx512vbmi
     CRVECFLAGS += -march=znver3
-    CKOPTFLAGS += -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize
+    CKLPOPTFLAGS += -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize
   else ifeq ($(shell test $(GCC_VERSION) -ge 9; echo $$?),0)
     # gcc 9.0 or later
-    CKVECFLAGS += -march=znver2 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni
+    CKVECFLAGS += -march=znver2 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512vbmi
     CRVECFLAGS += -march=znver2
-    CKOPTFLAGS += -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize
+    CKLPOPTFLAGS += -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize
   else ifeq ($(shell test $(GCC_VERSION) -ge 8; echo $$?),0)
     # gcc 8.0 or later
-    CKVECFLAGS += -march=znver1 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni
+    CKVECFLAGS += -march=znver1 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512vbmi
+    CRVECFLAGS += -march=znver1
+  else ifeq ($(shell test $(GCC_VERSION) -ge 7; echo $$?),0)
+    # gcc 7.0 or later
+    CKVECFLAGS += -march=znver1 -mavx512f -mavx512dq -mavx512bw -mavx512vl
     CRVECFLAGS += -march=znver1
   else
-    # If gcc is older than 8.0.0 but at least 6.1.0, then we can use -march=znver1
+    # If gcc is older than 7.0.0 but at least 6.1.0, then we can use -march=znver1
     # as the fallback option.
     CKVECFLAGS += -march=znver1 -mno-avx256-split-unaligned-store
     CRVECFLAGS += -march=znver1 -mno-avx256-split-unaligned-store
@@ -132,11 +138,11 @@ ifeq ($(CC_VENDOR),clang)
     CRVECFLAGS += -march=znver4
   else ifeq ($(strip $(shell $(CC) -v |&head -1 |grep -c 'AOCC_3')),1)
     # AOCC version 3x we will enable znver3
-    CKVECFLAGS += -march=znver3 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512bf16 -falign-loops=64
+    CKVECFLAGS += -march=znver3 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512bf16 -mavx512vbmi -falign-loops=64
     CRVECFLAGS += -march=znver3
   else ifeq ($(strip $(shell $(CC) -v |&head -1 |grep -c 'AOCC.LLVM.2\|AOCC_2')),1)
     # AOCC version 2x we will enable znver2
-    CKVECFLAGS += -march=znver2 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni
+    CKVECFLAGS += -march=znver2 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512vbmi
     CRVECFLAGS += -march=znver2
   else ifeq ($(shell test $(CC_MAJOR) -ge 16; echo $$?),0)
     # LLVM clang 16.0 or later
@@ -144,14 +150,14 @@ ifeq ($(CC_VENDOR),clang)
     CRVECFLAGS += -march=znver4
   else ifeq ($(shell test $(CC_MAJOR) -ge 13; echo $$?),0)
     # LLVM clang 13.0 or later
-    CKVECFLAGS += -march=znver3 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512bf16 -falign-loops=64
+    CKVECFLAGS += -march=znver3 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512bf16 -mavx512vbmi -falign-loops=64
     CRVECFLAGS += -march=znver3
   else ifeq ($(shell test $(CC_MAJOR) -ge 9; echo $$?),0)
     # LLVM clang 9.0 or later
-    CKVECFLAGS += -march=znver2 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512bf16 -falign-loops=64
+    CKVECFLAGS += -march=znver2 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512bf16 -mavx512vbmi -falign-loops=64
     CRVECFLAGS += -march=znver2
   else
-    CKVECFLAGS += -march=znver1 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -falign-loops=64
+    CKVECFLAGS += -march=znver1 -mavx512f -mavx512dq -mavx512bw -mavx512vl -mavx512vnni -mavx512vbmi -falign-loops=64
     CRVECFLAGS += -march=znver1
   endif
 endif # clang

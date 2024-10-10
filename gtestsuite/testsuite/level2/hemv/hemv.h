@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -36,6 +36,7 @@
 
 #include "blis.h"
 #include "common/testing_helpers.h"
+#include "inc/check_error.h"
 
 /**
  * @brief Performs the operation:
@@ -68,6 +69,18 @@ static void hemv_( char uploa, gtint_t n, T* alpha, T* ap, gtint_t lda,
         zhemv_( &uploa, &n, alpha, ap, &lda, xp, &incx, beta, yp, &incy );
     else
         throw std::runtime_error("Error in testsuite/level2/hemv.h: Invalid typename in hemv_().");
+}
+
+template<typename T>
+static void hemv_blis_impl( char uploa, gtint_t n, T* alpha, T* ap, gtint_t lda,
+                    T* xp, gtint_t incx, T* beta, T* yp, gtint_t incy )
+{
+    if constexpr (std::is_same<T, scomplex>::value)
+        chemv_blis_impl( &uploa, &n, alpha, ap, &lda, xp, &incx, beta, yp, &incy );
+    else if constexpr (std::is_same<T, dcomplex>::value)
+        zhemv_blis_impl( &uploa, &n, alpha, ap, &lda, xp, &incx, beta, yp, &incy );
+    else
+        throw std::runtime_error("Error in testsuite/level2/hemv.h: Invalid typename in hemv_blis_impl().");
 }
 
 template<typename T>
@@ -123,16 +136,92 @@ static void hemv( char storage, char uploa, char conja, char conjx, gtint_t n,
     T* alpha, T* ap, gtint_t lda, T* xp, gtint_t incx, T* beta, T* yp,
     gtint_t incy )
 {
+
+#ifdef TEST_UPPERCASE_ARGS
+    storage = static_cast<char>(std::toupper(static_cast<unsigned char>(storage)));
+    uploa = static_cast<char>(std::toupper(static_cast<unsigned char>(uploa)));
+    conja = static_cast<char>(std::toupper(static_cast<unsigned char>(conja)));
+    conjx = static_cast<char>(std::toupper(static_cast<unsigned char>(conjx)));
+#endif
+
+#ifdef TEST_INPUT_ARGS
+    // Create copy of scalar input values so we can check that they are not altered.
+    char storage_cpy = storage;
+    char uploa_cpy = uploa;
+    char conja_cpy = conja;
+    char conjx_cpy = conjx;
+    gtint_t n_cpy = n;
+    T* alpha_cpy = alpha;
+    gtint_t lda_cpy = lda;
+    gtint_t incx_cpy = incx;
+    T* beta_cpy = beta;
+    gtint_t incy_cpy = incy;
+
+    // Create copy of input arrays so we can check that they are not altered.
+    T* ap_cpy = nullptr;
+    gtint_t size_ap = testinghelpers::matsize( storage, 'n', n, n, lda );
+    if (ap && size_ap > 0)
+    {
+        ap_cpy = new T[size_ap];
+        memcpy( ap_cpy, ap, size_ap * sizeof( T ) );
+    }
+    T* xp_cpy = nullptr;
+    gtint_t size_xp;
+    size_xp = testinghelpers::buff_dim( n, incx );
+    {
+        xp_cpy = new T[size_xp];
+        memcpy( xp_cpy, xp, size_xp * sizeof( T ) );
+    }
+#endif
+
 #ifdef TEST_BLAS
     if( storage == 'c' || storage == 'C' )
         hemv_<T>( uploa, n, alpha, ap, lda, xp, incx, beta, yp, incy );
     else
         throw std::runtime_error("Error in testsuite/level2/hemv.h: BLAS interface cannot be tested for row-major order.");
+#elif TEST_BLAS_BLIS_IMPL
+    if( storage == 'c' || storage == 'C' )
+        hemv_blis_impl<T>( uploa, n, alpha, ap, lda, xp, incx, beta, yp, incy );
+    else
+        throw std::runtime_error("Error in testsuite/level2/hemv.h: BLAS_BLIS_IMPL interface cannot be tested for row-major order.");
 #elif TEST_CBLAS
     cblas_hemv<T>( storage, uploa, n, alpha, ap, lda, xp, incx, beta, yp, incy );
 #elif TEST_BLIS_TYPED
     typed_hemv<T>( storage, uploa, conja, conjx, n, alpha, ap, lda, xp, incx, beta, yp, incy );
 #else
     throw std::runtime_error("Error in testsuite/level2/hemv.h: No interfaces are set to be tested.");
+#endif
+
+#ifdef TEST_INPUT_ARGS
+    //----------------------------------------------------------
+    // Check scalar inputs have not been modified.
+    //----------------------------------------------------------
+
+    computediff<char>( "storage", storage, storage_cpy );
+    computediff<char>( "uploa", uploa, uploa_cpy );
+    computediff<char>( "conja", conja, conja_cpy );
+    computediff<char>( "conjx", conjx, conjx_cpy );
+    computediff<gtint_t>( "n", n, n_cpy );
+    if (alpha) computediff<T>( "alpha", *alpha, *alpha_cpy );
+    computediff<gtint_t>( "lda", lda, lda_cpy );
+    computediff<gtint_t>( "incx", incx, incx_cpy );
+    if (beta) computediff<T>( "beta", *beta, *beta_cpy );
+    computediff<gtint_t>( "incy", incy, incy_cpy );
+
+    //----------------------------------------------------------
+    // Bitwise-wise check array inputs have not been modified.
+    //----------------------------------------------------------
+
+    if (ap && size_ap > 0)
+    {
+        computediff<T>( "A", storage, n, n, ap, ap_cpy, lda, true );
+        delete[] ap_cpy;
+    }
+
+    if (xp && size_xp > 0)
+    {
+        computediff<T>( "x", n, xp, xp_cpy, incx, true );
+        delete[] xp_cpy;
+    }
 #endif
 }

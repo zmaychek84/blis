@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -35,12 +35,12 @@
 #include <gtest/gtest.h>
 #include "test_setv.h"
 
-class csetvGenericTest :
+class csetvGeneric :
         public ::testing::TestWithParam<std::tuple<char, gtint_t, gtint_t>> {};
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(csetvGenericTest);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(csetvGeneric);
 
-TEST_P( csetvGenericTest, RandomData )
+TEST_P( csetvGeneric, API )
 {
     using T = scomplex;
     //----------------------------------------------------------
@@ -61,33 +61,16 @@ TEST_P( csetvGenericTest, RandomData )
     test_setv<T>( conjalpha, n, alpha, incx );
 }
 
-// Prints the test case combination
-class csetvGenericTestPrint {
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<char,gtint_t,gtint_t>> str) const {
-        char conj      = std::get<0>(str.param);
-        gtint_t n      = std::get<1>(str.param);
-        gtint_t incx   = std::get<2>(str.param);
-        std::string str_name = "bli_csetv";
-        str_name += "_" + std::to_string(n);
-        str_name += "_" + std::string(&conj, 1);
-        std::string incx_str = ( incx > 0) ? std::to_string(incx) : "m" + std::to_string(std::abs(incx));
-        str_name += "_" + incx_str;
-        return str_name;
-    }
-};
-
 #ifdef TEST_BLIS_TYPED
 // Black box testing.
 INSTANTIATE_TEST_SUITE_P(
         Blackbox,
-        csetvGenericTest,
+        csetvGeneric,
         ::testing::Combine(
             ::testing::Values('n','c'),                                      // n: not transpose for x, c: conjugate for x
             ::testing::Range(gtint_t(10), gtint_t(101), 10),                 // m size of vector takes values from 10 to 100 with step size of 10.
             ::testing::Values(gtint_t(1))                                    // stride size for x
         ),
-        ::csetvGenericTestPrint()
+        ::setvGenericPrint()
     );
 #endif

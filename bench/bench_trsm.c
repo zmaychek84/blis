@@ -1,11 +1,11 @@
-
 /*
+
    BLIS
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -15,9 +15,10 @@
     - Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-    - Neither the name of The University of Texas nor the names of its
+    - Neither the name(s) of the copyright holder(s) nor the names of its
       contributors may be used to endorse or promote products derived
       from this software without specific prior written permission.
+
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -97,7 +98,7 @@ int main( int argc, char** argv )
         printf("Error opening the file %s\n", argv[2]);
         exit(1);
     }
-    fprintf(fout,"dt\t side\t uploa\t transa\t diaga\t m\t n\t lda\t ldb\t alphaR\t alphaI\t gflops\n");
+    fprintf(fout,"Func dt side uploa transa diaga m n lda ldb alphaR alphaI gflops\n");
 
     dim_t lda,ldb;
     f77_char dt_type_arg, side_arg, uploa_arg, transa_arg, diaga_arg;
@@ -398,9 +399,9 @@ int main( int argc, char** argv )
         printf( "( %2lu, 1:2 ) = [ %4lu %7.2f ];\n",
                 ( unsigned long )p_inc,
                 ( unsigned long )m, gflops );
-        fprintf(fout,"%c\t %c\t %c\t %c\t %c\t %4lu\t %4lu\t %4lu\t %4lu\t %6.3f\t %6.3f\t %6.3f\n",
-               dt_type_arg, side_arg, uploa_arg, transa_arg,
-               diaga_arg, (unsigned long )m, (unsigned long ) n, (unsigned long )lda,
+        fprintf(fout,"%s %c %c %c %c %c %4lu %4lu %4lu %4lu %6.3f %6.3f %6.3f\n",
+               logline, dt_type_arg, side_arg, uploa_arg, transa_arg,
+               diaga_arg, (unsigned long )m, (unsigned long )n, (unsigned long )lda,
                (unsigned long )ldb, alphaR, alphaI, gflops);
         fflush(fout);
         bli_obj_free( &alpha );

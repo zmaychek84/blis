@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -325,22 +325,23 @@ void bli_cnormfv_unb_var1
     arch_t id = bli_arch_query_id();
     switch ( id )
     {
+        case BLIS_ARCH_ZEN5:
         case BLIS_ARCH_ZEN4:
         case BLIS_ARCH_ZEN3:
         case BLIS_ARCH_ZEN2:
         case BLIS_ARCH_ZEN:;
 #ifdef BLIS_KERNELS_ZEN
-            // Memory pool declarations for packing vector X.
-            // Initialize mem pool buffer to NULL and size to 0.
-            // "buf" and "size" fields are assigned once memory
-            // is allocated from the pool in bli_pba_acquire_m().
-            // This will ensure bli_mem_is_alloc() will be passed on
-            // an allocated memory if created or a NULL.
-            mem_t   mem_buf_X = { 0 };
-            rntm_t  rntm_l;
-            // Packing for non-unit strided vector x.
-            if ( incx != 1 )
+            // Handling the kernel call in case of non-unit strides
+            if ( ( incx != 1 ) && ( incx != 0 ) )
             {
+                // Memory pool declarations for packing vector X.
+                // Initialize mem pool buffer to NULL and size to 0.
+                // "buf" and "size" fields are assigned once memory
+                // is allocated from the pool in bli_pba_acquire_m().
+                // This will ensure bli_mem_is_alloc() will be passed on
+                // an allocated memory if created or a NULL.
+                mem_t   mem_buf_X = { 0 };
+                rntm_t  rntm_l;
                 // In order to get the buffer from pool via rntm access to memory broker
                 // is needed. Following are initializations for rntm.
                 if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); }
@@ -376,18 +377,24 @@ void bli_cnormfv_unb_var1
                     }
                     incx_buf = 1;
                 }
+
+                bli_scnorm2fv_unb_var1_avx2( n, x_buf, incx_buf, norm, cntx );
+
+                if ( bli_mem_is_alloc( &mem_buf_X ) )
+                {
+                    #ifdef BLIS_ENABLE_MEM_TRACING
+                        printf( "bli_scnorm2fv_unb_var1_avx2(): releasing mem pool block\n" );
+                    #endif
+                    // Return the buffer to pool.
+                    bli_pba_release( &rntm_l , &mem_buf_X );
+                }
             }
-
-            bli_scnorm2fv_unb_var1_avx2( n, x_buf, incx_buf, norm, cntx );
-
-            if ( bli_mem_is_alloc( &mem_buf_X ) )
+            else
             {
-                #ifdef BLIS_ENABLE_MEM_TRACING
-                    printf( "bli_scnorm2fv_unb_var1_avx2(): releasing mem pool block\n" );
-                #endif
-                // Return the buffer to pool.
-                bli_pba_release( &rntm_l , &mem_buf_X );
+                // Call the kernel with the unit-strided vector x
+                bli_scnorm2fv_unb_var1_avx2( n, x_buf, incx_buf, norm, cntx );
             }
+
             break;
 #endif
         default:;
@@ -447,10 +454,16 @@ void bli_znormfv_unb_var1
     void ( *reduce_fp )( dim_t, double*, inc_t, double*, cntx_t* ) = NULL;
 
     dcomplex *x_buf = x;
+    dim_t fast_path_thresh = 1;
+#ifdef BLIS_ENABLE_OPENMP
     dim_t nt_ideal = -1;
+    dim_t simd_factor = 1;
+#endif
+
     arch_t id = bli_arch_query_id();
     switch ( id )
     {
+        case BLIS_ARCH_ZEN5:
         case BLIS_ARCH_ZEN4:
         case BLIS_ARCH_ZEN3:
         case BLIS_ARCH_ZEN2:
@@ -459,6 +472,11 @@ void bli_znormfv_unb_var1
 
             norm_fp   = bli_dznorm2fv_unb_var1_avx2;
             reduce_fp = bli_dnorm2fv_unb_var1_avx2;
+            fast_path_thresh = 2000;
+
+        #ifdef BLIS_ENABLE_OPENMP
+            simd_factor = 2;
+        #endif
 
             break;
 #endif
@@ -504,36 +522,48 @@ void bli_znormfv_unb_var1
         return;
     
     /*
-        When the size is such that nt_ideal is 1, and packing is not
-        required( incx == 1 ), we can directly call the kernel to
-        avoid framework overheads( fast-path ).
+        Call the kernel directly in these two cases :
+        - When incx == 0, since the norm is based on only one dcomplex
+          element( two real double precision elements )
+        - When the size is such that nt_ideal is 1, and packing is not
+          required( incx == 1 ), we can directly call the kernel to
+          avoid framework overheads( fast-path ).
     */
-    else if ( ( incx == 1 ) && ( n < 2000 ) )
+    else if ( ( incx == 0 ) || ( ( incx == 1 ) && ( n < fast_path_thresh ) ) )
     {
         norm_fp( n, x, incx, norm, cntx );
         return;
     }
-
-    // Setting the ideal number of threads if support is enabled
-    #if defined( BLIS_ENABLE_OPENMP ) && defined( AOCL_DYNAMIC )
-        if ( n < 2000 )
-            nt_ideal = 1;
-        else if ( n < 6500 )
-            nt_ideal = 4;
-        else if ( n < 71000 )
-            nt_ideal = 8;
-        else if ( n < 200000 )
-            nt_ideal = 16;
-        else if ( n < 1530000 )
-            nt_ideal = 32;
-        
-    #endif
 
     // Initialize a local runtime with global settings if necessary. Note
     // that in the case that a runtime is passed in, we make a local copy.
     rntm_t rntm_l;
     if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); }
     else                { rntm_l = *rntm; }
+
+    // Setting the ideal number of threads if support is enabled
+    #if defined( BLIS_ENABLE_OPENMP )
+
+        #if defined( AOCL_DYNAMIC )
+            aocl_znormfv_dynamic
+            (
+                id,
+                n,
+                &nt_ideal
+            );
+        #endif
+
+        // Variable to acquire threads from runtime
+        dim_t nt;
+        nt = bli_rntm_num_threads( &rntm_l );
+
+        // nt is less than 1 if BLIS was configured with default settings for parallelism
+        nt = ( nt < 1 )? 1 : nt;
+
+        if ( ( nt_ideal == -1 ) ||  ( nt_ideal > nt ) )
+            nt_ideal = nt;
+
+    #endif
 
     /*
         Initialize mem pool buffer to NULL and size to 0
@@ -545,16 +575,6 @@ void bli_znormfv_unb_var1
 
     mem_t mem_buf_X = { 0 };
     inc_t incx_buf = incx;
-    dim_t nt;
-
-    nt = bli_rntm_num_threads( &rntm_l );
-
-    // nt is less than 1 if BLIS was configured with default settings for parallelism
-    nt = ( nt < 1 )? 1 : nt;
-
-    // Altering the ideal thread count if it was not set or if it is greater than nt
-    if ( ( nt_ideal == -1 ) ||  ( nt_ideal > nt ) )
-        nt_ideal = nt;
 
     // Packing for non-unit strided vector x.
     // In order to get the buffer from pool via rntm access to memory broker
@@ -562,8 +582,7 @@ void bli_znormfv_unb_var1
     bli_rntm_set_num_threads_only( 1, &rntm_l );
     bli_pba_rntm_set_pba( &rntm_l );
 
-    if ( incx == 0 )    nt_ideal = 1;
-    else if ( incx != 1 )
+    if ( incx != 1 )
     {
         // Calculate the size required for "n" double elements in vector x.
         size_t buffer_size = n * sizeof( dcomplex );
@@ -593,10 +612,14 @@ void bli_znormfv_unb_var1
             }
             incx_buf = 1;
         }
+        // Resort to using single-threaded kernel call if packing fails,
+        // since we execute non-unit strided code section.
+    #ifdef BLIS_ENABLE_OPENMP
         else
         {
             nt_ideal = 1;
         }
+    #endif
     }
 
     #ifdef BLIS_ENABLE_OPENMP
@@ -684,7 +707,7 @@ void bli_znormfv_unb_var1
                 // Obtain the job-size and region for compute
                 dim_t job_per_thread, offset;
 
-                bli_normfv_thread_partition( n, n_threads, &offset, &job_per_thread, 2, incx_buf, thread_id );
+                bli_normfv_thread_partition( n, n_threads, &offset, &job_per_thread, simd_factor, incx_buf, thread_id );
                 x_start = x_buf + offset;
 
                 // Call to the kernel with the appropriate starting address
@@ -893,22 +916,23 @@ void bli_snormfv_unb_var1
     arch_t id = bli_arch_query_id();
     switch ( id )
     {
+        case BLIS_ARCH_ZEN5:
         case BLIS_ARCH_ZEN4:
         case BLIS_ARCH_ZEN3:
         case BLIS_ARCH_ZEN2:
         case BLIS_ARCH_ZEN:;
 #ifdef BLIS_KERNELS_ZEN
-            // Memory pool declarations for packing vector X.
-            // Initialize mem pool buffer to NULL and size to 0.
-            // "buf" and "size" fields are assigned once memory
-            // is allocated from the pool in bli_pba_acquire_m().
-            // This will ensure bli_mem_is_alloc() will be passed on
-            // an allocated memory if created or a NULL.
-            mem_t   mem_buf_X = { 0 };
-            rntm_t  rntm_l;
-            // Packing for non-unit strided vector x.
-            if ( incx != 1 )
+            // Handling the kernel call in case of non-unit strides
+            if ( ( incx != 1 ) && ( incx != 0 ) )
             {
+                // Memory pool declarations for packing vector X.
+                // Initialize mem pool buffer to NULL and size to 0.
+                // "buf" and "size" fields are assigned once memory
+                // is allocated from the pool in bli_pba_acquire_m().
+                // This will ensure bli_mem_is_alloc() will be passed on
+                // an allocated memory if created or a NULL.
+                mem_t   mem_buf_X = { 0 };
+                rntm_t  rntm_l;
                 // Initialize a local runtime with global settings if necessary. Note
                 // that in the case that a runtime is passed in, we make a local copy.
                 if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); }
@@ -947,18 +971,24 @@ void bli_snormfv_unb_var1
                     }
                     incx_buf = 1;
                 }
+
+                bli_snorm2fv_unb_var1_avx2( n, x_buf, incx_buf, norm, cntx );
+
+                if ( bli_mem_is_alloc( &mem_buf_X ) )
+                {
+                    #ifdef BLIS_ENABLE_MEM_TRACING
+                        printf( "bli_snorm2fv_unb_var1_avx2(): releasing mem pool block\n" );
+                    #endif
+                    // Return the buffer to pool.
+                    bli_pba_release( &rntm_l , &mem_buf_X );
+                }
             }
-
-            bli_snorm2fv_unb_var1_avx2( n, x_buf, incx_buf, norm, cntx );
-
-            if ( bli_mem_is_alloc( &mem_buf_X ) )
+            else
             {
-                #ifdef BLIS_ENABLE_MEM_TRACING
-                    printf( "bli_snorm2fv_unb_var1_avx2(): releasing mem pool block\n" );
-                #endif
-                // Return the buffer to pool.
-                bli_pba_release( &rntm_l , &mem_buf_X );
+                // Call the kernel with the unit-strided vector x
+                bli_snorm2fv_unb_var1_avx2( n, x_buf, incx_buf, norm, cntx );
             }
+
             break;
 #endif
         default:;
@@ -1022,17 +1052,39 @@ void bli_dnormfv_unb_var1
     void ( *norm_fp )( dim_t, double*, inc_t, double*, cntx_t* ) = NULL;
 
     double *x_buf = x;
+    dim_t fast_path_thresh = 1;
+#ifdef BLIS_ENABLE_OPENMP
+    dim_t simd_factor = 1;
     dim_t nt_ideal = -1;
+#endif
+
     arch_t id = bli_arch_query_id();
     switch ( id )
     {
+        case BLIS_ARCH_ZEN5:
         case BLIS_ARCH_ZEN4:
+#if defined(BLIS_KERNELS_ZEN4)
+
+        norm_fp = bli_dnorm2fv_unb_var1_avx512;
+        fast_path_thresh = 4500;
+
+    #ifdef BLIS_ENABLE_OPENMP
+        simd_factor = 8;
+    #endif
+
+        break;
+#endif
         case BLIS_ARCH_ZEN3:
         case BLIS_ARCH_ZEN2:
         case BLIS_ARCH_ZEN:
 #ifdef BLIS_KERNELS_ZEN
 
         norm_fp = bli_dnorm2fv_unb_var1_avx2;
+        fast_path_thresh = 4000;
+
+    #ifdef BLIS_ENABLE_OPENMP
+        simd_factor = 4;
+    #endif
 
         break;
 #endif
@@ -1077,37 +1129,48 @@ void bli_dnormfv_unb_var1
         return;
     
     /*
-        When the size is such that nt_ideal is 1, and packing is not
-        required( incx == 1 ), we can directly call the kernel to
-        avoid framework overheads( fast-path ).
+        Call the kernel directly in these two cases :
+        - When incx == 0, since the norm is based on only one dcomplex
+          element( two real double precision elements )
+        - When the size is such that nt_ideal is 1, and packing is not
+          required( incx == 1 ), we can directly call the kernel to
+          avoid framework overheads( fast-path ).
     */
-    else if ( ( incx == 1 ) && ( n < 4000 ) )
+    else if ( ( incx == 0 ) || ( ( incx == 1 ) && ( n < fast_path_thresh ) ) )
     {
         norm_fp( n, x, incx, norm, cntx );
         return;
     }
-
-    // Setting the ideal number of threads if support is enabled
-    #if defined( BLIS_ENABLE_OPENMP ) && defined( AOCL_DYNAMIC )
-
-        if ( n < 4000 )
-            nt_ideal = 1;
-        else if ( n < 17000 )
-            nt_ideal = 4;
-        else if ( n < 136000 )
-            nt_ideal = 8;
-        else if ( n < 365000 )
-            nt_ideal = 16;
-        else if ( n < 2950000 )
-            nt_ideal = 32;
-
-    #endif
 
     // Initialize a local runtime with global settings if necessary. Note
     // that in the case that a runtime is passed in, we make a local copy.
     rntm_t rntm_l;
     if ( rntm == NULL ) { bli_rntm_init_from_global( &rntm_l ); }
     else                { rntm_l = *rntm; }
+
+    // Setting the ideal number of threads if support is enabled
+    #if defined( BLIS_ENABLE_OPENMP )
+
+        #if defined( AOCL_DYNAMIC )
+            aocl_dnormfv_dynamic
+            (
+                id,
+                n,
+                &nt_ideal
+            );
+        #endif
+
+        // Variable to acquire threads from runtime
+        dim_t nt;
+        nt = bli_rntm_num_threads( &rntm_l );
+
+        // nt is less than 1 if BLIS was configured with default settings for parallelism
+        nt = ( nt < 1 )? 1 : nt;
+
+        if ( ( nt_ideal == -1 ) ||  ( nt_ideal > nt ) )
+            nt_ideal = nt;
+
+    #endif
 
     /*
         Initialize mem pool buffer to NULL and size to 0
@@ -1119,15 +1182,6 @@ void bli_dnormfv_unb_var1
 
     mem_t mem_buf_X = { 0 };
     inc_t incx_buf = incx;
-    dim_t nt;
-
-    nt = bli_rntm_num_threads( &rntm_l );
-
-    // nt is less than 1 if BLIS was configured with default settings for parallelism
-    nt = ( nt < 1 )? 1 : nt;
-
-    if ( ( nt_ideal == -1 ) ||  ( nt_ideal > nt ) )
-        nt_ideal = nt;
 
     // Packing for non-unit strided vector x.
     // In order to get the buffer from pool via rntm access to memory broker
@@ -1135,8 +1189,7 @@ void bli_dnormfv_unb_var1
     bli_rntm_set_num_threads_only( 1, &rntm_l );
     bli_pba_rntm_set_pba( &rntm_l );
 
-    if ( incx == 0 )    nt_ideal = 1;
-    else if ( incx != 1 )
+    if ( incx != 1 )
     {
         // Calculate the size required for "n" double elements in vector x.
         size_t buffer_size = n * sizeof( double );
@@ -1166,10 +1219,14 @@ void bli_dnormfv_unb_var1
             }
             incx_buf = 1;
         }
+        // In case packing fails, we use the original buffer. We have to make sure that
+        // we reset the number of threads to 1 if we have enabled openmp for multithreading.
+    #ifdef BLIS_ENABLE_OPENMP
         else
         {
             nt_ideal = 1;
         }
+    #endif
     }
 
     #ifdef BLIS_ENABLE_OPENMP
@@ -1257,7 +1314,7 @@ void bli_dnormfv_unb_var1
 
                 // Obtain the job-size and region for compute
                 dim_t job_per_thread, offset;
-                bli_normfv_thread_partition( n, n_threads, &offset, &job_per_thread, 4, incx_buf, thread_id );
+                bli_normfv_thread_partition( n, n_threads, &offset, &job_per_thread, simd_factor, incx_buf, thread_id );
 
                 x_start = x_buf + offset;
 

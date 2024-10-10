@@ -1,9 +1,10 @@
 /*
+
    BLIS
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -28,6 +29,7 @@
    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 */
 
 #include "blis.h"
@@ -94,7 +96,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea(mem(   , r15, 1), rsi)          // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -102,7 +104,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem( r8, r8, 2 ), r10 )        // r10 = 3 * rs_a
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_a
 
@@ -130,7 +132,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -152,7 +154,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -175,7 +177,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -198,7 +200,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -233,7 +235,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -256,7 +258,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -268,7 +270,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -276,7 +278,9 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
@@ -284,20 +288,23 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
     vmovups( ( rax,  r8, 4 ), ymm4 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA5(  8,  9, 10, 20, 21 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA5( 17, 18, 19, 29, 30 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -309,7 +316,11 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
     je( .POST_ACCUM )
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
@@ -317,12 +328,17 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
     vmovss( ( rax,  r8, 4 ), xmm4 )
     add( imm( 1*4 ), rax )
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA5(  8,  9, 10, 20, 21 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -360,7 +376,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     // Accumulates the results by horizontally adding the YMM registers,
     // and having the final result in xmm registers.
     ACCUM_YMM( 4, 7, 10, 13, 4 )
@@ -390,7 +406,7 @@ void bli_sgemmsup_rd_zen_asm_5x64_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -524,7 +540,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem( , r15, 1 ), rsi )         // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -532,7 +548,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )    // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )   // rdi = 5 * rs_b
 
@@ -558,7 +574,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -580,7 +596,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -603,7 +619,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -625,7 +641,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -659,7 +675,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -681,7 +697,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -693,7 +709,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -701,27 +717,32 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
     vmovups( ( rax, r10, 1 ), ymm3 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA4(  8,  9, 10, 20 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA4( 14, 15, 16, 26 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA4( 17, 18, 19, 29 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -733,19 +754,28 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
     je( .POST_ACCUM )
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
     vmovss( ( rax, r10, 1 ), xmm3 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA4(  8,  9, 10, 20 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -761,7 +791,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
 
     mov( var( beta ), rax )         // load address of beta
     vbroadcastss( ( rax ), xmm0 )
-    
+
 
     vxorps( xmm1, xmm1, xmm1 )
     vucomiss( xmm1, xmm0 )          // check if beta = 0
@@ -772,7 +802,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -796,7 +826,7 @@ void bli_sgemmsup_rd_zen_asm_4x64_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -931,7 +961,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )  // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -939,7 +969,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
 
@@ -965,7 +995,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -986,7 +1016,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -1007,7 +1037,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -1028,7 +1058,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -1063,7 +1093,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -1084,7 +1114,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -1096,7 +1126,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -1105,26 +1135,31 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
-    vmovups(        ( rbx ), zmm6 )
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
+    vmovups(        ( rbx ), ymm6 )
     VFMA3(  8,  9, 10 )
 
-    vmovups( ( rbx, r9, 1 ), zmm6 )
+    vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA3( 11, 12, 13 )
-    
-    vmovups( ( rbx, r9, 2 ), zmm6 )
+
+    vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA3( 14, 15, 16 )
 
-    vmovups( ( rbx, r13, 1 ), zmm6 )
+    vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA3( 17, 18, 19 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -1136,18 +1171,27 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
     je( .POST_ACCUM )
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA3(  8,  9, 10 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -1175,7 +1219,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -1193,7 +1237,7 @@ void bli_sgemmsup_rd_zen_asm_3x64_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -1318,7 +1362,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -1326,10 +1370,10 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )    // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )   // rdi = 5 * rs_b
-    
+
 
     INIT_REG
 
@@ -1352,7 +1396,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -1372,7 +1416,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -1393,7 +1437,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -1413,7 +1457,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -1447,7 +1491,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -1467,7 +1511,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -1479,7 +1523,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -1488,25 +1532,30 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA2( 8, 9 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA2( 14, 15 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA2( 17, 18 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -1519,17 +1568,26 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA2( 8, 9 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA2( 14, 15 )
 
@@ -1572,7 +1630,7 @@ void bli_sgemmsup_rd_zen_asm_2x64_avx512
 
     ZMM_TO_YMM(  8,  9, 11, 12,  4,  5,  7,  8 )
     ZMM_TO_YMM( 14, 15, 17, 18, 10, 11, 13, 14 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
 
@@ -1686,7 +1744,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -1694,10 +1752,10 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
-    
+
 
     INIT_REG
 
@@ -1719,7 +1777,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -1738,7 +1796,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -1757,7 +1815,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -1776,7 +1834,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -1808,7 +1866,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -1827,7 +1885,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -1839,7 +1897,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -1848,24 +1906,29 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA1( 8 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA1( 14 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA1( 17 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -1878,16 +1941,25 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA1( 8 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA1( 11 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA1( 14 )
 
@@ -1913,7 +1985,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
     label( .POST_ACCUM_STOR )
 
     ZMM_TO_YMM( 8, 11, 14, 17, 4, 7, 10, 13 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
 
     ALPHA_SCALE1                // Scaling the result of A*B with alpha
@@ -1927,7 +1999,7 @@ void bli_sgemmsup_rd_zen_asm_1x64_avx512
     label( .POST_ACCUM_STOR_BZ )
 
     ZMM_TO_YMM( 8, 11, 14, 17, 4, 7, 10, 13 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
 
     ALPHA_SCALE1                // Scaling the result of A*B with alpha
@@ -2040,7 +2112,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -2048,7 +2120,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
 
@@ -2076,7 +2148,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -2099,7 +2171,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -2123,7 +2195,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -2146,7 +2218,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -2183,7 +2255,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -2206,7 +2278,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -2218,7 +2290,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -2227,7 +2299,9 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
@@ -2235,20 +2309,23 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
     vmovups( ( rax,  r8, 4 ), ymm4 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA5( 8, 9, 10, 20, 21 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA5( 17, 18, 19, 29, 30 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -2261,7 +2338,11 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
@@ -2269,12 +2350,17 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
     vmovss( ( rax,  r8, 4 ), xmm4 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA5( 8, 9, 10, 20, 21 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -2302,7 +2388,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -2330,7 +2416,7 @@ void bli_sgemmsup_rd_zen_asm_5x48_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -2463,7 +2549,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -2471,7 +2557,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
 
@@ -2497,7 +2583,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -2519,7 +2605,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -2542,7 +2628,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -2564,7 +2650,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -2600,7 +2686,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -2622,7 +2708,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -2634,7 +2720,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -2643,27 +2729,32 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
     vmovups( ( rax, r10, 1 ), ymm3 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA4(  8,  9, 10, 20 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA4( 14, 15, 16, 26 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA4( 17, 18, 19, 29 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -2676,19 +2767,28 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
     vmovss( ( rax, r10, 1 ), xmm3 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA4(  8,  9, 10, 20 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -2715,7 +2815,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -2741,7 +2841,7 @@ void bli_sgemmsup_rd_zen_asm_4x48_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -2876,7 +2976,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -2884,7 +2984,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
 
@@ -2910,7 +3010,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -2931,7 +3031,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -2952,7 +3052,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -2973,7 +3073,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -3008,7 +3108,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -3029,7 +3129,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -3041,7 +3141,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -3050,26 +3150,31 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
-    vmovups(        ( rbx ), zmm6 )
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
+    vmovups(        ( rbx ), ymm6 )
     VFMA3(  8,  9, 10 )
 
-    vmovups( ( rbx, r9, 1 ), zmm6 )
+    vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA3( 11, 12, 13 )
-    
-    vmovups( ( rbx, r9, 2 ), zmm6 )
+
+    vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA3( 14, 15, 16 )
 
-    vmovups( ( rbx, r13, 1 ), zmm6 )
+    vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA3( 17, 18, 19 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -3082,18 +3187,27 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA3(  8,  9, 10 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -3121,7 +3235,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -3139,7 +3253,7 @@ void bli_sgemmsup_rd_zen_asm_3x48_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -3263,7 +3377,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -3271,10 +3385,10 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )    // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )   // rdi = 5 * rs_b
-    
+
 
     INIT_REG
 
@@ -3297,7 +3411,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -3317,7 +3431,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -3338,7 +3452,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -3358,7 +3472,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -3392,7 +3506,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -3412,7 +3526,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -3424,7 +3538,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -3433,25 +3547,30 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA2( 8, 9 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA2( 14, 15 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA2( 17, 18 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -3464,17 +3583,26 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA2( 8, 9 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA2( 14, 15 )
 
@@ -3501,7 +3629,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     ZMM_TO_YMM(  8,  9, 11, 12,  4,  5,  7,  8 )
     ZMM_TO_YMM( 14, 15, 17, 18, 10, 11, 13, 14 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
 
@@ -3517,7 +3645,7 @@ void bli_sgemmsup_rd_zen_asm_2x48_avx512
 
     ZMM_TO_YMM(  8,  9, 11, 12,  4,  5,  7,  8 )
     ZMM_TO_YMM( 14, 15, 17, 18, 10, 11, 13, 14 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
 
@@ -3633,7 +3761,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -3641,10 +3769,10 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
-    
+
     INIT_REG
 
     mov( var( k_iter64 ), rsi )       // load k_iter
@@ -3665,7 +3793,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -3684,7 +3812,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -3703,7 +3831,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -3722,7 +3850,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -3755,7 +3883,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -3774,7 +3902,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -3786,7 +3914,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -3795,24 +3923,29 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA1( 8 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA1( 14 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA1( 17 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -3825,16 +3958,25 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA1( 8 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA1( 11 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA1( 14 )
 
@@ -3859,7 +4001,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
     label( .POST_ACCUM_STOR )
 
     ZMM_TO_YMM( 8, 11, 14, 17, 4, 7, 10, 13 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
 
     ALPHA_SCALE1                // Scaling the result of A*B with alpha
@@ -3873,7 +4015,7 @@ void bli_sgemmsup_rd_zen_asm_1x48_avx512
     label( .POST_ACCUM_STOR_BZ )
 
     ZMM_TO_YMM( 8, 11, 14, 17, 4, 7, 10, 13 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
 
     ALPHA_SCALE1                // Scaling the result of A*B with alpha
@@ -3985,7 +4127,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -3993,7 +4135,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )    // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )   // rdi = 5 * rs_b
 
@@ -4021,7 +4163,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -4044,7 +4186,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -4068,7 +4210,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -4091,7 +4233,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -4127,7 +4269,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -4150,7 +4292,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -4162,7 +4304,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -4171,7 +4313,9 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
@@ -4179,20 +4323,23 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
     vmovups( ( rax,  r8, 4 ), ymm4 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA5( 8, 9, 10, 20, 21 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA5( 17, 18, 19, 29, 30 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -4205,7 +4352,11 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
@@ -4213,12 +4364,17 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
     vmovss( ( rax,  r8, 4 ), xmm4 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA5( 8, 9, 10, 20, 21 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA5( 11, 12, 13, 23, 24 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA5( 14, 15, 16, 26, 27 )
 
@@ -4246,7 +4402,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -4274,7 +4430,7 @@ void bli_sgemmsup_rd_zen_asm_5x32_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -4408,7 +4564,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -4416,7 +4572,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
 
@@ -4443,7 +4599,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -4465,7 +4621,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -4488,7 +4644,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -4510,7 +4666,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -4546,7 +4702,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -4568,7 +4724,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -4580,7 +4736,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -4589,27 +4745,32 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
     vmovups( ( rax, r10, 1 ), ymm3 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA4(  8,  9, 10, 20 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA4( 14, 15, 16, 26 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA4( 17, 18, 19, 29 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -4621,19 +4782,28 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
     je( .POST_ACCUM )
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
     vmovss( ( rax, r10, 1 ), xmm3 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA4(  8,  9, 10, 20 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA4( 11, 12, 13, 23 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA4( 14, 15, 16, 26 )
 
@@ -4656,12 +4826,12 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
 
 
     // Accumulating & storing the results when beta != 0
-    label( .POST_ACCUM_STOR )       
+    label( .POST_ACCUM_STOR )
 
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -4687,7 +4857,7 @@ void bli_sgemmsup_rd_zen_asm_4x32_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -4819,7 +4989,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -4827,7 +4997,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
 
@@ -4853,7 +5023,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -4874,7 +5044,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -4895,7 +5065,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -4916,7 +5086,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -4951,7 +5121,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -4972,7 +5142,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -4984,7 +5154,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -4993,26 +5163,31 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     vmovups( ( rax,  r8, 2 ), ymm2 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
-    vmovups(        ( rbx ), zmm6 )
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
+    vmovups(        ( rbx ), ymm6 )
     VFMA3(  8,  9, 10 )
 
-    vmovups( ( rbx, r9, 1 ), zmm6 )
+    vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA3( 11, 12, 13 )
-    
-    vmovups( ( rbx, r9, 2 ), zmm6 )
+
+    vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA3( 14, 15, 16 )
 
-    vmovups( ( rbx, r13, 1 ), zmm6 )
+    vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA3( 17, 18, 19 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -5025,18 +5200,27 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     vmovss( ( rax,  r8, 2 ), xmm2 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA3(  8,  9, 10 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA3( 11, 12, 13 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA3( 14, 15, 16 )
 
@@ -5064,7 +5248,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -5082,7 +5266,7 @@ void bli_sgemmsup_rd_zen_asm_3x32_avx512
     ZMM_TO_YMM(  8,  9, 10, 11,  4,  5,  6,  7 )
     ZMM_TO_YMM( 12, 13, 14, 15,  8,  9, 10, 11 )
     ZMM_TO_YMM( 16, 17, 18, 19, 12, 13, 14, 15 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
     ACCUM_YMM( 6, 9, 12, 15, 6 )
@@ -5207,7 +5391,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -5215,10 +5399,10 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
-    
+
     INIT_REG
 
     mov( var( k_iter64 ), rsi )       // load k_iter
@@ -5240,7 +5424,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -5260,7 +5444,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -5281,7 +5465,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -5301,7 +5485,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -5335,7 +5519,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -5355,7 +5539,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA2( 14, 15 )
 
@@ -5367,7 +5551,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -5376,25 +5560,30 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     vmovups( ( rax,  r8, 1 ), ymm1 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA2( 8, 9 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA2( 11, 12 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA2( 14, 15 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA2( 17, 18 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -5407,17 +5596,26 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     vmovss( ( rax,  r8, 1 ), xmm1 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA2( 8, 9 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA2( 11, 12 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA2( 14, 15 )
 
@@ -5444,7 +5642,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     ZMM_TO_YMM(  8,  9, 11, 12,  4,  5,  7,  8 )
     ZMM_TO_YMM( 14, 15, 17, 18, 10, 11, 13, 14 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
 
@@ -5460,7 +5658,7 @@ void bli_sgemmsup_rd_zen_asm_2x32_avx512
 
     ZMM_TO_YMM(  8,  9, 11, 12,  4,  5,  7,  8 )
     ZMM_TO_YMM( 14, 15, 17, 18, 10, 11, 13, 14 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
     ACCUM_YMM( 5, 8, 11, 14, 5 )
 
@@ -5575,7 +5773,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
     lea( mem( , r15, 1 ), rsi )
     imul( imm( 1*4 ), rsi )
     lea( mem( r12, rsi, 1 ), r12 )      // c += r15 * cs_c
-    
+
     lea( mem(  , r15, 1 ), rsi )        // rsi = r15 = 4*jj;
     imul( r9, rsi )                     // rsi *= cs_b;
     lea( mem( rdx, rsi, 1 ), rdx )      // rbx = b + 4*jj*cs_b;
@@ -5583,10 +5781,10 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
     lea( mem( r12 ), rcx )              // load c to rcx
     lea( mem( r14 ), rax )              // load a to rax
     lea( mem( rdx ), rbx )              // load b to rbx
-    
+
     lea( mem(  r8, r8, 2 ), r10 )       // r10 = 3 * rs_b
     lea( mem( r10, r8, 2 ), rdi )       // rdi = 5 * rs_b
-    
+
 
     INIT_REG
 
@@ -5608,7 +5806,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -5627,7 +5825,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -5646,7 +5844,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -5665,7 +5863,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -5698,7 +5896,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -5717,7 +5915,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
 
     vmovups( ( rbx, r9, 1 ), zmm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), zmm6 )
     VFMA1( 14 )
 
@@ -5729,7 +5927,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
     dec( rsi )
     jne( .K_LOOP_ITER32 )
 
-    
+
     label( .CONSIDER_K_ITER_8 )
     mov( var( k_iter8 ), rsi )
     test( rsi, rsi )
@@ -5738,24 +5936,29 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
 
     label( .K_LOOP_ITER8 )
     // ITER 0
-    // load row from A
+    // Load row from A using ymm registers
+    // Upper 256-bit lanes are cleared for the
+    // zmm counterpart
     vmovups(         ( rax ), ymm0 )
     add( imm( 8*4 ), rax )
 
-    // load column from B
+    // Load column from B using ymm registers
+    // Upper 256-bit lane is cleared for the
+    // zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovups(        ( rbx ), ymm6 )
     VFMA1( 8 )
 
     vmovups( ( rbx, r9, 1 ), ymm6 )
     VFMA1( 11 )
-    
+
     vmovups( ( rbx, r9, 2 ), ymm6 )
     VFMA1( 14 )
 
     vmovups( ( rbx, r13, 1 ), ymm6 )
     VFMA1( 17 )
 
-    add( imm( 8*4 ), rbx )    
+    add( imm( 8*4 ), rbx )
 
     dec( rsi )
     jne( .K_LOOP_ITER8 )
@@ -5768,16 +5971,25 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
 
 
     label( .K_LOOP_LEFT1 )
-    
+
+    // Load row from A using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
     vmovss(         ( rax ), xmm0 )
     add( imm( 1*4 ), rax )                 // a += 1*cs_b = 1*4;
 
+    // Load column from B using xmm registers
+    // Upper 256-bit lanes and the upper 224
+    // bits of the lower 256-bit lane are cleared
+    // for the zmm counterpart
+    // Thus, we can re-use the VFMA6 macro
     vmovss(        ( rbx ), xmm6 )
     VFMA1( 8 )
 
     vmovss( ( rbx, r9, 1 ), xmm6 )
     VFMA1( 11 )
-    
+
     vmovss( ( rbx, r9, 2 ), xmm6 )
     VFMA1( 14 )
 
@@ -5802,7 +6014,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
     label( .POST_ACCUM_STOR )
 
     ZMM_TO_YMM( 8, 11, 14, 17, 4, 7, 10, 13 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
 
     ALPHA_SCALE1                // Scaling the result of A*B with alpha
@@ -5816,7 +6028,7 @@ void bli_sgemmsup_rd_zen_asm_1x32_avx512
     label( .POST_ACCUM_STOR_BZ )
 
     ZMM_TO_YMM( 8, 11, 14, 17, 4, 7, 10, 13 )
-    
+
     ACCUM_YMM( 4, 7, 10, 13, 4 )
 
     ALPHA_SCALE1                // Scaling the result of A*B with alpha

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -47,7 +47,7 @@ static dgemmsup_ker_ft kern_fp[] =
     bli_dgemmsup_rv_haswell_asm_6x8n
 };
 
-#if defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64)
+#if defined(BLIS_FAMILY_ZEN5) || defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64)
 static err_t bli_dgemm_tiny_24x8_kernel
      (
         conj_t              conja,
@@ -514,21 +514,16 @@ err_t bli_dgemm_tiny
         double*    c, const inc_t rs_c0, const inc_t cs_c0
 )
 {
-    arch_t arch_id = get_arch_id();
-    //for the below tiny sizes of matrix, we force it to be ST compute.
-    if(
-        m <= 24 && n <= 24 && k <= 20 &&
-        (BLIS_ARCH_ZEN == arch_id ||
-        BLIS_ARCH_ZEN2 == arch_id ||
-        BLIS_ARCH_ZEN3 == arch_id ||
-        BLIS_ARCH_ZEN4 == arch_id)
-      )
+    // Query the architecture ID
+    arch_t id = bli_arch_query_id();
+
+        // Pick the kernel based on the architecture ID
+    switch (id)
     {
-        bool ret = bli_aocl_enable_instruction_query();
-        if((ret == FALSE) ||
-           (arch_id != BLIS_ARCH_ZEN4)
-          )
-        {
+        case BLIS_ARCH_ZEN5:
+            if(m<24 && ((n<=24 && k<=20) ||
+            (n<=50 && ((m<=4 && k<=50) || (m!=8 && m!=9 && m!=16 && k<=10)))))
+            {
                 return bli_dgemm_tiny_6x8_kernel
                         (
                             1 * (transa == BLIS_CONJ_NO_TRANSPOSE),
@@ -544,11 +539,15 @@ err_t bli_dgemm_tiny
                             beta,
                             c, rs_c0, cs_c0
                         );
-        }
-#if defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64)
-        else if(BLIS_ARCH_ZEN4 == arch_id)
-        {
-                return bli_dgemm_tiny_24x8_kernel
+            }
+            break;
+        case BLIS_ARCH_ZEN4:
+        case BLIS_ARCH_ZEN3:
+        case BLIS_ARCH_ZEN2:
+        case BLIS_ARCH_ZEN:
+            if(m <= 24 && n <= 24 && k <= 20)
+            {
+                return bli_dgemm_tiny_6x8_kernel
                         (
                             1 * (transa == BLIS_CONJ_NO_TRANSPOSE),
                             1 * (transb == BLIS_CONJ_NO_TRANSPOSE),
@@ -563,65 +562,68 @@ err_t bli_dgemm_tiny
                             beta,
                             c, rs_c0, cs_c0
                         );
-        }
-#endif
+            }
+            break;
+        default:
+            return BLIS_FAILURE;
     }
+
     if(FALSE == bli_thread_get_is_parallel())
     {
-        if(
-            BLIS_ARCH_ZEN == arch_id ||
-            BLIS_ARCH_ZEN2 == arch_id ||
-            BLIS_ARCH_ZEN3 == arch_id
-          )
+        // Pick the kernel based on the architecture ID
+        switch (id)
         {
-            if( ( (m <= 8)  || ( (m <= 1000) && (n <= 24) && (k >= 4) ) ) && (k <= 1500) )
-            {
-                return bli_dgemm_tiny_6x8_kernel
-                        (
-                            1 * (transa == BLIS_CONJ_NO_TRANSPOSE),
-                            1 * (transb == BLIS_CONJ_NO_TRANSPOSE),
-                            transa,
-                            transb,
-                            m,
-                            n,
-                            k,
-                            alpha,
-                            a, rs_a0, cs_a0,
-                            b, rs_b0, cs_b0,
-                            beta,
-                            c, rs_c0, cs_c0
-                        );
-            }
-        }
-#if defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64)
-        else if(BLIS_ARCH_ZEN4 == arch_id)
-        {
-            if(((m == n) && (m < 400) && (k < 1000)) ||
-            ( (m != n) && (( ((m + n -k) < 1500) &&
-            ((m + k-n) < 1500) && ((n + k-m) < 1500) ) ||
-            ((n <= 100) && (k <=100)))))
-            {
-                return bli_dgemm_tiny_24x8_kernel
-                        (
-                            1 * (transa == BLIS_CONJ_NO_TRANSPOSE),
-                            1 * (transb == BLIS_CONJ_NO_TRANSPOSE),
-                            transa,
-                            transb,
-                            m,
-                            n,
-                            k,
-                            alpha,
-                            a, rs_a0, cs_a0,
-                            b, rs_b0, cs_b0,
-                            beta,
-                            c, rs_c0, cs_c0
-                        );
-            }
-        }
+          case BLIS_ARCH_ZEN5:
+          case BLIS_ARCH_ZEN4:
+#if defined(BLIS_FAMILY_ZEN5) || defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64)
+              if(((m == n) && (m < 400) && (k < 1000)) ||
+              ( (m != n) && (( ((m + n -k) < 1500) &&
+              ((m + k-n) < 1500) && ((n + k-m) < 1500) ) ||
+              ((n <= 100) && (k <=100)))))
+              {
+                  return bli_dgemm_tiny_24x8_kernel
+                          (
+                              1 * (transa == BLIS_CONJ_NO_TRANSPOSE),
+                              1 * (transb == BLIS_CONJ_NO_TRANSPOSE),
+                              transa,
+                              transb,
+                              m,
+                              n,
+                              k,
+                              alpha,
+                              a, rs_a0, cs_a0,
+                              b, rs_b0, cs_b0,
+                              beta,
+                              c, rs_c0, cs_c0
+                          );
+              }
 #endif
-        else
-        {
-            ;//Return failure
+              break;
+
+          case BLIS_ARCH_ZEN:
+          case BLIS_ARCH_ZEN2:
+          case BLIS_ARCH_ZEN3:
+              if( ( (m <= 8)  || ( (m <= 1000) && (n <= 24) && (k >= 4) ) ) && (k <= 1500) )
+              {
+                  return bli_dgemm_tiny_6x8_kernel
+                          (
+                              1 * (transa == BLIS_CONJ_NO_TRANSPOSE),
+                              1 * (transb == BLIS_CONJ_NO_TRANSPOSE),
+                              transa,
+                              transb,
+                              m,
+                              n,
+                              k,
+                              alpha,
+                              a, rs_a0, cs_a0,
+                              b, rs_b0, cs_b0,
+                              beta,
+                              c, rs_c0, cs_c0
+                          );
+              }
+              break;
+          default:
+              return BLIS_FAILURE;
         }
     }
 

@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -35,12 +35,13 @@
 #include <gtest/gtest.h>
 #include "test_subv.h"
 
-class dsubvGenericTest :
+class dsubvGeneric :
+        // input params : x or conj(x), vector length, stride size of x, stride size of y
         public ::testing::TestWithParam<std::tuple<char, gtint_t, gtint_t, gtint_t>> {};
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(dsubvGenericTest);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(dsubvGeneric);
 
-TEST_P( dsubvGenericTest, RandomData )
+TEST_P( dsubvGeneric, API )
 {
     using T = double;
     //----------------------------------------------------------
@@ -57,7 +58,14 @@ TEST_P( dsubvGenericTest, RandomData )
     gtint_t incy = std::get<3>(GetParam());
 
     // Set the threshold for the errors:
-    double thresh = testinghelpers::getEpsilon<T>();
+    // Check gtestsuite subv.h (no netlib version) for reminder of the
+    // functionality from which we estimate operation count per element
+    // of output, and hence the multipler for epsilon.
+    double thresh;
+    if (n == 0)
+        thresh = 0.0;
+    else
+        thresh = testinghelpers::getEpsilon<T>();
 
     //----------------------------------------------------------
     //     Call generic test body using those parameters
@@ -65,37 +73,65 @@ TEST_P( dsubvGenericTest, RandomData )
     test_subv<T>( conj_x, n, incx, incy, thresh );
 }
 
-// Prints the test case combination
-class dsubvGenericTestPrint {
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<char,gtint_t,gtint_t,gtint_t>> str) const {
-        char conj      = std::get<0>(str.param);
-        gtint_t n      = std::get<1>(str.param);
-        gtint_t incx   = std::get<2>(str.param);
-        gtint_t incy   = std::get<3>(str.param);
-        std::string str_name = "bli_dsubv";
-        str_name += "_" + std::to_string(n);
-        str_name += "_" + std::string(&conj, 1);
-        std::string incx_str = ( incx > 0) ? std::to_string(incx) : "m" + std::to_string(std::abs(incx));
-        str_name += "_" + incx_str;
-        std::string incy_str = ( incy > 0) ? std::to_string(incy) : "m" + std::to_string(std::abs(incy));
-        str_name += "_" + incy_str;
-        return str_name;
-    }
-};
+#ifdef TEST_BLIS_TYPED
+INSTANTIATE_TEST_SUITE_P(
+        PositiveIncrements,
+        dsubvGeneric,
+        ::testing::Combine(
+            // n: use x, c: use conj(x)
+            ::testing::Values('n'),
+            // n: size of vector.
+            // as we don't have BLIS vectorized kernels for subv,
+            // having fewer sizes or maybe a Range would be sufficient
+            // to ensure code coverage of the reference kernel.
+            ::testing::Values(
+                gtint_t( 1),
+                gtint_t( 2),
+                gtint_t( 3),
+                gtint_t( 5),
+                gtint_t( 7),
+                gtint_t( 9),
+                gtint_t(10),
+                gtint_t(15),
+                gtint_t(20),
+                gtint_t(55),
+                gtint_t(99)
+            ),
+            // incx: stride of x vector.
+            ::testing::Values(
+                gtint_t(1),gtint_t(5)
+            ),
+            // incy: stride of y vector.
+            ::testing::Values(
+                gtint_t(1),gtint_t(5)
+            )
+        ),
+        ::subvGenericPrint()
+    );
+#endif
 
 #ifdef TEST_BLIS_TYPED
-// Black box testing.
 INSTANTIATE_TEST_SUITE_P(
-        Blackbox,
-        dsubvGenericTest,
+        PositiveIncrementforConjugate,
+        dsubvGeneric,
         ::testing::Combine(
-            ::testing::Values('n'),                                          // n: not transpose for x
-            ::testing::Range(gtint_t(10), gtint_t(101), 10),                 // m size of vector takes values from 10 to 100 with step size of 10.
-            ::testing::Values(gtint_t(1), gtint_t(4)),                       // stride size for x
-            ::testing::Values(gtint_t(1), gtint_t(7))                        // stride size for y
+            // c: conjugate for x
+            ::testing::Values('c'),
+            // n: size of vector.
+            // as conjugate of a real number x is x,
+            // so adding a single test that uses 'c' as an option for sanity check.
+            ::testing::Values(
+                gtint_t( 1),gtint_t( 7)
+            ),
+            // incx: stride of x vector.
+            ::testing::Values(
+                gtint_t(1),gtint_t(5)
+            ),
+            // incy: stride of y vector.
+            ::testing::Values(
+                gtint_t(1),gtint_t(5)
+            )
         ),
-        ::dsubvGenericTestPrint()
+        ::subvGenericPrint()
     );
 #endif

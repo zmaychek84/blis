@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,7 +35,7 @@
 #include <gtest/gtest.h>
 #include "test_gemm_compute.h"
 
-class DGemmComputeTest :
+class dgemmComputeGeneric :
         public ::testing::TestWithParam<std::tuple<char,
                                                    char,
                                                    char,
@@ -50,7 +50,7 @@ class DGemmComputeTest :
                                                    gtint_t,
                                                    gtint_t>> {};
 
-TEST_P(DGemmComputeTest, RandomData)
+TEST_P( dgemmComputeGeneric, API )
 {
     using T = double;
     //----------------------------------------------------------
@@ -85,63 +85,32 @@ TEST_P(DGemmComputeTest, RandomData)
     gtint_t ldc_inc = std::get<12>(GetParam());
 
     // Set the threshold for the errors:
-    double intermediate = (double)m*n*k;
-    double thresh = 10*intermediate*testinghelpers::getEpsilon<T>();
+    // Check gtestsuite gemm.h or netlib source code for reminder of the
+    // functionality from which we estimate operation count per element
+    // of output, and hence the multipler for epsilon.
+    double thresh;
+    if (m == 0 || n == 0)
+        thresh = 0.0;
+    else if ((alpha == testinghelpers::ZERO<T>() || k == 0) &&
+             (beta == testinghelpers::ZERO<T>() || beta == testinghelpers::ONE<T>()))
+        thresh = 0.0;
+    else
+        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
+        //thresh = (7*k+1)*testinghelpers::getEpsilon<T>();
+
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
     test_gemm_compute<T>( storage, transa, transb, packa, packb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
 }
 
-class DGemmComputeTestPrint {
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<char, char, char, char, char, gtint_t, gtint_t, gtint_t, double, double, gtint_t, gtint_t, gtint_t>> str) const {
-        char sfm        = std::get<0>(str.param);
-        char tsa        = std::get<1>(str.param);
-        char tsb        = std::get<2>(str.param);
-        char pka        = std::get<3>(str.param);
-        char pkb        = std::get<4>(str.param);
-        gtint_t m       = std::get<5>(str.param);
-        gtint_t n       = std::get<6>(str.param);
-        gtint_t k       = std::get<7>(str.param);
-        double alpha    = std::get<8>(str.param);
-        double beta     = std::get<9>(str.param);
-        gtint_t lda_inc = std::get<10>(str.param);
-        gtint_t ldb_inc = std::get<11>(str.param);
-        gtint_t ldc_inc = std::get<12>(str.param);
-#ifdef TEST_BLAS
-        std::string str_name = "dgemm_compute_";
-#elif TEST_CBLAS
-        std::string str_name = "cblas_dgemm_compute";
-#else   //#elif TEST_BLIS_TYPED
-        // BLIS interface not yet implemented for pack and compute APIs.
-        std::string str_name = "blis_dgemm_compute";
-#endif
-        str_name = str_name + "_" + sfm+sfm+sfm;
-        str_name = str_name + "_" + tsa + tsb;
-        str_name = str_name + "_" + pka + pkb;
-        str_name = str_name + "_" + std::to_string(m);
-        str_name = str_name + "_" + std::to_string(n);
-        str_name = str_name + "_" + std::to_string(k);
-        std::string alpha_str = ( alpha > 0) ? std::to_string(int(alpha)) : "m" + std::to_string(int(std::abs(alpha)));
-        str_name = str_name + "_a" + alpha_str;
-        std::string beta_str = ( beta > 0) ? std::to_string(int(beta)) : "m" + std::to_string(int(std::abs(beta)));
-        str_name = str_name + "_b" + beta_str;
-        str_name = str_name + "_" + std::to_string(lda_inc);
-        str_name = str_name + "_" + std::to_string(ldb_inc);
-        str_name = str_name + "_" + std::to_string(ldc_inc);
-        return str_name;
-    }
-};
-
 // Black box testing.
 INSTANTIATE_TEST_SUITE_P(
         Blackbox,
-        DGemmComputeTest,
+        dgemmComputeGeneric,
         ::testing::Combine(
             ::testing::Values('c'
-#ifndef TEST_BLAS
+#ifndef TEST_BLAS_LIKE
             ,'r'
 #endif
             ),                                                   // storage format
@@ -158,15 +127,15 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(gtint_t(0)),                       // increment to the leading dim of b
             ::testing::Values(gtint_t(0))                        // increment to the leading dim of c
         ),
-        ::DGemmComputeTestPrint()
+        ::gemm_computeGeneticPrint<double>()
     );
 
 INSTANTIATE_TEST_SUITE_P(
         TinySizes,
-        DGemmComputeTest,
+        dgemmComputeGeneric,
         ::testing::Combine(
             ::testing::Values('c'
-#ifndef TEST_BLAS
+#ifndef TEST_BLAS_LIKE
             ,'r'
 #endif
             ),                                                   // storage format
@@ -183,15 +152,15 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(gtint_t(0)),                       // increment to the leading dim of b
             ::testing::Values(gtint_t(0))                        // increment to the leading dim of c
         ),
-        ::DGemmComputeTestPrint()
+        ::gemm_computeGeneticPrint<double>()
     );
 
 INSTANTIATE_TEST_SUITE_P(
         DimensionsGtBlocksizes,                                  // Dimensions > SUP Blocksizes
-        DGemmComputeTest,
+        dgemmComputeGeneric,
         ::testing::Combine(
             ::testing::Values('c'
-#ifndef TEST_BLAS
+#ifndef TEST_BLAS_LIKE
             ,'r'
 #endif
             ),                                                   // storage format
@@ -208,5 +177,5 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(gtint_t(0)),                       // increment to the leading dim of b
             ::testing::Values(gtint_t(0))                        // increment to the leading dim of c
         ),
-        ::DGemmComputeTestPrint()
+        ::gemm_computeGeneticPrint<double>()
     );

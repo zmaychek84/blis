@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -295,13 +295,60 @@ void bli_dtrsv_unf_var2
 
     conja = bli_extract_conj( transa );
 
-    PASTECH(d,axpyf_ker_ft) kfp_af;
+    PASTECH(d,axpyf_ker_ft) kfp_af = NULL;
 
     // This function is invoked on all architectures including 'generic'.
     // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
     if (bli_cpuid_is_avx2fma3_supported() == TRUE) {
-	    kfp_af = bli_daxpyf_zen_int_16x4;
-	    b_fuse = 4;
+        arch_t id = bli_arch_query_id();
+        switch (id)
+        {
+#if defined(BLIS_KERNELS_ZEN4)
+            case BLIS_ARCH_ZEN5:
+            case BLIS_ARCH_ZEN4:
+            {
+#ifdef BLIS_ENABLE_OPENMP
+                // For sizes < 800 ST kernels are performing better.
+                if (m > 800)
+                {
+                    rntm_t rntm;
+                    bli_rntm_init_from_global(&rntm);
+                    dim_t n_threads = bli_rntm_num_threads(&rntm);
+                    // If NT == 1, don't use MT kernel.
+                    if ( n_threads > 1 )
+                    {
+                        kfp_af = bli_daxpyf_zen_int32_avx512_mt;
+                        b_fuse = 32;
+                    }
+                }
+#endif
+                if ( kfp_af == NULL )
+                {
+                    // AVX2 kernel performs better for small sizes on Genoa
+                    if ( id == BLIS_ARCH_ZEN4 && m < 380 )
+                    {
+                        kfp_af = bli_daxpyf_zen_int_16x4;
+                        b_fuse = 4;
+                    }
+                    else if ( m < 2500 )
+                    {
+                        kfp_af = bli_daxpyf_zen_int8_avx512;
+                        b_fuse = 8;
+                    }
+                    else
+                    {
+                        kfp_af = bli_daxpyf_zen_int12_avx512;
+                        b_fuse = 12;
+                    }
+                }
+                break;
+            }
+#endif
+            default:
+                kfp_af = bli_daxpyf_zen_int_16x4;
+                b_fuse = 4;
+                break;
+        }
     }
     else
     {
@@ -668,15 +715,19 @@ void bli_ztrsv_unf_var2
     if( cntx == NULL ) cntx = bli_gks_query_cntx();
 
     /* x = alpha * x; */
-    PASTEMAC2(z, scalv,BLIS_TAPI_EX_SUF)
-    (
-      BLIS_NO_CONJUGATE,
-      m,
-      alpha,
-      x, incx,
-      cntx,
-      NULL
-    );
+    /* Avoid alpha scaling when alpha is one */
+    if ( !PASTEMAC(z, eq1)(*alpha) )
+    {
+        PASTEMAC2(z, scalv,BLIS_TAPI_EX_SUF)
+        (
+        BLIS_NO_CONJUGATE,
+        m,
+        alpha,
+        x, incx,
+        cntx,
+        NULL
+        );
+    }
 
     if( bli_does_notrans( transa ) )
     {

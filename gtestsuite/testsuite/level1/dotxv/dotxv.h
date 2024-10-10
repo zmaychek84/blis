@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -36,6 +36,7 @@
 
 #include "blis.h"
 #include "common/testing_helpers.h"
+#include "inc/check_error.h"
 
 /**
  * @brief Performs the operation:
@@ -76,13 +77,65 @@ template<typename T>
 static void dotxv( char conjx, char conjy, gtint_t n, T* alpha,
     T* x, gtint_t incx, T* y, gtint_t incy, T* beta, T* rho )
 {
+
+#ifdef TEST_UPPERCASE_ARGS
+    conjx = static_cast<char>(std::toupper(static_cast<unsigned char>(conjx)));
+    conjy = static_cast<char>(std::toupper(static_cast<unsigned char>(conjy)));
+#endif
+
+#ifdef TEST_INPUT_ARGS
+    // Create copy of scalar input values so we can check that they are not altered.
+    char conjx_cpy = conjx;
+    char conjy_cpy = conjy;
+    gtint_t n_cpy = n;
+    T* alpha_cpy = alpha;
+    gtint_t incx_cpy = incx;
+    gtint_t incy_cpy = incy;
+    T* beta_cpy = beta;
+
+    // Create copy of input arrays so we can check that they are not altered.
+    T* x_cpy = nullptr;
+    gtint_t size_x = testinghelpers::buff_dim( n, incx );
+    if (x && size_x > 0)
+    {
+        x_cpy = new T[size_x];
+        memcpy( x_cpy, x, size_x * sizeof( T ) );
+    }
+#endif
+
 #ifdef TEST_BLAS
     throw std::runtime_error("Error in testsuite/level1/dotxv.h: BLAS interface is not available.");
+#elif TEST_BLAS_BLIS_IMPL
+    throw std::runtime_error("Error in testsuite/level1/dotxv.h: BLAS_BLIS_IMPL interface is not available.");
 #elif TEST_CBLAS
     throw std::runtime_error("Error in testsuite/level1/dotxv.h: CBLAS interface is not available.");
 #elif TEST_BLIS_TYPED
    typed_dotxv<T>( conjx, conjy, n, alpha, x, incx, y, incy, beta, rho );
 #else
     throw std::runtime_error("Error in testsuite/level1/dotxv.h: No interfaces are set to be tested.");
+#endif
+
+#ifdef TEST_INPUT_ARGS
+    //----------------------------------------------------------
+    // Check scalar inputs have not been modified.
+    //----------------------------------------------------------
+
+    computediff<char>( "conjx", conjx, conjx_cpy );
+    computediff<char>( "conjy", conjy, conjy_cpy );
+    computediff<gtint_t>( "n", n, n_cpy );
+    if (alpha) computediff<T>( "alpha", *alpha, *alpha_cpy );
+    computediff<gtint_t>( "incx", incx, incx_cpy );
+    computediff<gtint_t>( "incy", incy, incy_cpy );
+    if (beta) computediff<T>( "beta", *beta, *beta_cpy );
+
+    //----------------------------------------------------------
+    // Bitwise-wise check array inputs have not been modified.
+    //----------------------------------------------------------
+
+    if (x && size_x > 0)
+    {
+        computediff<T>( "x", n, x, x_cpy, incx, true );
+        delete[] x_cpy;
+    }
 #endif
 }

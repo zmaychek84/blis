@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,7 +35,7 @@
 #include <gtest/gtest.h>
 #include "test_axpbyv.h"
 
-class zaxpbyvAccTest :
+class zaxpbyvGeneric :
         public ::testing::TestWithParam<std::tuple<char,
                                                    gtint_t,
                                                    gtint_t,
@@ -43,7 +43,7 @@ class zaxpbyvAccTest :
                                                    dcomplex,
                                                    dcomplex>> {};
 // Tests using random integers as vector elements.
-TEST_P(zaxpbyvAccTest, RandomData)
+TEST_P( zaxpbyvGeneric, API )
 {
     using T = dcomplex;
     //----------------------------------------------------------
@@ -64,52 +64,51 @@ TEST_P(zaxpbyvAccTest, RandomData)
     T beta = std::get<5>(GetParam());
 
     // Set the threshold for the errors:
-    double thresh = 20 * testinghelpers::getEpsilon<T>();
+    // Check gtestsuite axpbyv.h (no netlib version) for reminder of the
+    // functionality from which we estimate operation count per element
+    // of output, and hence the multipler for epsilon.
+    // With adjustment for complex data.
+    // NOTE : Every mul for complex types involves 3 ops(2 muls + 1 add)
+    double thresh;
+    double adj = 3;
+    if (n == 0)
+        thresh = 0.0;
+    else if (beta == testinghelpers::ZERO<T>())
+    {
+        // Like SETV or COPYV(no ops)
+        if (alpha == testinghelpers::ZERO<T>() || alpha == testinghelpers::ONE<T>())
+            thresh = 0.0;
+        // Like SCAL2V(1 mul)
+        else
+            thresh = (1 * adj) * testinghelpers::getEpsilon<T>();
+    }
+    else if (beta == testinghelpers::ONE<T>())
+    {
+        // Like ERS(no ops)
+        if (alpha == testinghelpers::ZERO<T>())
+            thresh = 0.0;
+        // Like ADDV(1 add)
+        else if (alpha == testinghelpers::ONE<T>())
+            thresh = testinghelpers::getEpsilon<T>();
+        // Like AXPYV(1 mul and 1 add)
+        else
+            thresh = (1 * adj + 1) * testinghelpers::getEpsilon<T>();
+    }
+    else
+    {
+        // Like SCALV(1 mul)
+        if (alpha == testinghelpers::ZERO<T>())
+            thresh = (1 * adj) * testinghelpers::getEpsilon<T>();
+        // Like AXPBYV(2 muls and 1 add)
+        else
+            thresh = (2 * adj + 1) * testinghelpers::getEpsilon<T>();
+    }
 
     //----------------------------------------------------------
     //     Call generic test body using those parameters
     //----------------------------------------------------------
     test_axpbyv<T>(conj_x, n, incx, incy, alpha, beta, thresh);
 }
-
-// Used to generate a test case with a sensible name.
-// Beware that we cannot use fp numbers (e.g., 2.3) in the names,
-// so we are only printing int(2.3). This should be enough for debugging purposes.
-// If this poses an issue, please reach out.
-class zaxpbyvAccTestPrint
-{
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<char, gtint_t, gtint_t, gtint_t, dcomplex, dcomplex>> str) const
-    {
-        char conj = std::get<0>(str.param);
-        gtint_t n = std::get<1>(str.param);
-        gtint_t incx = std::get<2>(str.param);
-        gtint_t incy = std::get<3>(str.param);
-        dcomplex alpha = std::get<4>(str.param);
-        dcomplex beta = std::get<5>(str.param);
-#ifdef TEST_BLAS
-        std::string str_name = "zaxpby_";
-#elif TEST_CBLAS
-        std::string str_name = "cblas_zaxpby";
-#else // #elif TEST_BLIS_TYPED
-        std::string str_name = "bli_zaxpbyv";
-#endif
-        str_name += "_" + std::to_string(n);
-        str_name += "_" + std::string(&conj, 1);
-        std::string incx_str = (incx > 0) ? std::to_string(incx) : "m" + std::to_string(std::abs(incx));
-        str_name += "_" + incx_str;
-        std::string incy_str = (incy > 0) ? std::to_string(incy) : "m" + std::to_string(std::abs(incy));
-        str_name += "_" + incy_str;
-        std::string alpha_str = (alpha.real > 0) ? std::to_string(int(alpha.real)) : ("m" + std::to_string(int(std::abs(alpha.real))));
-        alpha_str = alpha_str + "pi" + ((alpha.imag > 0) ? std::to_string(int(alpha.imag)) : ("m" + std::to_string(int(std::abs(alpha.imag)))));
-        std::string beta_str = (beta.real > 0) ? std::to_string(int(beta.real)) : ("m" + std::to_string(int(std::abs(beta.real))));
-        beta_str = beta_str + "pi" + ((beta.imag > 0) ? std::to_string(int(beta.imag)) : ("m" + std::to_string(int(std::abs(beta.imag)))));
-        str_name = str_name + "_a" + alpha_str;
-        str_name = str_name + "_b" + beta_str;
-        return str_name;
-    }
-};
 
 /*
     The code structure for bli_zaxpbyv_zen_int( ... ) is as follows :
@@ -126,8 +125,8 @@ public:
 
 // Accuracy testing of the main loop, single and multiple runs
 INSTANTIATE_TEST_SUITE_P(
-    bli_zaxpbyv_zen_int_acc_US_main,
-    zaxpbyvAccTest,
+    bli_zaxpbyv_zen_int_acc_unitStrides_main,
+    zaxpbyvGeneric,
     ::testing::Combine(
         ::testing::Values('n' // n: use x, c: use conj(x)
 #ifdef TEST_BLIS_TYPED
@@ -141,12 +140,12 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{2.2, -3.3}), // alpha
         ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{1.0, 2.0}) // beta
         ),
-    ::zaxpbyvAccTestPrint());
+    ::axpbyvGenericPrint<dcomplex>());
 
 // Accuracy testing of different combinations of fringe loops(L6, L4, L2, 1)
 INSTANTIATE_TEST_SUITE_P(
-    bli_zaxpbyv_zen_int_acc_US_fringe,
-    zaxpbyvAccTest,
+    bli_zaxpbyv_zen_int_acc_unitStrides_fringe,
+    zaxpbyvGeneric,
     ::testing::Combine(
         ::testing::Values('n' // n: use x, c: use conj(x)
 #ifdef TEST_BLIS_TYPED
@@ -160,12 +159,12 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{2.2, -3.3}), // alpha
         ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{1.0, 2.0}) // beta
         ),
-    ::zaxpbyvAccTestPrint());
+    ::axpbyvGenericPrint<dcomplex>());
 
 // Accuracy testing of 3*L8 + L6 + L4 + L2 + 1, a case of main + all fringe cases taken
 INSTANTIATE_TEST_SUITE_P(
-    bli_zaxpbyv_zen_int_acc_US_combine,
-    zaxpbyvAccTest,
+    bli_zaxpbyv_zen_int_acc_unitStrides_combine,
+    zaxpbyvGeneric,
     ::testing::Combine(
         ::testing::Values('n' // n: use x, c: use conj(x)
 #ifdef TEST_BLIS_TYPED
@@ -179,12 +178,12 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{2.2, -3.3}), // alpha
         ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{1.0, 2.0}) // beta
         ),
-    ::zaxpbyvAccTestPrint());
+    ::axpbyvGenericPrint<dcomplex>());
 
 // Accuracy testing with non-unit strides
 INSTANTIATE_TEST_SUITE_P(
-    bli_zaxpbyv_zen_int_acc_NUS,
-    zaxpbyvAccTest,
+    bli_zaxpbyv_zen_int_acc_nonUnitStrides,
+    zaxpbyvGeneric,
     ::testing::Combine(
         ::testing::Values('n' // n: use x, c: use conj(x)
 #ifdef TEST_BLIS_TYPED
@@ -193,9 +192,17 @@ INSTANTIATE_TEST_SUITE_P(
 #endif
                           ),
         ::testing::Values(gtint_t(10), gtint_t(17)), // m
-        ::testing::Values(gtint_t(-3), gtint_t(4)), // stride size for x
-        ::testing::Values(gtint_t(6), gtint_t(-2)), // stride size for y
+        ::testing::Values(
+#ifndef TEST_BLIS_TYPED
+                          gtint_t(-3),
+#endif
+                          gtint_t(4)), // stride size for x
+        ::testing::Values(
+#ifndef TEST_BLIS_TYPED
+                          gtint_t(-2),
+#endif
+                          gtint_t(6)), // stride size for y
         ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{2.2, -3.3}), // alpha
         ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{1.0, 2.0}) // beta
         ),
-    ::zaxpbyvAccTestPrint());
+    ::axpbyvGenericPrint<dcomplex>());

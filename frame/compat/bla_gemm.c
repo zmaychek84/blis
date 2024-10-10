@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -415,10 +415,9 @@ void PASTEF77(ch,blasname) \
 )
 #endif
 
-#ifdef BLIS_ENABLE_BLAS
 INSERT_GENTFUNC_BLAS( gemm,gemm )
 
-void dzgemm_
+void dzgemm_blis_impl
      (
        const f77_char* transa,
        const f77_char* transb,
@@ -539,13 +538,44 @@ void dzgemm_
 	bli_obj_set_conjtrans( blis_transb, &bo );
 
 	// fall back on native path when zgemm is not handled in sup path.
-	bli_gemmnat(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
+	//bli_gemmnat(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
 
+	/* Default to using native execution. */
+	ind_t im = BLIS_NAT;
+
+	/* Mix of real and complex matrix data types, so assuming
+	   induced methods will not be available */
+
+	/* Obtain a valid context from the gks using the induced
+	   method id determined above. */
+	cntx_t* cntx = bli_gks_query_ind_cntx( im, dt );
+
+	rntm_t rntm_l;
+	bli_rntm_init_from_global( &rntm_l );
+
+	/* Invoke the operation's front-end and request the default control tree. */
+	PASTEMAC(gemm,_front)( &alphao, &ao, &bo, &betao, &co, cntx, &rntm_l, NULL );
 
 	AOCL_DTL_LOG_GEMM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *m, *n, *k);
 	AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
 	/* Finalize BLIS. */
 	bli_finalize_auto();
 }// end of dzgemm_
-
+#ifdef BLIS_ENABLE_BLAS
+void dzgemm_
+     (
+       const f77_char* transa,
+       const f77_char* transb,
+       const f77_int*  m,
+       const f77_int*  n,
+       const f77_int*  k,
+       const dcomplex*    alpha,
+       const double*    a, const f77_int* lda,
+       const dcomplex*    b, const f77_int* ldb,
+       const dcomplex*    beta,
+             dcomplex*    c, const f77_int* ldc
+     )
+{
+    dzgemm_blis_impl( transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc );
+}
 #endif

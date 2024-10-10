@@ -114,7 +114,7 @@ void bli_thread_range_sub
 
 	// In this function, we partition the space between all_start and
 	// all_end into n_way partitions, each a multiple of block_factor
-	// with the exception of the one partition that recieves the
+	// with the exception of the one partition that receives the
 	// "edge" case (if applicable).
 	//
 	// Here are examples of various thread partitionings, in units of
@@ -1902,12 +1902,12 @@ void bli_thread_update_rntm_from_env
 	// current status of global_rntm. Must do this every time, in case
 	// global_rntm has been updated by blis-specific threading function calls.
 
-	// NOTE: We don't need to acquire the global_rntm_mutex here because this
-	// function is updating the thread local tl_rntm (not global_rntm).
-
 	bool auto_factor = FALSE;
 	dim_t jc, pc, ic, jr, ir, nt;
 	bool blis_mt;
+
+	// Acquire the mutex protecting global_rntm.
+	bli_pthread_mutex_lock( &global_rntm_mutex );
 
 	// Extract threading data from global_rntm.
 	nt = bli_rntm_num_threads( &global_rntm );
@@ -1917,6 +1917,9 @@ void bli_thread_update_rntm_from_env
 	jr = bli_rntm_jr_ways( &global_rntm );
 	ir = bli_rntm_ir_ways( &global_rntm );
 	blis_mt = bli_rntm_blis_mt( &global_rntm );
+
+	// Release the mutex protecting global_rntm.
+	bli_pthread_mutex_unlock( &global_rntm_mutex );
 
 #ifdef BLIS_ENABLE_MULTITHREADING
 

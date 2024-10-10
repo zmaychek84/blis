@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -45,7 +45,7 @@
     #define TRSM_BLIS_IMPL(ch, blasname) \
         PASTEF77S(ch,blasname) ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb ); \
         arch_t id = bli_arch_query_id(); \
-        if (id == BLIS_ARCH_ZEN4) \
+        if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4) \
         { \
             bli_zero_zmm(); \
         } \
@@ -782,15 +782,28 @@ void strsm_blis_impl
     }
 #endif
 
-    bli_trsmnat
-    (
-        blis_side,
-        &alphao,
-        &ao,
-        &bo,
-        NULL,
-        NULL
-    );
+    //bli_trsmnat
+    //(
+    //    blis_side,
+    //    &alphao,
+    //    &ao,
+    //    &bo,
+    //    NULL,
+    //    NULL
+    //);
+
+    /* Default to using native execution. */
+    ind_t im = BLIS_NAT;
+
+    /* Obtain a valid context from the gks using the induced
+       method id determined above. */
+    cntx_t* cntx = bli_gks_query_ind_cntx( im, dt );
+
+    rntm_t rntm_l;
+    bli_rntm_init_from_global( &rntm_l );
+
+    /* Invoke the operation's front-end and request the default control tree. */
+    PASTEMAC(trsm,_front)( blis_side, &alphao, &ao, &bo, cntx, &rntm_l, NULL ); \
 
     AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(s), *side, *m, *n);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
@@ -814,7 +827,7 @@ void strsm_
     strsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
 #if defined(BLIS_KERNELS_ZEN4)
     arch_t id = bli_arch_query_id();
-    if (id == BLIS_ARCH_ZEN4)
+    if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4)
     {
         bli_zero_zmm();
     }
@@ -1110,15 +1123,51 @@ void dtrsm_blis_impl
          * In case of multithread when [m+n]<320 single thread implementation
          * is doing better than small multithread and native multithread */
         bool is_parallel = bli_thread_get_is_parallel();
-        if ((!is_parallel && ((dim_a < 1500) && (size_b < 5e6)) ) ||
-            (is_parallel && (m0+n0)<200))
+        switch(id)
         {
-            switch(id)
-            {
-                case BLIS_ARCH_ZEN4:
+            case BLIS_ARCH_ZEN5:
 #if defined(BLIS_KERNELS_ZEN4)
+                // In native code path, input buffers are packed.
+                // Let's say packed buffers improve the speed of
+                // computation by a factor of 'S' and it takes 'X'
+                // units of time to pack buffers. If a computation
+                // without packed buffer would have take 'T' time,
+                // then it would take 'T/S + X' time with packed buffers
+                // where S > 1.
+                // Time complexity of TRSM is (M^2 * N) in left variants
+                // and (N^2 * M) in right variants.
+                // Therefore time taken by Small path for left variant will be
+                // (M^2 * N)
+                // and time taken by Native path for left variant will be
+                // (M^2 * N) / S + X
+                // We should take small code path when
+                // (M^2 * N) < (M^2 * N) / S + X
+                // solving this gives us
+                // (M^2 * N) < (X * S) / ( S - 1)
+                // Here RHS is constant, which can be found using empirical data
+                // (X * S) / ( S - 1) is found to be around 6.3e6 on Turin
+                // In order the reduce the possiblity of overflow, taking log on
+                // both sides gives us
+                // 2log(m) + log(n) < 6.8 for left variant
+                if ( ( blis_side == BLIS_LEFT ) &&
+                     ( (log10(n0) + (2*log10(m0)) ) < 6.8 ) )
+                {
+                    ker_ft = bli_trsm_small_AVX512;
+                }
+                else if ( ( blis_side == BLIS_RIGHT ) &&
+                     ( (log10(m0) + (2*log10(n0)) ) < 6.8 ) )
+                {
+                    ker_ft = bli_trsm_small_AVX512;
+                }
+                break;
+#endif // BLIS_KERNELS_ZEN4
+            case BLIS_ARCH_ZEN4:
+#if defined(BLIS_KERNELS_ZEN4)
+                if ((!is_parallel && ((dim_a < 1500) && (size_b < 5e6)) ) ||
+                    (is_parallel && (m0+n0)<200))
+                {
                     /* For sizes where m and n < 50,avx2 kernels are performing better,
-                     except for sizes where n is multiple of 8.*/
+                    except for sizes where n is multiple of 8.*/
                     if (((n0 % 8 == 0) && (n0 < 50)) || ((m0 > 50) && (n0 > 50)))
                     {
                         ker_ft = bli_trsm_small_AVX512;
@@ -1127,36 +1176,61 @@ void dtrsm_blis_impl
                     {
                         ker_ft = bli_trsm_small;
                     }
-                    break;
+                }
+                break;
 #endif // BLIS_KERNELS_ZEN4
-                case BLIS_ARCH_ZEN:
-                case BLIS_ARCH_ZEN2:
-                case BLIS_ARCH_ZEN3:
-                default:
+            case BLIS_ARCH_ZEN:
+            case BLIS_ARCH_ZEN2:
+            case BLIS_ARCH_ZEN3:
+            default:
+                if ((!is_parallel && ((dim_a < 1500) && (size_b < 5e6)) ) ||
+                    (is_parallel && (m0+n0)<200))
+                {
                     ker_ft = bli_trsm_small;
-                    break;
-            }
+                }
+                break;
         }
 
 #ifdef BLIS_ENABLE_OPENMP
-        if( (ker_ft == NULL) && (is_parallel) &&
-          ((dim_a < 2500) && (size_b < 5e6)) )
+        switch(id)
         {
-            switch(id)
-            {
-                case BLIS_ARCH_ZEN4:
+            case BLIS_ARCH_ZEN5:
 #if defined(BLIS_KERNELS_ZEN4)
-                    ker_ft = bli_trsm_small_mt_AVX512;
-                    break;
+                if( (is_parallel) && n0 > 10 && m0 > 10 )
+                {
+                    if ( ( blis_side == BLIS_LEFT ) &&
+                        ( (log10(n0) + (2*log10(m0)) ) < 6.8 ) )
+                    {
+                        ker_ft = bli_trsm_small_mt_AVX512;
+                    }
+                    else if ( ( blis_side == BLIS_RIGHT ) &&
+                        ( (log10(m0) + (2*log10(n0)) ) < 6.8 ) )
+                    {
+                        ker_ft = bli_trsm_small_mt_AVX512;
+                    }
+                }
+                break;
 #endif// BLIS_KERNELS_ZEN4
-                case BLIS_ARCH_ZEN:
-                case BLIS_ARCH_ZEN2:
-                case BLIS_ARCH_ZEN3:
-                default:
+            case BLIS_ARCH_ZEN4:
+#if defined(BLIS_KERNELS_ZEN4)
+                if( (ker_ft == NULL) && (is_parallel) &&
+                    ((dim_a < 2500) && (size_b < 5e6)) )
+                {
+                    ker_ft = bli_trsm_small_mt_AVX512;
+                }
+                break;
+#endif// BLIS_KERNELS_ZEN4
+            case BLIS_ARCH_ZEN:
+            case BLIS_ARCH_ZEN2:
+            case BLIS_ARCH_ZEN3:
+            default:
+                if( (ker_ft == NULL) && (is_parallel) &&
+                    ((dim_a < 2500) && (size_b < 5e6)) )
+                {
                     ker_ft = bli_trsm_small_mt;
-                    break;
+                }
+                break;
             }
-        }
 
 #endif// BLIS_ENABLE_OPENMP
         if(ker_ft)
@@ -1174,15 +1248,29 @@ void dtrsm_blis_impl
     } // bli_cpuid_is_avx2fma3_supported
 #endif// END of BLIS_ENABLE_SMALL_MATRIX_TRSM
 
-    bli_trsmnat
-    (
-        blis_side,
-        &alphao,
-        &ao,
-        &bo,
-        NULL,
-        NULL
-    );
+    //bli_trsmnat
+    //(
+    //    blis_side,
+    //    &alphao,
+    //    &ao,
+    //    &bo,
+    //    NULL,
+    //    NULL
+    //);
+
+    /* Default to using native execution. */
+    ind_t im = BLIS_NAT;
+
+    /* Obtain a valid context from the gks using the induced
+       method id determined above. */
+    cntx_t* cntx = bli_gks_query_ind_cntx( im, dt );
+
+    rntm_t rntm_l;
+    bli_rntm_init_from_global( &rntm_l );
+
+    /* Invoke the operation's front-end and request the default control tree. */
+    PASTEMAC(trsm,_front)( blis_side, &alphao, &ao, &bo, cntx, &rntm_l, NULL ); \
+
     AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(d), *side, *m, *n);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
     /* Finalize BLIS. */
@@ -1205,7 +1293,7 @@ void dtrsm_
     dtrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
 #if defined(BLIS_KERNELS_ZEN4)
     arch_t id = bli_arch_query_id();
-    if (id == BLIS_ARCH_ZEN4)
+    if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4)
     {
         bli_zero_zmm();
     }
@@ -1343,15 +1431,19 @@ void ztrsm_blis_impl
         }
         else if( ( blis_side == BLIS_RIGHT ) && ( m0 != 1 ) )
         {
-            bli_zscalv_ex
-            (
-                conja,
-                m0,
-                (dcomplex*)alpha,
-                (dcomplex*)b, rs_b,
-                NULL,
-                NULL
-            );
+            /* Avoid alpha scaling when alpha is one */
+            if ( !PASTEMAC(z, eq1)(*alpha) )
+            {
+                bli_zscalv_ex
+                (
+                    conja,
+                    m0,
+                    (dcomplex*)alpha,
+                    (dcomplex*)b, rs_b,
+                    NULL,
+                    NULL
+                );
+            }   
 	    if(blis_diaga == BLIS_NONUNIT_DIAG)
 	    {
 		    dcomplex inva = {1.0, 0.0};
@@ -1447,15 +1539,19 @@ void ztrsm_blis_impl
         }
         else if(( blis_side == BLIS_LEFT ) && ( n0 != 1 ))
         {
-            bli_zscalv_ex
-            (
-                conja,
-                n0,
-                (dcomplex*)alpha,
-                (dcomplex*)b, cs_b,
-                NULL,
-                NULL
-            );
+            /* Avoid alpha scaling when alpha is one */
+            if ( !PASTEMAC(z, eq1)(*alpha) )
+            {
+                bli_zscalv_ex
+                (
+                    conja,
+                    n0,
+                    (dcomplex*)alpha,
+                    (dcomplex*)b, cs_b,
+                    NULL,
+                    NULL
+                );
+            }
             if(blis_diaga == BLIS_NONUNIT_DIAG)
             {
                 dcomplex inva = {1.0, 0.0};
@@ -1525,12 +1621,27 @@ void ztrsm_blis_impl
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
     // This function is invoked on all architectures including 'generic'.
     // Non-AVX2+FMA3 platforms will use the kernels derived from the context.
-    if (bli_cpuid_is_avx2fma3_supported() == TRUE)
+    if ( bli_cpuid_is_avx2fma3_supported() == TRUE )
     {
         /* bli_ztrsm_small is performing better existing native
         * implementations for [m,n]<=1000 for single thread.
         * In case of multithread when [m,n]<=128 single thread implementation
         * is doing better than native multithread */
+        typedef err_t (*ztrsm_small_ker_ft)
+        (
+            side_t   side,
+            obj_t*   alpha,
+            obj_t*   a,
+            obj_t*   b,
+            cntx_t*  cntx,
+            cntl_t*  cntl,
+            bool     is_parallel
+        );
+        err_t status = BLIS_NOT_YET_IMPLEMENTED;
+
+        // trsm small kernel function pointer definition
+        ztrsm_small_ker_ft ker_ft = NULL;
+        arch_t id = bli_arch_query_id();
         bool is_parallel = bli_thread_get_is_parallel();
         dim_t dim_a = n0;
         if (blis_side == BLIS_LEFT)
@@ -1538,42 +1649,91 @@ void ztrsm_blis_impl
 
         // size of output matrix(B)
         dim_t size_b = m0*n0;
-        if((!is_parallel && m0<=500 && n0<=500) ||
-           (is_parallel && (m0+n0)<128) || 
-           (dim_a<35 && size_b<3500))
+#if defined(BLIS_ENABLE_OPENMP) && defined(BLIS_KERNELS_ZEN4)
+        if (( is_parallel ) &&
+            ( (dim_a > 10) && (dim_a < 2500) && (size_b > 500) && (size_b < 5e5) ) &&
+            ( id == BLIS_ARCH_ZEN4 ))
         {
-            err_t status;
-            status = bli_trsm_small
-                    (
-                        blis_side,
-                        &alphao,
-                        &ao,
-                        &bo,
-                        NULL,
-                        NULL,
-                        is_parallel
-                    );
-            if (status == BLIS_SUCCESS)
+            if (!bli_obj_has_conj(&ao))
             {
-                AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
-                AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
-                /* Finalize BLIS. */
-                bli_finalize_auto();
-                return;
+                ker_ft = bli_trsm_small_mt_AVX512;
             }
+            else
+            {
+                ker_ft = bli_trsm_small_mt;
+            }
+        }
+#endif
+        if( ( ker_ft == NULL ) &&
+            ( ( ( !is_parallel ) && 
+                ( (( m0 <= 500 ) && ( n0 <= 500 )) || ( (dim_a < 75) && (size_b < 3.2e5)))) ||
+              ( ( is_parallel ) && 
+                ( (m0 + n0 < 180) || (size_b < 5000) ) )
+            )
+          )
+        {
+            switch (id)
+            {
+                case BLIS_ARCH_ZEN5:
+                case BLIS_ARCH_ZEN4:
+#if defined(BLIS_KERNELS_ZEN4)
+                    // ZTRSM AVX512 code path do not support
+                    // conjugate
+                    if (!bli_obj_has_conj(&ao))
+                    {
+                        ker_ft = bli_trsm_small_AVX512;
+                    }
+                    else
+                    {
+                        ker_ft = bli_trsm_small;
+                    }
+                    break;
+#endif // BLIS_KERNELS_ZEN4
+                case BLIS_ARCH_ZEN:
+                case BLIS_ARCH_ZEN2:
+                case BLIS_ARCH_ZEN3:
+                default:
+                    ker_ft = bli_trsm_small;
+                    break;
+            }
+        }
+        if(ker_ft)
+        {
+            status = ker_ft(blis_side, &alphao, &ao, &bo, NULL, NULL, is_parallel);
+        }
+        if (status == BLIS_SUCCESS)
+        {
+            AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
+            AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO);
+            /* Finalize BLIS. */
+            bli_finalize_auto();
+            return;
         }
     } // bli_cpuid_is_avx2fma3_supported
 #endif// END of BLIS_ENABLE_SMALL_MATRIX_TRSM
 
-    bli_trsmnat
-    (
-        blis_side,
-        &alphao,
-        &ao,
-        &bo,
-        NULL,
-        NULL
-    );
+    //bli_trsmnat
+    //(
+    //    blis_side,
+    //    &alphao,
+    //    &ao,
+    //    &bo,
+    //    NULL,
+    //    NULL
+    //);
+
+    /* Default to using native execution. */
+    ind_t im = BLIS_NAT;
+
+    /* Obtain a valid context from the gks using the induced
+       method id determined above. */
+    cntx_t* cntx = bli_gks_query_ind_cntx( im, dt );
+
+    rntm_t rntm_l;
+    bli_rntm_init_from_global( &rntm_l );
+
+    /* Invoke the operation's front-end and request the default control tree. */
+    PASTEMAC(trsm,_front)( blis_side, &alphao, &ao, &bo, cntx, &rntm_l, NULL ); \
 
     AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *side, *m, *n);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
@@ -1597,7 +1757,7 @@ void ztrsm_
     ztrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
 #if defined(BLIS_KERNELS_ZEN4)
     arch_t id = bli_arch_query_id();
-    if (id == BLIS_ARCH_ZEN4)
+    if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4)
     {
         bli_zero_zmm();
     }
@@ -1949,15 +2109,28 @@ void ctrsm_blis_impl
     } // bli_cpuid_is_avx2fma3_supported
 #endif
 
-    bli_trsmnat
-    (
-        blis_side,
-        &alphao,
-        &ao,
-        &bo,
-        NULL,
-        NULL
-    );
+    //bli_trsmnat
+    //(
+    //    blis_side,
+    //    &alphao,
+    //    &ao,
+    //    &bo,
+    //    NULL,
+    //    NULL
+    //);
+
+    /* Default to using native execution. */
+    ind_t im = BLIS_NAT;
+
+    /* Obtain a valid context from the gks using the induced
+       method id determined above. */
+    cntx_t* cntx = bli_gks_query_ind_cntx( im, dt );
+
+    rntm_t rntm_l;
+    bli_rntm_init_from_global( &rntm_l );
+
+    /* Invoke the operation's front-end and request the default control tree. */
+    PASTEMAC(trsm,_front)( blis_side, &alphao, &ao, &bo, cntx, &rntm_l, NULL ); \
 
     AOCL_DTL_LOG_TRSM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(c), *side, *m, *n);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_INFO)
@@ -1981,7 +2154,7 @@ void ctrsm_
     ctrsm_blis_impl ( side, uploa, transa, diaga, m, n, alpha, a, lda, b, ldb );
 #if defined(BLIS_KERNELS_ZEN4)
     arch_t id = bli_arch_query_id();
-    if (id == BLIS_ARCH_ZEN4)
+    if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4)
     {
         bli_zero_zmm();
     }

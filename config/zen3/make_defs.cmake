@@ -1,4 +1,36 @@
-##Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved. ##
+#[=[
+
+   BLIS
+   An object-based framework for developing high-performance BLAS-like
+   libraries.
+
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are
+   met:
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+]=]
 
 # FLAGS that are specific to the 'zen3' architecture are added here.
 # FLAGS that are common for all the AMD architectures are present in
@@ -20,6 +52,9 @@ if(NOT WIN32)
     endif()
 endif()
 
+# Flags specific to LPGEMM kernels.
+set(CKLPOPTFLAGS "")
+
 # Flags specific to optimized kernels.
 # NOTE: The -fomit-frame-pointer option is needed for some kernels because
 # they make explicit use of the rbp register.
@@ -29,20 +64,20 @@ else()
     set(CKOPTFLAGS ${COPTFLAGS} -fomit-frame-pointer)
 endif()
 
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL  11.0.0)
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
+    if(CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL  11.0.0)
         # gcc 11.0 or later
         list(APPEND CKVECFLAGS -march=znver3)
-        # Update CKOPTFLAGS for gcc to use O3 optimization without
+        # Update CKLPOPTFLAGS for gcc to use O3 optimization without
         # -ftree-pre and -ftree-partial-pre flag. These flag results
         # in suboptimal code generation for instrinsic based kernels.
         # The -ftree-loop-vectorize results in inefficient code gen
         # for amd optimized l1 kernels based on instrinsics.
-        list(APPEND CKOPTFLAGS -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize -fno-gcse)
-    elseif(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL  9.0.0)
+        list(APPEND CKLPOPTFLAGS -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize -fno-gcse)
+    elseif(CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL  9.0.0)
        # gcc 9.0 or later
         list(APPEND CKVECFLAGS -march=znver2)
-        list(APPEND CKOPTFLAGS -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize -fno-gcse)
+        list(APPEND CKLPOPTFLAGS -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize -fno-gcse)
     else()
         # If gcc is older than 9.1.0 but at least 6.1.0, then we can use -march=znver1
         # as the fallback option.
@@ -51,7 +86,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     endif()
 endif()
 
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "Clang")
     # AOCC clang has various formats for the version line
     # AOCC.LLVM.2.0.0.B191.2019_07_19 clang version 8.0.0 (CLANG: Jenkins AOCC_2_0_0-Build#191) (based on LLVM AOCC.LLVM.2.0.0.B191.2019_07_19)
     # AOCC.LLVM.2.1.0.B1030.2019_11_12 clang version 9.0.0 (CLANG: Build#1030) (based on LLVM AOCC.LLVM.2.1.0.B1030.2019_11_12)
@@ -63,7 +98,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     # For our purpose we just want to know if it version 2x or 3x or 4x
 
     # But also set these in case we are using upstream LLVM clang
-    execute_process(COMMAND ${CMAKE_CXX_COMPILER} --version OUTPUT_VARIABLE clang_full_version_string)
+    execute_process(COMMAND ${CMAKE_C_COMPILER} --version OUTPUT_VARIABLE clang_full_version_string)
     string(REGEX MATCH "^[^\n]*" CLANG_VERSION_STRING "${clang_full_version_string}")
     string(REGEX MATCHALL "(AOCC_2|AOCC_3|AOCC_4|AOCC|LLVM|clang)" CLANG_STRING "${CLANG_VERSION_STRING}")
     string(REGEX REPLACE ".*clang version ([0-9]+\\.[0-9]+).*" "\\1" CLANG_VERSION "${CLANG_VERSION_STRING}")
@@ -77,7 +112,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     elseif("${CLANG_STRING}" MATCHES "(AOCC_2|LLVM)")
         # AOCC version 2x we will enable znver2
         list(APPEND CKVECFLAGS -march=znver2)
-    elseif(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 9.0.0)
+    elseif(CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 9.0.0)
         # LLVM clang 9.0 or later
         list(APPEND CKVECFLAGS -march=znver2)
     else()

@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2024, Advanced Micro Devices, Inc. All rights reserved.
    Copyright (C) 2019, Dave Love, University of Manchester
 
    Redistribution and use in source and binary forms, with or without
@@ -94,6 +94,9 @@ static bool is_avx512_supported = FALSE;
 static bool is_avx512vnni_supported = FALSE;
 static bool is_avx512bf16_supported = FALSE;
 
+// Variable to represent FP/SIMD execution datapath width.
+static uint32_t bli_fp_datapath = -1;
+
 // Variables to store the cache sizes (in KB). L3 size is shared by all
 // logical processors in the package (i.e. per socket).
 static uint32_t bli_l1d_cache_size = -1;
@@ -118,6 +121,9 @@ arch_t bli_cpuid_query_id( void )
 		bli_cpuid_check_avx512vnni_support( family, model, features );
 		bli_cpuid_check_avx512bf16_support( family, model, features );
 
+		// Check FP/SIMD execution datapath
+		bli_cpuid_check_datapath( vendor, features );
+
 		// Find out cache sizes and set in static variables.
 		// Currently only enabled for VENDOR_AMD.
 		bli_cpuid_check_cache( vendor );
@@ -133,6 +139,9 @@ arch_t bli_cpuid_query_id( void )
 	printf( "AVX512 F/DQ/CD/BW/VL = %d\n", is_avx512_supported );
 	printf( "AVX512 VNNI          = %d\n", is_avx512vnni_supported );
 	printf( "AVX512 BF16          = %d\n", is_avx512bf16_supported );
+
+	const char* datapath_names[] = {"UNSET", "FP128", "INVALID", "FP256", "FP512"};
+	printf( "FP/SIMD datapath     = %d (%s)\n", bli_fp_datapath, datapath_names[bli_fp_datapath+1] );
 
 	printf( "Cache Information:\n" );
 	printf( "L1I size = %u KB\n",bli_l1i_cache_size );
@@ -185,13 +194,25 @@ arch_t bli_cpuid_query_id( void )
 	}
 	else if ( vendor == VENDOR_AMD )
 	{
-
 		// Check for each AMD configuration that is enabled, check for that
 		// microarchitecture. We check from most recent to most dated.
+#ifdef BLIS_CONFIG_ZEN5
+		if ( bli_cpuid_is_zen5( family, model, features ) )
+			return BLIS_ARCH_ZEN5;
+#endif
 #ifdef BLIS_CONFIG_ZEN4
 		if ( bli_cpuid_is_zen4( family, model, features ) )
 			return BLIS_ARCH_ZEN4;
+#endif
+#ifdef BLIS_CONFIG_ZEN5
 		// Fallback test for future AMD processors
+		// Assume zen5 (if available) is preferable to zen4.
+		if ( is_avx512_supported )
+			return BLIS_ARCH_ZEN5;
+#endif
+#ifdef BLIS_CONFIG_ZEN4
+		// Fallback test for future AMD processors
+		// Use zen4 if zen5 is not available.
 		if ( is_avx512_supported )
 			return BLIS_ARCH_ZEN4;
 #endif
@@ -206,6 +227,12 @@ arch_t bli_cpuid_query_id( void )
 #ifdef BLIS_CONFIG_ZEN
 		if ( bli_cpuid_is_zen( family, model, features ) )
 			return BLIS_ARCH_ZEN;
+#endif
+#ifdef BLIS_CONFIG_ZEN3
+		// Fallback test for future AMD processors
+		// Use zen3 if AVX512 support is not available but AVX2 is.
+		if ( is_avx2fma3_supported )
+			return BLIS_ARCH_ZEN3;
 #endif
 #ifdef BLIS_CONFIG_EXCAVATOR
 		if ( bli_cpuid_is_excavator( family, model, features ) )
@@ -240,6 +267,22 @@ model_t bli_cpuid_query_model_id( arch_t arch_id )
 	// Set default for architectures where separate models haven't been defined.
 	model_t cpuid_model = BLIS_MODEL_DEFAULT;
 
+#ifdef BLIS_CONFIG_ZEN5
+	if (arch_id == BLIS_ARCH_ZEN5)
+	{
+		// Call the CPUID instruction and parse its results into a family id,
+		// model id, and a feature bit field. The return value encodes the
+		// vendor.
+
+		uint32_t __attribute__ ((unused)) vendor;
+		uint32_t family, model, features;
+
+		vendor = bli_cpuid_query( &family, &model, &features );
+
+		// Check CPU model.
+		cpuid_model = bli_cpuid_get_zen5_cpuid_model( family, model, features );
+	}
+#endif
 #ifdef BLIS_CONFIG_ZEN4
 	if (arch_id == BLIS_ARCH_ZEN4)
 	{
@@ -386,6 +429,60 @@ bool bli_cpuid_is_penryn
 }
 
 // -----------------------------------------------------------------------------
+bool bli_cpuid_is_zen5
+     (
+       uint32_t family,
+       uint32_t model,
+       uint32_t features
+     )
+{
+	// Check for expected CPU features.
+	const uint32_t expected = FEATURE_SSE3               |
+	                          FEATURE_SSSE3              |
+	                          FEATURE_SSE41              |
+	                          FEATURE_SSE42              |
+	                          FEATURE_AVX                |
+	                          FEATURE_FMA3               |
+	                          FEATURE_AVX2               |
+	                          FEATURE_AVX512F            |
+	                          FEATURE_AVX512DQ           |
+	                          FEATURE_AVX512CD           |
+	                          FEATURE_AVX512BW           |
+	                          FEATURE_AVX512VL           |
+	                          FEATURE_AVX512VNNI         |
+	                          FEATURE_AVX512BF16         |
+	                          FEATURE_MOVDIRI            |
+	                          FEATURE_MOVDIR64B          |
+	                          FEATURE_AVX512VP2INTERSECT |
+	                          FEATURE_AVXVNNI;
+
+	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
+
+	// For zen5 the family id is 0x1A
+	if ( family != 0x1A ) return FALSE;
+
+	return TRUE;
+}
+model_t bli_cpuid_get_zen5_cpuid_model
+    (
+       uint32_t family,
+       uint32_t model,
+       uint32_t features
+    )
+{
+	// Look at model of CPU and set cpuid_model appropriately.
+	// For Zen5, the default is Turin.
+	model_t cpuid_model = BLIS_MODEL_TURIN;
+	if ( family == 0x1A )
+	{
+		if ( 0x10 <= model && model <= 0x1f ) // Turin Dense
+		{
+			cpuid_model = BLIS_MODEL_TURIN_DENSE;
+		}
+	}
+	return cpuid_model;
+}
+
 bool bli_cpuid_is_zen4
      (
        uint32_t family,
@@ -437,6 +534,14 @@ model_t bli_cpuid_get_zen4_cpuid_model
 		if ( 0xA0 <= model && model <= 0xAf ) // Bergamo
 		{
 			cpuid_model = BLIS_MODEL_BERGAMO;
+		}
+		else
+		{
+			uint32_t l3_cache_size = bli_cpuid_query_l3_cache_size();
+			if ( l3_cache_size > 393216 )
+			{
+				cpuid_model = BLIS_MODEL_GENOA_X;
+			}
 		}
 	}
 	return cpuid_model;
@@ -824,6 +929,12 @@ bool bli_cpuid_is_avx512bf16_supported( void )
 	return is_avx512bf16_supported;
 }
 
+uint32_t bli_cpuid_query_fp_datapath( void )
+{
+	bli_cpuid_query_id_once();
+	return bli_fp_datapath;
+}
+
 uint32_t bli_cpuid_query_l1d_cache_size( void )
 {
 	bli_cpuid_query_id_once();
@@ -854,9 +965,6 @@ arch_t bli_cpuid_query_id( void )
 {
 	uint32_t vendor, model, part, features;
 
-	// Call the CPUID instruction and parse its results into a model id,
-	// part id, and a feature bit field. The return value encodes the
-	// vendor.
 	vendor = bli_cpuid_query( &model, &part, &features );
 
 #if 0
@@ -872,24 +980,9 @@ arch_t bli_cpuid_query_id( void )
 	{
 		if ( model == MODEL_ARMV8 )
 		{
+			return part;
 			// Check for each ARMv8 configuration that is enabled, check for that
 			// microarchitecture. We check from most recent to most dated.
-#ifdef BLIS_CONFIG_ARMSVE
-			if ( bli_cpuid_is_armsve( model, part, features ) )
-				return BLIS_ARCH_ARMSVE;
-#endif
-#ifdef BLIS_CONFIG_A64FX
-			if ( bli_cpuid_is_a64fx( model, part, features ) )
-				return BLIS_ARCH_A64FX;
-#endif
-#ifdef BLIS_CONFIG_THUNDERX2
-			if ( bli_cpuid_is_thunderx2( model, part, features ) )
-				return BLIS_ARCH_THUNDERX2;
-#endif
-#ifdef BLIS_CONFIG_CORTEXA57
-			if ( bli_cpuid_is_cortexa57( model, part, features ) )
-				return BLIS_ARCH_CORTEXA57;
-#endif
 			// If none of the other sub-configurations were detected, return
 			// the 'generic' arch_t id value.
 			return BLIS_ARCH_GENERIC;
@@ -925,81 +1018,6 @@ model_t bli_cpuid_query_model_id( arch_t arch_id )
 	return BLIS_MODEL_DEFAULT;
 }
 
-bool bli_cpuid_is_thunderx2
-     (
-       uint32_t family,
-       uint32_t model,
-       uint32_t features
-     )
-{
-	// Check for expected CPU features.
-	const uint32_t expected = FEATURE_NEON;
-
-	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
-
-	return TRUE;
-}
-
-bool bli_cpuid_is_cortexa57
-     (
-       uint32_t family,
-       uint32_t model,
-       uint32_t features
-     )
-{
-	// Check for expected CPU features.
-	const uint32_t expected = FEATURE_NEON;
-
-	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
-
-	return TRUE;
-}
-
-bool bli_cpuid_is_cortexa53
-     (
-       uint32_t family,
-       uint32_t model,
-       uint32_t features
-     )
-{
-	// Check for expected CPU features.
-	const uint32_t expected = FEATURE_NEON;
-
-	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
-
-	return TRUE;
-}
-
-bool bli_cpuid_is_armsve
-     (
-       uint32_t family,
-       uint32_t model,
-       uint32_t features
-     )
-{
-	// Check for expected CPU features.
-	const uint32_t expected = FEATURE_SVE;
-
-	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
-
-	return TRUE;
-}
-
-bool bli_cpuid_is_a64fx
-     (
-       uint32_t family,
-       uint32_t model,
-       uint32_t features
-     )
-{
-	// Check for expected CPU features.
-	const uint32_t expected = FEATURE_SVE;
-
-	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
-
-	return TRUE;
-}
-
 bool bli_cpuid_is_cortexa15
      (
        uint32_t family,
@@ -1010,9 +1028,7 @@ bool bli_cpuid_is_cortexa15
 	// Check for expected CPU features.
 	const uint32_t expected = FEATURE_NEON;
 
-	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
-
-	return TRUE;
+	return bli_cpuid_has_features( features, expected ) && model == 0xc0f;
 }
 
 bool bli_cpuid_is_cortexa9
@@ -1025,9 +1041,7 @@ bool bli_cpuid_is_cortexa9
 	// Check for expected CPU features.
 	const uint32_t expected = FEATURE_NEON;
 
-	if ( !bli_cpuid_has_features( features, expected ) ) return FALSE;
-
-	return TRUE;
+	return bli_cpuid_has_features( features, expected ) && model == 0xc09;
 }
 
 #else
@@ -1060,7 +1074,7 @@ model_t bli_cpuid_query_model_id( arch_t arch_id )
 
    Copyright (C) 2017, The University of Texas at Austin
    Copyright (C) 2017, Devin Matthews
-   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -1092,29 +1106,36 @@ model_t bli_cpuid_query_model_id( arch_t arch_id )
 
 enum
 {
-                                      // input register(s)     output register
-	FEATURE_MASK_SSE3     = (1u<< 0), // cpuid[eax=1]         :ecx[0]
-	FEATURE_MASK_SSSE3    = (1u<< 9), // cpuid[eax=1]         :ecx[9]
-	FEATURE_MASK_SSE41    = (1u<<19), // cpuid[eax=1]         :ecx[19]
-	FEATURE_MASK_SSE42    = (1u<<20), // cpuid[eax=1]         :ecx[20]
-	FEATURE_MASK_AVX      = (1u<<28), // cpuid[eax=1]         :ecx[28]
-	FEATURE_MASK_AVX2     = (1u<< 5), // cpuid[eax=7,ecx=0]   :ebx[5]
-	FEATURE_MASK_FMA3     = (1u<<12), // cpuid[eax=1]         :ecx[12]
-	FEATURE_MASK_FMA4     = (1u<<16), // cpuid[eax=0x80000001]:ecx[16]
-	FEATURE_MASK_AVX512F  = (1u<<16), // cpuid[eax=7,ecx=0]   :ebx[16]
-	FEATURE_MASK_AVX512DQ = (1u<<17), // cpuid[eax=7,ecx=0]   :ebx[17]
-	FEATURE_MASK_AVX512PF = (1u<<26), // cpuid[eax=7,ecx=0]   :ebx[26]
-	FEATURE_MASK_AVX512ER = (1u<<27), // cpuid[eax=7,ecx=0]   :ebx[27]
-	FEATURE_MASK_AVX512CD = (1u<<28), // cpuid[eax=7,ecx=0]   :ebx[28]
-	FEATURE_MASK_AVX512BW = (1u<<30), // cpuid[eax=7,ecx=0]   :ebx[30]
-	FEATURE_MASK_AVX512VL = (1u<<31), // cpuid[eax=7,ecx=0]   :ebx[31]
-	FEATURE_MASK_AVX512VNNI = (1u<<11), // cpuid[eax=7,ecx=0]   :ecx[11]
-	FEATURE_MASK_AVX512BF16 = (1u<< 5), // cpuid[eax=7,ecx=1]   :eax[5]
-	FEATURE_MASK_XGETBV   = (1u<<26)|
-                            (1u<<27), // cpuid[eax=1]         :ecx[27:26]
-	XGETBV_MASK_XMM       = 0x02u,    // xcr0[1]
-	XGETBV_MASK_YMM       = 0x04u,    // xcr0[2]
-	XGETBV_MASK_ZMM       = 0xe0u     // xcr0[7:5]
+                                                    // input register(s)     output register
+	FEATURE_MASK_SSE3               = (1u<< 0), // cpuid[eax=1]          :ecx[0]
+	FEATURE_MASK_SSSE3              = (1u<< 9), // cpuid[eax=1]          :ecx[9]
+	FEATURE_MASK_SSE41              = (1u<<19), // cpuid[eax=1]          :ecx[19]
+	FEATURE_MASK_SSE42              = (1u<<20), // cpuid[eax=1]          :ecx[20]
+	FEATURE_MASK_AVX                = (1u<<28), // cpuid[eax=1]          :ecx[28]
+	FEATURE_MASK_AVX2               = (1u<< 5), // cpuid[eax=7,ecx=0]    :ebx[5]
+	FEATURE_MASK_FMA3               = (1u<<12), // cpuid[eax=1]          :ecx[12]
+	FEATURE_MASK_FMA4               = (1u<<16), // cpuid[eax=0x80000001] :ecx[16]
+	FEATURE_MASK_AVX512F            = (1u<<16), // cpuid[eax=7,ecx=0]    :ebx[16]
+	FEATURE_MASK_AVX512DQ           = (1u<<17), // cpuid[eax=7,ecx=0]    :ebx[17]
+	FEATURE_MASK_AVX512PF           = (1u<<26), // cpuid[eax=7,ecx=0]    :ebx[26]
+	FEATURE_MASK_AVX512ER           = (1u<<27), // cpuid[eax=7,ecx=0]    :ebx[27]
+	FEATURE_MASK_AVX512CD           = (1u<<28), // cpuid[eax=7,ecx=0]    :ebx[28]
+	FEATURE_MASK_AVX512BW           = (1u<<30), // cpuid[eax=7,ecx=0]    :ebx[30]
+	FEATURE_MASK_AVX512VL           = (1u<<31), // cpuid[eax=7,ecx=0]    :ebx[31]
+	FEATURE_MASK_AVX512VNNI         = (1u<<11), // cpuid[eax=7,ecx=0]    :ecx[11]
+	FEATURE_MASK_MOVDIRI            = (1u<<27), // cpuid[eax=7,ecx=0]    :ecx[27]
+	FEATURE_MASK_MOVDIR64B          = (1u<<28), // cpuid[eax=7,ecx=0]    :ecx[28]
+	FEATURE_MASK_AVX512VP2INTERSECT = (1u<<8),  // cpuid[eax=7,ecx=0]    :edx[8]
+	FEATURE_MASK_AVXVNNI            = (1u<< 4), // cpuid[eax=7,ecx=1]    :eax[4]
+	FEATURE_MASK_AVX512BF16         = (1u<< 5), // cpuid[eax=7,ecx=1]    :eax[5]
+	FEATURE_MASK_XGETBV             = (1u<<26)|
+                                          (1u<<27), // cpuid[eax=1]          :ecx[27:26]
+	XGETBV_MASK_XMM                 = 0x02u,    // xcr0[1]
+	XGETBV_MASK_YMM                 = 0x04u,    // xcr0[2]
+	XGETBV_MASK_ZMM                 = 0xe0u,    // xcr0[7:5]
+	FEATURE_MASK_DATAPATH_FP128     = (1u<<0),  // cpuid[eax=0x8000001A] :eax[0]
+	FEATURE_MASK_DATAPATH_FP256     = (1u<<2),  // cpuid[eax=0x8000001A] :eax[2]
+	FEATURE_MASK_DATAPATH_FP512     = (1u<<3)   // cpuid[eax=0x8000001A] :eax[3]
 };
 
 
@@ -1178,6 +1199,10 @@ uint32_t bli_cpuid_query
 		if ( bli_cpuid_has_features( ebx, FEATURE_MASK_AVX512VL ) ) *features |= FEATURE_AVX512VL;
 
 		if ( bli_cpuid_has_features( ecx, FEATURE_MASK_AVX512VNNI ) ) *features |= FEATURE_AVX512VNNI;
+		if ( bli_cpuid_has_features( ecx, FEATURE_MASK_MOVDIRI ) )    *features |= FEATURE_MOVDIRI;
+		if ( bli_cpuid_has_features( ecx, FEATURE_MASK_MOVDIR64B ) )  *features |= FEATURE_MOVDIR64B;
+
+		if ( bli_cpuid_has_features( edx, FEATURE_MASK_AVX512VP2INTERSECT ) ) *features |= FEATURE_AVX512VP2INTERSECT;
 
 		// This is actually a macro that modifies the last four operands,
 		// hence why they are not passed by address.
@@ -1186,8 +1211,8 @@ uint32_t bli_cpuid_query
 		// 5th feature bit of the returned value
 		__cpuid_count( 7, 1, eax, ebx, ecx, edx );
 
+		if ( bli_cpuid_has_features( eax, FEATURE_MASK_AVXVNNI ) )    *features |= FEATURE_AVXVNNI;
 		if ( bli_cpuid_has_features( eax, FEATURE_MASK_AVX512BF16 ) ) *features |= FEATURE_AVX512BF16;
-
 	}
 
 	// Check extended processor info / features bits for AMD-specific features.
@@ -1204,6 +1229,17 @@ uint32_t bli_cpuid_query
 		//print_binary(edx);
 
 		if ( bli_cpuid_has_features( ecx, FEATURE_MASK_FMA4 ) ) *features |= FEATURE_FMA4;
+	}
+	if ( cpuid_max_ext >= 0x8000001Au )
+	{
+		// This is actually a macro that modifies the last four operands,
+		// hence why they are not passed by address.
+		// This returns extended feature flags in EAX.
+		__cpuid( 0x8000001A, eax, ebx, ecx, edx );
+
+		if ( bli_cpuid_has_features( eax, FEATURE_MASK_DATAPATH_FP128 ) ) *features |= FEATURE_DATAPATH_FP128;
+		if ( bli_cpuid_has_features( eax, FEATURE_MASK_DATAPATH_FP256 ) ) *features |= FEATURE_DATAPATH_FP256;
+		if ( bli_cpuid_has_features( eax, FEATURE_MASK_DATAPATH_FP512 ) ) *features |= FEATURE_DATAPATH_FP512;
 	}
 
 	// Unconditionally check processor info / features bits.
@@ -1306,8 +1342,8 @@ uint32_t bli_cpuid_query
 			// only if the xcr[7:5] bits are set. If they are not set, then
 			// clear all feature bits related to AVX-512.
 			if ( !bli_cpuid_has_features( eax, XGETBV_MASK_XMM |
-				                               XGETBV_MASK_YMM |
-				                               XGETBV_MASK_ZMM ) )
+				                           XGETBV_MASK_YMM |
+				                           XGETBV_MASK_ZMM ) )
 			{
 				*features &= ~( FEATURE_AVX512F  |
 				                FEATURE_AVX512DQ |
@@ -1322,7 +1358,7 @@ uint32_t bli_cpuid_query
 			// only if the xcr[2] bit is set. If it is not set, then
 			// clear all feature bits related to AVX.
 			if ( !bli_cpuid_has_features( eax, XGETBV_MASK_XMM |
-				                               XGETBV_MASK_YMM ) )
+				                           XGETBV_MASK_YMM ) )
 			{
 				*features &= ~( FEATURE_AVX  |
 				                FEATURE_AVX2 |
@@ -1373,6 +1409,34 @@ uint32_t bli_cpuid_query
 		return VENDOR_INTEL;
 	else
 		return VENDOR_UNKNOWN;
+}
+
+void bli_cpuid_check_datapath(
+       uint32_t vendor,
+       uint32_t features )
+{
+        if ( vendor == VENDOR_AMD )
+	{
+		uint32_t expected;
+		expected = FEATURE_DATAPATH_FP512;
+		if ( bli_cpuid_has_features( features, expected ) )
+		{
+			bli_fp_datapath = DATAPATH_FP512;
+			return;
+		}
+		expected = FEATURE_DATAPATH_FP256;
+		if ( bli_cpuid_has_features( features, expected ) )
+		{
+			bli_fp_datapath = DATAPATH_FP256;
+			return;
+		}
+		expected = FEATURE_DATAPATH_FP128;
+		if ( bli_cpuid_has_features( features, expected ) )
+		{
+			bli_fp_datapath = DATAPATH_FP128;
+			return;
+		}
+	}
 }
 
 void bli_cpuid_check_cache( uint32_t vendor )
@@ -1494,7 +1558,243 @@ int vpu_count( void )
 	}
 }
 
-#elif defined(__aarch64__) || defined(__arm__) || defined(_M_ARM)
+#elif defined(__aarch64__)
+
+#ifdef __linux__
+// This is adapted from OpenBLAS.  See
+// https://www.kernel.org/doc/html/latest/arm64/cpu-feature-registers.html
+// for the mechanism, but not the magic numbers.
+
+// Fixme:  Could these be missing in older Linux?
+#include <asm/hwcap.h>
+#include <sys/auxv.h>
+
+#ifndef HWCAP_CPUID
+#define HWCAP_CPUID (1 << 11)
+#endif
+/* From https://www.kernel.org/doc/html/latest/arm64/sve.html and the
+   aarch64 hwcap.h */
+#ifndef HWCAP_SVE
+#define HWCAP_SVE (1 << 22)
+#endif
+/* Maybe also for AT_HWCAP2
+#define HWCAP2_SVE2(1 << 1)
+et al
+) */
+
+#endif //__linux__
+
+#ifdef __APPLE__
+#include <sys/types.h>
+// #include <sys/sysctl.h>
+#endif
+
+static uint32_t get_coretype
+	(
+	  uint32_t* features
+	)
+{
+	int implementer = 0x00, part = 0x000;
+	*features = FEATURE_NEON;
+
+#ifdef __linux__
+	if ( getauxval( AT_HWCAP ) & HWCAP_CPUID )
+	{
+		// Also available from
+		// /sys/devices/system/cpu/cpu0/regs/identification/midr_el1
+		// and split out in /proc/cpuinfo (with a tab before the colon):
+		// CPU part	: 0x0a1
+		
+		uint64_t midr_el1;
+		__asm("mrs %0, MIDR_EL1" : "=r" (midr_el1));
+		/*
+		 * MIDR_EL1
+		 *
+		 * 31          24 23     20 19          16 15          4 3         0
+		 * -----------------------------------------------------------------
+		 * | Implementer | Variant | Architecture | Part Number | Revision |
+		 * -----------------------------------------------------------------
+		 */
+		implementer = (midr_el1 >> 24) & 0xFF;
+		part        = (midr_el1 >> 4)  & 0xFFF;
+	}
+	
+	bool has_sve = getauxval( AT_HWCAP ) & HWCAP_SVE;
+	if (has_sve)
+		*features |= FEATURE_SVE;
+#endif //__linux__
+
+#ifdef __APPLE__
+	// Better values could be obtained from sysctlbyname()
+	implementer = 0x61; //Apple
+	part        = 0x023; //Firestorm
+#endif //__APPLE__
+
+	// From Linux arch/arm64/include/asm/cputype.h
+	// ARM_CPU_IMP_ARM 0x41
+	// ARM_CPU_IMP_APM 0x50
+	// ARM_CPU_IMP_CAVIUM 0x43
+	// ARM_CPU_IMP_BRCM 0x42
+	// ARM_CPU_IMP_QCOM 0x51
+	// ARM_CPU_IMP_NVIDIA 0x4E
+	// ARM_CPU_IMP_FUJITSU 0x46
+	// ARM_CPU_IMP_HISI 0x48
+	// ARM_CPU_IMP_APPLE 0x61
+	//
+	// ARM_CPU_PART_AEM_V8 0xD0F
+	// ARM_CPU_PART_FOUNDATION 0xD00
+	// ARM_CPU_PART_CORTEX_A57 0xD07
+	// ARM_CPU_PART_CORTEX_A72 0xD08
+	// ARM_CPU_PART_CORTEX_A53 0xD03
+	// ARM_CPU_PART_CORTEX_A73 0xD09
+	// ARM_CPU_PART_CORTEX_A75 0xD0A
+	// ARM_CPU_PART_CORTEX_A35 0xD04
+	// ARM_CPU_PART_CORTEX_A55 0xD05
+	// ARM_CPU_PART_CORTEX_A76 0xD0B
+	// ARM_CPU_PART_NEOVERSE_N1 0xD0C
+	// ARM_CPU_PART_CORTEX_A77 0xD0D
+	//   from GCC:
+	// ARM_CPU_PART_CORTEX_A78 0xd41
+	// ARM_CPU_PART_CORTEX_X1 0xd44
+	// ARM_CPU_PART_CORTEX_V1 0xd40
+	// ARM_CPU_PART_CORTEX_N2 0xd49
+	// ARM_CPU_PART_CORTEX_R82 0xd15
+	//
+	// APM_CPU_PART_POTENZA 0x000
+	//
+	// CAVIUM_CPU_PART_THUNDERX 0x0A1
+	// CAVIUM_CPU_PART_THUNDERX_81XX 0x0A2
+	// CAVIUM_CPU_PART_THUNDERX_83XX 0x0A3
+	// CAVIUM_CPU_PART_THUNDERX2 0x0AF
+	// CAVIUM_CPU_PART_THUNDERX3 0x0B8  // taken from OpenBLAS
+	//
+	// BRCM_CPU_PART_BRAHMA_B53 0x100 
+	// BRCM_CPU_PART_VULCAN 0x516
+	//
+	// QCOM_CPU_PART_FALKOR_V1 0x800
+	// QCOM_CPU_PART_FALKOR 0xC00
+	// QCOM_CPU_PART_KRYO 0x200
+	// QCOM_CPU_PART_KRYO_3XX_SILVER 0x803
+	// QCOM_CPU_PART_KRYO_4XX_GOLD 0x804
+	// QCOM_CPU_PART_KRYO_4XX_SILVER 0x805
+	//
+	// NVIDIA_CPU_PART_DENVER 0x003
+	// NVIDIA_CPU_PART_CARMEL 0x004
+	//
+	// FUJITSU_CPU_PART_A64FX 0x001
+	//
+	// HISI_CPU_PART_TSV110 0xD01
+
+	// APPLE_CPU_PART_M1_ICESTORM 0x022
+	// APPLE_CPU_PART_M1_FIRESTORM 0x023
+
+	// Fixme:  After merging the vpu_count branch we could report the
+	// part here with bli_dolog.
+	switch(implementer)
+	{
+		case 0x41:		// ARM
+			switch (part)
+			{
+#ifdef BLIS_CONFIG_CORTEXA57
+				case 0xd07: // Cortex A57
+					return BLIS_ARCH_CORTEXA57;
+#endif
+#ifdef BLIS_CONFIG_CORTEXA53
+				case 0xd03: // Cortex A53
+					return BLIS_ARCH_CORTEXA53;
+#endif
+#ifdef BLIS_CONFIG_THUNDERX2
+				case 0xd0c: // Neoverse N1 (and Graviton G2?)
+					return BLIS_ARCH_THUNDERX2; //placeholder for N1
+#endif
+			}
+			break;
+		case 0x42:		// Broadcom
+			switch (part)
+			{
+#ifdef BLIS_CONFIG_THUNDERX2
+				case 0x516: // Vulcan
+					return BLIS_ARCH_THUNDERX2;
+#endif
+			}
+			break;
+		case 0x43:		// Cavium
+			switch (part)
+			{
+#ifdef BLIS_CONFIG_THUNDERX2
+				case 0x0af: // ThunderX2
+				case 0x0b8: // ThunderX3
+					return BLIS_ARCH_THUNDERX2;
+#endif
+			}
+			break;
+		case 0x46:      	// Fujitsu
+			switch (part)
+			{
+#ifdef BLIS_CONFIG_A64FX
+				case 0x001: // A64FX
+					return BLIS_ARCH_A64FX;
+#endif
+			}
+			break;
+		case 0x61:		// Apple
+			switch (part)
+			{
+#ifdef BLIS_CONFIG_FIRESTORM
+				case 0x022: // Icestorm (M1.LITTLE)
+				case 0x023: // Firestorm (M1.big)
+					return BLIS_ARCH_FIRESTORM;
+#endif
+			}
+			break;
+	}
+
+#ifdef BLIS_CONFIG_ARMSVE
+	if (has_sve)
+		return BLIS_ARCH_ARMSVE;
+#endif
+
+// Can't use #if defined(...) here because of parsing done for autoconfiguration
+#ifdef BLIS_CONFIG_CORTEXA57
+	return BLIS_ARCH_CORTEXA57;
+#else
+#ifdef BLIS_CONFIG_CORTEXA53
+	return BLIS_ARCH_CORTEXA53;
+#else
+	return BLIS_ARCH_GENERIC;
+#endif
+#endif
+}
+
+uint32_t bli_cpuid_query
+     (
+       uint32_t* model,
+       uint32_t* part,
+       uint32_t* features
+     )
+{
+	*model = MODEL_ARMV8;
+	*part  = get_coretype(features);
+
+	return VENDOR_ARM;
+}
+
+#elif defined(__arm__) || defined(_M_ARM)
+
+/* 
+   I can't easily find documentation to do this as for aarch64, though
+   it presumably could be unearthed from Linux code.  However, on
+   Linux 5.2 (and Androids's 3.4), /proc/cpuinfo has this sort of
+   thing, used below:
+
+   CPU implementer	: 0x41
+   CPU architecture: 7
+   CPU variant	: 0x3
+   CPU part	: 0xc09
+
+   The complication for family selection is that Neon is optional for
+   CortexA9, for instance.  That's tested in bli_cpuid_is_cortexa9.
+ */
 
 #define TEMP_BUFFER_SIZE 200
 

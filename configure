@@ -5,7 +5,7 @@
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -143,6 +143,12 @@ print_usage()
 	echo "                 Disable (enabled by default) building BLIS as a shared"
 	echo "                 library. If the shared library build is disabled, the"
 	echo "                 static library build must remain enabled."
+	echo " "
+	echo "   --enable-rpath, --disable-rpath"
+	echo " "
+	echo "                 Enable (disabled by default) setting an install_name for"
+	echo "                 dynamic libraries on macOS which starts with @rpath rather"
+	echo "                 than the absolute install path."
 	echo " "
 	echo "   -e SYMBOLS, --export-shared[=SYMBOLS]"
 	echo " "
@@ -723,13 +729,21 @@ read_registry_file()
 				if [ "${mem}" != "${mems_mem}" ]; then
 
 					#clist="${config_registry[$config]}"
-					clist=$(query_array "config_registry" ${config})
+					clisttmp=$(query_array "config_registry" ${config})
 
 					# Replace the current config with its constituent config set,
 					# canonicalize whitespace, and then remove duplicate config
 					# set names, if they exist. Finally, update the config registry
 					# with the new config list.
-					newclist=$(echo -e "${clist}" | sed -e "s/${mem}/${mems_mem}/g")
+					# NOTE: WE must use substitute_words() rather than a simple sed
+					# expression because we need to avoid matching partial strings.
+					# For example, if clist above contains "foo bar barsk" and we use
+					# sed to substitute "bee boo" as the members of "bar", the
+					# result would (incorrectly) be "foo bee boo bee boosk",
+					# which would then get reduced, via rm_duplicate_words(), to
+					# "foo bee boo boosk".
+					#newclist=$(echo -e "${clist}" | sed -e "s/${mem}/${mems_mem}/g")
+					newclist=$(substitute_words "${mem}" "${mems_mem}" "${clisttmp}")
 					newclist=$(canonicalize_ws "${newclist}")
 					newclist=$(rm_duplicate_words "${newclist}")
 
@@ -812,6 +826,13 @@ read_registry_file()
 					# canonicalize whitespace, and then remove duplicate kernel
 					# set names, if they exist. Finally, update the kernel registry
 					# with the new kernel list.
+					# NOTE: WE must use substitute_words() rather than a simple sed
+					# expression because we need to avoid matching partial strings.
+					# For example, if klist above contains "foo bar barsk" and we use
+					# sed to substitute "bee boo" as the members of "bar", the
+					# result would (incorrectly) be "foo bee boo bee boosk",
+					# which would then get reduced, via rm_duplicate_words(), to
+					# "foo bee boo boosk".
 					#newklist=$(echo -e "${klisttmp}" | sed -e "s/${ker}/${kers_ker}/g")
 					newklist=$(substitute_words "${ker}" "${kers_ker}" "${klisttmp}")
 					newklist=$(canonicalize_ws "${newklist}")
@@ -1558,6 +1579,8 @@ check_compiler()
 
 	echo "${script_name}: checking for blacklisted configurations due to ${cc} ${cc_version}."
 
+	# Fixme: check on a64fx, neoverse, and others
+
 	# gcc
 	if [ "x${cc_vendor}" = "xgcc" ]; then
 
@@ -1719,7 +1742,7 @@ check_compiler_version_ranges()
 	gcc_older_than_4_9_0='no'
 	gcc_older_than_6_1_0='no'
 	gcc_older_than_9_1_0='no'
-
+	gcc_older_than_11_2_0='no'
 	echo "${script_name}: checking ${cc} ${cc_version} against known consequential version ranges."
 
 	# gcc
@@ -1743,6 +1766,19 @@ check_compiler_version_ranges()
 		if [ ${cc_major} -lt 9 ]; then
 			echo "${script_name}: note: found ${cc} version older than 9.1."
 			gcc_older_than_9_1_0='yes'
+		fi
+
+		# Check for gcc < 11.2.0 (ie: 11.2 or older).
+		if [ ${cc_major} -lt 11 ]; then
+			echo "${script_name}: note: found ${cc} version older than 11.2.0."
+			gcc_older_than_11_2_0='yes'
+		else
+			if [ ${cc_major} -eq 11 ]; then
+				if [ ${cc_minor} -lt 2 ]; then
+					echo "${script_name}: note: found ${cc} version older than 11.2.0."
+					gcc_older_than_11_2_0='yes'
+				fi
+			fi
 		fi
 	fi
 
@@ -1877,7 +1913,7 @@ set_default_version()
 	echo "${script_name}: determining default version string."
 
 	# Use what's in the version file as-is.
-	version="AOCL-BLIS $(cat "${version_file}") Build $(date +%Y%m%d)"
+	version="AOCL-BLAS $(cat "${version_file}") Build $(date +%Y%m%d)"
 }
 
 
@@ -2061,6 +2097,7 @@ main()
 	enable_arg_max_hack='no'
 	enable_static='yes'
 	enable_shared='yes'
+	enable_rpath='no'
 	export_shared='public'
 	enable_pba_pools='yes'
 	enable_sba_pools='yes'
@@ -2193,6 +2230,12 @@ main()
 							;;
 						disable-shared)
 							enable_shared='no'
+							;;
+						enable-rpath)
+							enable_rpath='yes'
+							;;
+						disable-rpath)
+							enable_rpath='no'
 							;;
 						export-shared=*)
 							export_shared=${OPTARG#*=}
@@ -2813,7 +2856,7 @@ main()
 
 	# Based on the number of sub-configurations, set default value for disable_blis_arch_type
 	# (if user hasn't set option). BLIS_ARCH_TYPE functionality only makes sense for use with
-	# processor families containing multiple sub-configurations, but user can force the 
+	# processor families containing multiple sub-configurations, but user can force the
 	# functionality to be enabled/disabled with --enable-blis-arch-type/--disable-blis-arch-type
 	# configure options.
 	if [ "x${disable_blis_arch_type}" = "xunset"  ]; then
@@ -3090,7 +3133,9 @@ main()
 		echo "${script_name}: internal memory pools for small blocks are enabled."
 		enable_sba_pools_01=1
 	else
-		echo "${script_name}: internal memory pools for small blocks are disabled."
+		#echo "${script_name}: internal memory pools for small blocks are disabled."
+		echo "${script_name}: *** disabling memory pools for small blocks is currently disabled, awaiting fixes to this functionality."
+		exit 1
 		enable_sba_pools_01=0
 	fi
 	if [ "x${enable_mem_tracing}" = "xyes" ]; then
@@ -3474,6 +3519,7 @@ main()
 		| sed -e "s/@gcc_older_than_4_9_0@/${gcc_older_than_4_9_0}/g" \
 		| sed -e "s/@gcc_older_than_6_1_0@/${gcc_older_than_6_1_0}/g" \
 		| sed -e "s/@gcc_older_than_9_1_0@/${gcc_older_than_9_1_0}/g" \
+		| sed -e "s/@gcc_older_than_11_2_0@/${gcc_older_than_11_2_0}/g" \
 		| sed -e "s/@CC@/${cc_esc}/g" \
 		| sed -e "s/@CXX@/${cxx_esc}/g" \
 		| sed -e "s/@RANLIB@/${ranlib_esc}/g" \
@@ -3495,6 +3541,7 @@ main()
 		| sed -e "s/@enable_arg_max_hack@/${enable_arg_max_hack}/g" \
 		| sed -e "s/@enable_static@/${enable_static}/g" \
 		| sed -e "s/@enable_shared@/${enable_shared}/g" \
+		| sed -e "s/@enable_rpath@/${enable_rpath}/g" \
 		| sed -e "s/@export_shared@/${export_shared}/g" \
 		| sed -e "s/@enable_blas@/${enable_blas}/g" \
 		| sed -e "s/@enable_cblas@/${enable_cblas}/g" \

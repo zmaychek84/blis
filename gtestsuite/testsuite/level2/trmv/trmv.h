@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -36,6 +36,7 @@
 
 #include "blis.h"
 #include "common/testing_helpers.h"
+#include "inc/check_error.h"
 
 /**
  * @brief Performs the operation
@@ -67,6 +68,22 @@ static void trmv_( char uploa, char transa, char diaga, gtint_t n,
         ztrmv_( &uploa, &transa, &diaga, &n, ap, &lda, xp, &incx );
     else
         throw std::runtime_error("Error in testsuite/level2/trmv.h: Invalid typename in trmv_().");
+}
+
+template<typename T>
+static void trmv_blis_impl( char uploa, char transa, char diaga, gtint_t n,
+                         T *ap, gtint_t lda, T *xp, gtint_t incx )
+{
+    if constexpr (std::is_same<T, float>::value)
+        strmv_blis_impl( &uploa, &transa, &diaga, &n, ap, &lda, xp, &incx );
+    else if constexpr (std::is_same<T, double>::value)
+        dtrmv_blis_impl( &uploa, &transa, &diaga, &n, ap, &lda, xp, &incx );
+    else if constexpr (std::is_same<T, scomplex>::value)
+        ctrmv_blis_impl( &uploa, &transa, &diaga, &n, ap, &lda, xp, &incx );
+    else if constexpr (std::is_same<T, dcomplex>::value)
+        ztrmv_blis_impl( &uploa, &transa, &diaga, &n, ap, &lda, xp, &incx );
+    else
+        throw std::runtime_error("Error in testsuite/level2/trmv.h: Invalid typename in trmv_blis_impl().");
 }
 
 template<typename T>
@@ -134,9 +151,37 @@ template<typename T>
 static void trmv( char storage, char uploa, char transa, char diaga,
     gtint_t n, T *alpha, T *ap, gtint_t lda, T *xp, gtint_t incx )
 {
-#if (defined TEST_BLAS || defined  TEST_CBLAS)
+#if (defined TEST_BLAS_LIKE || defined TEST_CBLAS)
     T one;
     testinghelpers::initone(one);
+#endif
+
+#ifdef TEST_UPPERCASE_ARGS
+    storage = static_cast<char>(std::toupper(static_cast<unsigned char>(storage)));
+    uploa = static_cast<char>(std::toupper(static_cast<unsigned char>(uploa)));
+    transa = static_cast<char>(std::toupper(static_cast<unsigned char>(transa)));
+    diaga = static_cast<char>(std::toupper(static_cast<unsigned char>(diaga)));
+#endif
+
+#ifdef TEST_INPUT_ARGS
+    // Create copy of scalar input values so we can check that they are not altered.
+    char storage_cpy = storage;
+    char uploa_cpy = uploa;
+    char transa_cpy = transa;
+    char diaga_cpy = diaga;
+    gtint_t n_cpy = n;
+    T* alpha_cpy = alpha;
+    gtint_t lda_cpy = lda;
+    gtint_t incx_cpy = incx;
+
+    // Create copy of input arrays so we can check that they are not altered.
+    T* ap_cpy = nullptr;
+    gtint_t size_ap = testinghelpers::matsize( storage, transa, n, n, lda );
+    if (ap && size_ap > 0)
+    {
+        ap_cpy = new T[size_ap];
+        memcpy( ap_cpy, ap, size_ap * sizeof( T ) );
+    }
 #endif
 
 #ifdef TEST_BLAS
@@ -147,6 +192,14 @@ static void trmv( char storage, char uploa, char transa, char diaga,
             throw std::runtime_error("Error in testsuite/level2/trmv.h: BLAS interface cannot be tested for alpha != one.");
     else
         throw std::runtime_error("Error in testsuite/level2/trmv.h: BLAS interface cannot be tested for row-major order.");
+#elif TEST_BLAS_BLIS_IMPL
+    if(( storage == 'c' || storage == 'C' ))
+        if( *alpha == one )
+            trmv_blis_impl<T>( uploa, transa, diaga, n, ap, lda, xp, incx );
+        else
+            throw std::runtime_error("Error in testsuite/level2/trmv.h: BLAS_BLIS_IMPL interface cannot be tested for alpha != one.");
+    else
+        throw std::runtime_error("Error in testsuite/level2/trmv.h: BLAS_BLIS_IMPL interface cannot be tested for row-major order.");
 #elif TEST_CBLAS
     if( *alpha == one )
         cblas_trmv<T>( storage, uploa, transa, diaga, n, ap, lda, xp, incx );
@@ -156,5 +209,30 @@ static void trmv( char storage, char uploa, char transa, char diaga,
     typed_trmv<T>( storage, uploa, transa, diaga, n, alpha, ap, lda, xp, incx );
 #else
     throw std::runtime_error("Error in testsuite/level2/trmv.h: No interfaces are set to be tested.");
+#endif
+
+#ifdef TEST_INPUT_ARGS
+    //----------------------------------------------------------
+    // Check scalar inputs have not been modified.
+    //----------------------------------------------------------
+
+    computediff<char>( "storage", storage, storage_cpy );
+    computediff<char>( "uploa", uploa, uploa_cpy );
+    computediff<char>( "transa", transa, transa_cpy );
+    computediff<char>( "diaga", diaga, diaga_cpy );
+    computediff<gtint_t>( "n", n, n_cpy );
+    if (alpha) computediff<T>( "alpha", *alpha, *alpha_cpy );
+    computediff<gtint_t>( "lda", lda, lda_cpy );
+    computediff<gtint_t>( "incx", incx, incx_cpy );
+
+    //----------------------------------------------------------
+    // Bitwise-wise check array inputs have not been modified.
+    //----------------------------------------------------------
+
+    if (ap && size_ap > 0)
+    {
+        computediff<T>( "A", storage, n, n, ap, ap_cpy, lda, true );
+        delete[] ap_cpy;
+    }
 #endif
 }

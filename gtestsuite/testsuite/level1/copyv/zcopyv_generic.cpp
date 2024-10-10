@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -35,14 +35,14 @@
 #include <gtest/gtest.h>
 #include "test_copyv.h"
 
-class zcopyvGenericTest :
-        public ::testing::TestWithParam<std::tuple<char,
-                                                   gtint_t,
-                                                   gtint_t,
-                                                   gtint_t>> {};
+class zcopyvGeneric :
+        public ::testing::TestWithParam<std::tuple<char,                     // n: use x, c: use conj(x)
+                                                   gtint_t,                  // m size of vector
+                                                   gtint_t,                  // stride size for x
+                                                   gtint_t>> {};             // stride size for y
 
-// Tests using random integers as vector elements.
-TEST_P( zcopyvGenericTest, RandomData )
+// Tests using random values as vector elements.
+TEST_P( zcopyvGeneric, API )
 {
     using T = dcomplex;
     //----------------------------------------------------------
@@ -58,48 +58,16 @@ TEST_P( zcopyvGenericTest, RandomData )
     // stride size for y:
     gtint_t incy = std::get<3>(GetParam());
 
-    // Set the threshold for the errors:
-    double thresh = testinghelpers::getEpsilon<T>();
-
     //----------------------------------------------------------
     //     Call generic test body using those parameters
     //----------------------------------------------------------
-    test_copyv<T>( conjx, n, incx, incy, thresh );
+    test_copyv<T>( conjx, n, incx, incy );
 }
-
-// Used to generate a test case with a sensible name.
-// Beware that we cannot use fp numbers (e.g., 2.3) in the names,
-// so we are only printing int(2.3). This should be enough for debugging purposes.
-// If this poses an issue, please reach out.
-class zcopyvGenericTestPrint {
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<char,gtint_t,gtint_t,gtint_t>> str) const {
-        char conjx    = std::get<0>(str.param);
-        gtint_t n     = std::get<1>(str.param);
-        gtint_t incx  = std::get<2>(str.param);
-        gtint_t incy  = std::get<3>(str.param);
-#ifdef TEST_BLAS
-        std::string str_name = "zcopy_";
-#elif TEST_CBLAS
-        std::string str_name = "cblas_zcopy";
-#else  //#elif TEST_BLIS_TYPED
-        std::string str_name = "bli_zcopyv";
-#endif
-        str_name += "_" + std::to_string(n);
-        str_name += "_" + std::string(&conjx, 1);
-        std::string incx_str = ( incx > 0) ? std::to_string(incx) : "m" + std::to_string(std::abs(incx));
-        str_name += "_" + incx_str;
-        std::string incy_str = ( incy > 0) ? std::to_string(incy) : "m" + std::to_string(std::abs(incy));
-        str_name += "_" + incy_str;
-        return str_name;
-    }
-};
 
 // Black box testing for generic and main use of zcopy.
 INSTANTIATE_TEST_SUITE_P(
-        Blackbox,
-        zcopyvGenericTest,
+        smallSize,
+        zcopyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'                                            // n: use x, c: use conj(x)
 #ifdef TEST_BLIS_TYPED
@@ -110,7 +78,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(gtint_t(1)),                                   // stride size for x
             ::testing::Values(gtint_t(1))                                    // stride size for y
         ),
-        ::zcopyvGenericTestPrint()
+        ::copyvGenericPrint()
     );
 
 // Test for non-unit increments.
@@ -118,7 +86,7 @@ INSTANTIATE_TEST_SUITE_P(
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
         NonUnitPositiveIncrements,
-        zcopyvGenericTest,
+        zcopyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'                                            // n: use x, c: use conj(x)
 #ifdef TEST_BLIS_TYPED
@@ -129,7 +97,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(gtint_t(2), gtint_t(11)),                      // stride size for x
             ::testing::Values(gtint_t(3), gtint_t(33))                       // stride size for y
         ),
-        ::zcopyvGenericTestPrint()
+        ::copyvGenericPrint()
     );
 
 #ifndef TEST_BLIS_TYPED
@@ -138,13 +106,58 @@ INSTANTIATE_TEST_SUITE_P(
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
         NegativeIncrements,
-        zcopyvGenericTest,
+        zcopyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                                          // n: use x, c: use conj(x)
             ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
             ::testing::Values(gtint_t(-5), gtint_t(7)),                      // stride size for x
             ::testing::Values(gtint_t(13), gtint_t(-9))                      // stride size for y
         ),
-        ::zcopyvGenericTestPrint()
+        ::copyvGenericPrint()
     );
 #endif
+//To cover large sizes with non unit increments.
+INSTANTIATE_TEST_SUITE_P(
+        largeSize,
+        zcopyvGeneric,
+        ::testing::Combine(
+            ::testing::Values('n'),                                          // n: use x, c: use conj(x)
+            ::testing::Values(gtint_t(4444)),                                // m size of vector
+            ::testing::Values(gtint_t(4)),                                   // stride size for x
+            ::testing::Values(gtint_t(3))                                    // stride size for y
+        ),
+        ::copyvGenericPrint()
+    );
+// To cover small, medium and large sizes of M with unit increment.
+INSTANTIATE_TEST_SUITE_P(
+        DiffSizeOfM,
+        zcopyvGeneric,
+        ::testing::Combine(
+            ::testing::Values('n'),                                          // n: use x, c: use conj(x)
+            ::testing::Values(gtint_t(1250),
+                              gtint_t(4200),
+                              gtint_t(3344),
+                              gtint_t(2244),
+                              gtint_t(32),
+                              gtint_t(64),
+                              gtint_t(128),
+                              gtint_t(264),
+                              gtint_t(987),
+                              gtint_t(1876)),                                // m size of vector
+            ::testing::Values(gtint_t(1)),                                   // stride size for x
+            ::testing::Values(gtint_t(1))                                    // stride size for y
+        ),
+        ::copyvGenericPrint()
+    );
+//incx and incy is greater than size of a vector m.
+INSTANTIATE_TEST_SUITE_P(
+        strideGreaterThanSize,
+        zcopyvGeneric,
+        ::testing::Combine(
+            ::testing::Values('n'),                                           // n: use x, c: use conj(x)
+            ::testing::Values(gtint_t(4)),                                    // m size of vector
+            ::testing::Values(gtint_t(88)),                                   // stride size for x
+            ::testing::Values(gtint_t(99))                                    // stride size for y
+        ),
+        ::copyvGenericPrint()
+    );

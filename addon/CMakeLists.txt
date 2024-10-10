@@ -1,4 +1,36 @@
-##Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved. ##
+#[=[
+
+   BLIS
+   An object-based framework for developing high-performance BLAS-like
+   libraries.
+
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are
+   met:
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+]=]
 
 # Writing a function that will be used to generate the required object
 # libraries for the required addons.
@@ -59,6 +91,7 @@ function(generate_addon_targets addon_target)
                                     # in get-addon-c99flags-for
                                     ${CADDONINCFLAGS}
                                 )
+
         if(THREADING_MODEL STREQUAL "openmp")
             # Equivalent to CTHREADFLAGS in get-noopt-cflags-for
             target_link_libraries(${addon_target}_C99_ADDON PRIVATE OpenMP::OpenMP_C)
@@ -66,10 +99,8 @@ function(generate_addon_targets addon_target)
             # in get-noopt-cflags-for
             target_compile_options(${addon_target}_C99_ADDON PRIVATE ${CTHREADFLAGS})
         endif()
-        if(BUILD_SHARED_LIBS)
-            # Equivalent to CPICFLAGS in get-noopt-cflags-for
-            set_target_properties(${addon_target}_C99_ADDON PROPERTIES POSITION_INDEPENDENT_CODE ON)
-        endif()
+        # Equivalent to CPICFLAGS in get-noopt-cflags-for
+        set_target_properties(${addon_target}_C99_ADDON PROPERTIES POSITION_INDEPENDENT_CODE ON)
         add_dependencies(${addon_target}_C99_ADDON flat-header)
         # Put all those targets under object-libs-targets folder name so that they appear all together in IDE.
         set_target_properties(${addon_target}_C99_ADDON PROPERTIES FOLDER object-libs-targets)
@@ -128,17 +159,17 @@ function(generate_addon_targets addon_target)
             # in get-noopt-cflags-for
             target_compile_options(${addon_target}_C99_KERNEL_ADDON PRIVATE ${CTHREADFLAGS})
         endif()
-        if(BUILD_SHARED_LIBS)
-            # Equivalent to CPICFLAGS in get-noopt-cflags-for
-            set_target_properties(${addon_target}_C99_KERNEL_ADDON PROPERTIES POSITION_INDEPENDENT_CODE ON)
-        endif()
+        # Equivalent to CPICFLAGS in get-noopt-cflags-for
+        set_target_properties(${addon_target}_C99_KERNEL_ADDON PROPERTIES POSITION_INDEPENDENT_CODE ON)
         add_dependencies(${addon_target}_C99_KERNEL_ADDON flat-header)
         # Put all those targets under object-libs-targets folder name so that they appear all together in IDE.
         set_target_properties(${addon_target}_C99_KERNEL_ADDON PROPERTIES FOLDER object-libs-targets)
     endif()
 
-    # Collect all subdirectory paths that have at least one file with suffix in ADDON_CXX_SUFS list.
-    get_filepaths_with_suffixes(LOCAL_SOURCE_CXX_FILES "${CMAKE_CURRENT_SOURCE_DIR}/${addon_target}" "${ADDON_CXX_SUFS}")
+    if(("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU") AND (CMAKE_C_COMPILER_VERSION VERSION_LESS 11.2.0))
+        # Collect all subdirectory paths that have at least one file with suffix in ADDON_CXX_SUFS list.
+        get_filepaths_with_suffixes(LOCAL_SOURCE_CXX_FILES "${CMAKE_CURRENT_SOURCE_DIR}/${addon_target}" "${ADDON_CXX_SUFS}")
+    endif()
 
     # Only generate the object library if there is at least one source file.
     list(LENGTH LOCAL_SOURCE_CXX_FILES size)
@@ -190,10 +221,8 @@ function(generate_addon_targets addon_target)
             # in get-noopt-cflags-for
             target_compile_options(${addon_target}_CXX_ADDON PRIVATE ${CTHREADFLAGS})
         endif()
-        if(BUILD_SHARED_LIBS)
-            # Equivalent to CPICFLAGS in get-noopt-cflags-for
-            set_target_properties(${addon_target}_CXX_ADDON PROPERTIES POSITION_INDEPENDENT_CODE ON)
-        endif()
+        # Equivalent to CPICFLAGS in get-noopt-cflags-for
+        set_target_properties(${addon_target}_CXX_ADDON PROPERTIES POSITION_INDEPENDENT_CODE ON)
         add_dependencies(${addon_target}_CXX_ADDON flat-header)
         # Put all those targets under object-libs-targets folder name so that they appear all together in IDE.
         set_target_properties(${addon_target}_CXX_ADDON PROPERTIES FOLDER object-libs-targets)

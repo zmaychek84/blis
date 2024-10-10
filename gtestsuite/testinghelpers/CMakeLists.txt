@@ -1,21 +1,22 @@
 #[=[
+
    BLIS
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -28,6 +29,7 @@
    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 ]=]
 
 file(GLOB_RECURSE SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*/*.cpp")
@@ -41,7 +43,9 @@ elseif(REF_CBLAS STREQUAL "OpenBLAS")
     target_compile_definitions(testinghelpers PUBLIC REF_IS_OPENBLAS)
 endif()
 if(TEST_INTERFACE STREQUAL "BLAS")
-    target_compile_definitions(testinghelpers PUBLIC TEST_BLAS)
+    target_compile_definitions(testinghelpers PUBLIC TEST_BLAS TEST_BLAS_LIKE)
+elseif(TEST_INTERFACE STREQUAL "BLAS_BLIS_IMPL")
+    target_compile_definitions(testinghelpers PUBLIC TEST_BLAS_BLIS_IMPL TEST_BLAS_LIKE)
 elseif(TEST_INTERFACE STREQUAL "CBLAS")
     target_compile_definitions(testinghelpers PUBLIC TEST_CBLAS)
 else() # BLIS_TYPED option
@@ -52,7 +56,9 @@ if(INT_SIZE STREQUAL "32")
 else()
     target_compile_definitions(testinghelpers PUBLIC INT_SIZE=64)
 endif()
-target_compile_definitions(testinghelpers PUBLIC BLIS_ELEMENT_TYPE='${BLIS_ELEMENT_TYPE}')
+if(${BLIS_ELEMENT_TYPE} STREQUAL "i")
+    target_compile_definitions(testinghelpers PUBLIC -DBLIS_INT_ELEMENT_TYPE)
+endif()
 target_include_directories(testinghelpers PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc ${BLIS_INCLUDE})
 if(LINUX)
     target_link_libraries(testinghelpers pthread)
@@ -64,5 +70,5 @@ else()
         set(threads_spec Threads::Threads)
     endif()
     target_link_libraries(testinghelpers PUBLIC ${threads_spec})
-    set_target_properties(testinghelpers PROPERTIES POSITION_INDEPENDENT_CODE ON)    
+    set_target_properties(testinghelpers PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()

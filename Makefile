@@ -5,7 +5,7 @@
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -191,6 +191,13 @@ gen-obj-paths-from-src = $(foreach ch, $(1), \
 # directories.
 MK_CONFIG_OBJS      := $(call gen-obj-paths-from-src,$(CONFIG_SRC_SUFS),$(MK_CONFIG_SRC),$(CONFIG_PATH),$(BASE_OBJ_CONFIG_PATH))
 
+MK_KERNELS_LPGEMM_SRC   := $(filter  ./kernels/zen/lpgemm/%.c, $(MK_KERNELS_SRC))
+MK_KERNELS_LPGEMM_SRC   += $(filter  ./kernels/zen4/lpgemm/%.c, $(MK_KERNELS_SRC))
+MK_KERNELS_SRC          := $(filter-out $(MK_KERNELS_LPGEMM_SRC),$(MK_KERNELS_SRC))
+ifeq ($(filter aocl_gemm, $(ADDON_LIST)), aocl_gemm)
+  MK_KERNELS_LPGEMM_OBJS  := $(call gen-obj-paths-from-src,$(KERNELS_SRC_SUFS),$(MK_KERNELS_LPGEMM_SRC),$(KERNELS_PATH),$(BASE_OBJ_KERNELS_PATH))
+endif
+
 # Generate object file paths for architecture-specific kernel source code.
 # We target only .c, .s, and .S files. Note that MK_KERNELS_SRC is already
 # limited to the kernel source corresponding to the kernel sets in
@@ -220,10 +227,29 @@ MK_ADDON_KERS_SRC   := $(foreach addon, $(ADDON_LIST), \
                            $(filter $(ADDON_PATH)/$(addon)/$(KERNELS_DIR)/%, \
                                     $(MK_ADDON_SRC)) \
                         )
+
+# Generate non-kernel list for all addons except aocl_gemm
+# We process aocl_gemma addon separately.
 MK_ADDON_OTHER_SRC  := $(foreach addon, $(ADDON_LIST), \
-                           $(filter-out $(ADDON_PATH)/$(addon)/$(KERNELS_DIR)/%, \
-                                        $(MK_ADDON_SRC)) \
+                            $(if $(filter-out aocl_gemm,$(addon)), \
+                                $(filter-out $(ADDON_PATH)/$(addon)/$(KERNELS_DIR)/%, \
+                                             $(MK_ADDON_SRC))) \
                         )
+
+# Pick the .cpp files present in JIT folder only in the following conditions
+# 1. when gcc version is older than 11.2
+# 2. when aocl_gemm addon is enabled.
+ifeq ($(filter aocl_gemm, $(ADDON_LIST)), aocl_gemm)
+    ifeq ($(GCC_OT_11_2_0),no)
+        MK_AOCL_GEMM_OTHER_SRC := $(filter-out $(ADDON_PATH)/$(aocl_gemm)/$(KERNELS_DIR)/%, \
+                                               $(MK_ADDON_SRC))
+        MK_ADDON_OTHER_SRC  := $(filter %.c,$(MK_AOCL_GEMM_OTHER_SRC))
+    else
+        MK_ADDON_OTHER_SRC  := $(filter-out $(ADDON_PATH)/$(aocl_gemm)/$(KERNELS_DIR)/%, \
+                                            $(MK_ADDON_SRC))
+    endif
+endif
+
 MK_ADDON_KERS_OBJS  := $(call gen-obj-paths-from-src,$(ADDON_SRC_SUFS),$(MK_ADDON_KERS_SRC),$(ADDON_PATH),$(BASE_OBJ_ADDON_PATH))
 MK_ADDON_OTHER_OBJS := $(call gen-obj-paths-from-src,$(ADDON_SRC_SUFS),$(MK_ADDON_OTHER_SRC),$(ADDON_PATH),$(BASE_OBJ_ADDON_PATH))
 MK_ADDON_OBJS       := $(MK_ADDON_KERS_OBJS) $(MK_ADDON_OTHER_OBJS)
@@ -263,6 +289,10 @@ MK_BLIS_OBJS        := $(MK_CONFIG_OBJS) \
                        $(MK_AOCLDTL_OBJS) \
                        $(MK_ADDON_OBJS) \
                        $(MK_SANDBOX_OBJS)
+
+ifeq ($(filter aocl_gemm, $(ADDON_LIST)), aocl_gemm)
+  MK_BLIS_OBJS      += $(MK_KERNELS_LPGEMM_OBJS)
+endif
 
 # Optionally filter out the BLAS and CBLAS compatibility layer object files.
 # This is not actually necessary, since each affected file is guarded by C
@@ -606,6 +636,19 @@ else
 endif
 endef
 
+# first argument: a kernel set (name) being targeted (e.g. haswell).
+# second argument: the configuration whose CFLAGS we should use in compilation.
+# third argument: the kernel file suffix being considered.
+define make-kernels-lpgemm-rule
+$(BASE_OBJ_KERNELS_PATH)/$(1)/%.o: $(KERNELS_PATH)/$(1)/%.$(3) $(BLIS_H_FLAT) $(MAKE_DEFS_MK_PATHS)
+ifeq ($(ENABLE_VERBOSE),yes)
+	$(CC) $(call get-kernel-lpgemm-cflags-for,$(2)) -c $$< -o $$@
+else
+	@echo "Compiling $$@" $(call get-kernel-lpgemm-text-for,$(2))
+	@$(CC) $(call get-kernel-lpgemm-cflags-for,$(2)) -c $$< -o $$@
+endif
+endef
+
 # first argument: a configuration name from the union of config_list and
 # config_name, used to look up the CFLAGS to use during compilation.
 # second argument: the C99 addon file suffix being considered.
@@ -710,6 +753,10 @@ $(foreach conf, $(CONFIG_LIST), $(eval $(call make-refkern-rule,$(conf))))
 $(foreach suf, $(KERNELS_SRC_SUFS), \
 $(foreach kset, $(KERNEL_LIST), $(eval $(call make-kernels-rule,$(kset),$(call get-config-for-kset,$(kset)),$(suf)))))
 
+ifeq ($(filter aocl_gemm, $(ADDON_LIST)), aocl_gemm)
+  $(foreach suf, $(KERNELS_SRC_SUFS), \
+  $(foreach kset, $(KERNEL_LIST), $(eval $(call make-kernels-lpgemm-rule,$(kset)/lpgemm,$(call get-config-for-kset,$(kset)),$(suf)))))
+endif
 # Instantiate the build rule for C addon files. Use the CFLAGS for the
 # configuration family.
 $(foreach suf, $(ADDON_C99_SUFS), \
@@ -850,20 +897,14 @@ else
 	@$(RANLIB) $@
 endif
 
-# first argument: the base name of the BLAS test driver.
-define make-blat-rule
-$(BASE_EXE_BLASTEST_PATH)/$(1).x: $(BASE_OBJ_BLASTEST_PATH)/$(1).o $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK)
+$(BASE_EXE_BLASTEST_PATH)/%.x: $(BASE_OBJ_BLASTEST_PATH)/%.o $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK)
 	@mkdir -p $(BASE_EXE_BLASTEST_PATH)
 ifeq ($(ENABLE_VERBOSE),yes)
-	$(LINKER) $(BASE_OBJ_BLASTEST_PATH)/$(1).o $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK) $(LDFLAGS) -o $$@
+	$(LINKER) $< $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK) $(LDFLAGS) -o $@
 else
-	@echo "Linking $$(@F) against '$(notdir $(BLASTEST_F2C_LIB)) $(LIBBLIS_LINK) $(LDFLAGS)'"
-	@$(LINKER) $(BASE_OBJ_BLASTEST_PATH)/$(1).o $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK) $(LDFLAGS) -o $$@
+	@echo "Linking $@ against '$(notdir $(BLASTEST_F2C_LIB)) $(LIBBLIS_LINK) "$(LDFLAGS)"'"
+	@$(LINKER) $< $(BLASTEST_F2C_LIB) $(LIBBLIS_LINK) $(LDFLAGS) -o $@
 endif
-endef
-
-# Instantiate the rule above for each driver file.
-$(foreach name, $(BLASTEST_DRV_BASES), $(eval $(call make-blat-rule,$(name))))
 
 # A rule to run ?blat1.x driver files.
 define make-run-blat1-rule
@@ -933,7 +974,7 @@ $(TESTSUITE_BIN): $(MK_TESTSUITE_OBJS) $(LIBBLIS_LINK)
 ifeq ($(ENABLE_VERBOSE),yes)
 	$(LINKER) $(MK_TESTSUITE_OBJS) $(LIBBLIS_LINK) $(LDFLAGS) -o $@
 else
-	@echo "Linking $@ against '$(LIBBLIS_LINK) $(LDFLAGS)'"
+	@echo "Linking $@ against '$(LIBBLIS_LINK) "$(LDFLAGS)"'"
 	@$(LINKER) $(MK_TESTSUITE_OBJS) $(LIBBLIS_LINK) $(LDFLAGS) -o $@
 endif
 
@@ -1081,6 +1122,13 @@ else
 	               $(@)/$(CONFIG_DIR)/$(CONFIG_NAME)/
 endif
 
+# BLIS library in pkg-configure blis.pc.in file.
+ifeq ($(THREADING_MODEL),off)
+AOCLLIB            := blis
+else
+AOCLLIB            := blis-mt
+endif
+
 $(PC_SHARE_DIR_INST):  $(PC_IN_FILE)
 	$(MKDIR) $(@)
 ifeq ($(ENABLE_VERBOSE),no)
@@ -1088,6 +1136,7 @@ ifeq ($(ENABLE_VERBOSE),no)
 endif
 	$(shell cat "$(PC_IN_FILE)" \
 	| sed -e "s#@PACKAGE_VERSION@#$(VERSION)#g" \
+	| sed -e "s#@AOCLLIB@#$(AOCLLIB)#g" \
 	| sed -e "s#@prefix@#$(prefix)#g" \
 	| sed -e "s#@exec_prefix@#$(exec_prefix)#g" \
 	| sed -e "s#@libdir@#$(libdir)#g" \

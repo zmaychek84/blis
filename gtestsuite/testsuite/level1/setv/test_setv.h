@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -73,3 +73,21 @@ void test_setv( char conjalpha, gtint_t n, T alpha, gtint_t incx )
         EXPECT_EQ(x[i], alpha_ref) << "blis_sol[" << i << "]="<< x[i] <<"   ref = "  << alpha_ref;
     }
 }
+
+
+// Test-case logger : Used to print the test-case details based on parameters
+class setvGenericPrint {
+public:
+    std::string operator()(
+        testing::TestParamInfo<std::tuple<char,gtint_t,gtint_t>> str) const {
+        char conjalpha = std::get<0>(str.param);
+        gtint_t n      = std::get<1>(str.param);
+        gtint_t incx   = std::get<2>(str.param);
+
+        std::string str_name = API_PRINT;
+        str_name += "_n_" + std::to_string(n);
+        str_name += "_conjalpha_" + std::string(&conjalpha, 1);
+        str_name += "_incx_" + testinghelpers::get_value_string(incx);
+        return str_name;
+    }
+};

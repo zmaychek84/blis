@@ -86,7 +86,13 @@ For threaded MKL the following OpenMP runtimes are used:
 * For testing a 64-bit integer BLIS library, use `-DINT_SIZE=64`.
 ## Address Sanitizer (Linux Only)
 * To build using address sanitizer, configure using `-DENABLE_ASAN=ON`. [**OFF by default**]
-* An installation to BLIS which was build with ASAN flags[CFLAGS="-O0 -g -fsanitize=address"] needs to be provided.
+* An installation to BLIS which was build with ASAN flags needs to be provided.
+* Set -DENABLE_ASAN=ON when building BLIS with CMake, or set CFLAGS="-O0 -g -fsanitize=address" when building with make.
+* By default redzone size is 16 bytes and can redzone size can be increase to 2048 bytes.
+```console
+$ ASAN_OPTIONS=redzone=2048 <executable>
+```
+
 ## Code Coverage (Only GCC Compiler)
 * BLIS : Configure BLIS Library with code coverage flags[CFLAGS="-O0 -fprofile-arcs -ftest-coverage"], compile and install.
 * Gtestsuite : To build for code coverage, configure cmake with `-DENABLE_COVERAGE=ON`. [**OFF by default**] and then compile and run the executable.
@@ -101,7 +107,39 @@ For threaded MKL the following OpenMP runtimes are used:
 ## BLIS Library Interface to be Tested
 * To build the testsuite using BLAS interface, configure using `-DTEST_INTERFACE=BLAS`. [**Default**]
 * To build the testsuite using CBLAS interface, configure using `-DTEST_INTERFACE=CBLAS`.
+* To build the testsuite using BLAS_BLIS_IMPL wrapper layer (called underneath BLAS and CBLAS interfaces), configure using `-DTEST_INTERFACE=BLAS_BLIS_IMPL`.
 * To build the testsuite using BLIS-typed interface, configure using `-DTEST_INTERFACE=BLIS_TYPED`. Note that more tests are built for this option, due to the extended APIs.
+## Test with upper case character arguments
+* To test with upper case character arguments, configure using `-DTEST_UPPERCASE_ARGS=ON`. [**OFF by default**]
+## Test with threshold set to zero
+* To enable testing with the threshold set to zero, configure using `-DTHRESHOLD_ZERO=ON`. [**OFF by default**]
+## Type of Data Generated in Testing
+* To generate floating-point numbers in the matrices and vectors that are used in testing, configure using `-DBLIS_ELEMENT_TYPE=f`. [**Default**]
+* To generate integers in the matrices and vectors that are used in testing, configure using `-DBLIS_ELEMENT_TYPE=i`. This can be useful for debugging since operating on integers should compute exact results. Note that "integer" here doesn't refer to `int` type, but on the mathematical set Z.
+## Extreme value used for testing data that shouldn't be read.
+* To test with Inf, configure using `-DEXT_VAL=Inf`. [**Default**]
+* To test with NaN, configure using `-DEXT_VAL=NaN`.
+
+This option is used to set a static constant variable `GenericET` of type `testinghelpers::datagenerators::ElementType` which is in turned used as the default argument in data generator functions such as `get_random_vector`, `get_random_matrix`, etc. To find a full list of APIs that can be used to generate random data we refer to `blis/gtestsuite/testinghelpers/inc/common/data_generators.h`.
+### Specifying Types of Data Independent of BLIS_ELEMENT_TYPE
+* To generate a vector x with random values in [-10, 10], depending on `BLIS_ELEMENT_TYPE` use
+```cpp
+std::vector<double> x = testinghelpers::get_random_vector<double>( -10, 10, n, incx );
+```
+* To generate a vector x with floating-point values in [-10, 10], independent of `BLIS_ELEMENT_TYPE` use
+```cpp
+std::vector<double> x = testinghelpers::get_random_vector<double>( -10, 10, n, incx, testinghelpers::datagenerators::ElementType::FP );
+```
+* To generate a vector x with integer values in [-10, 10], independent of `BLIS_ELEMENT_TYPE` use
+```cpp
+std::vector<double> x = testinghelpers::get_random_vector<double>( -10, 10, n, incx, testinghelpers::datagenerators::ElementType::INT );
+```
+## Testing value of INFO set within BLIS. This is not returned by BLAS or CBLAS APIs, but AMD BLAS 4.2 and later includes a function bli_info_get_info_value to return this value.
+* If using an older version of BLIS, configure using `-DCAN_TEST_INFO_VALUE=OFF`. [**ON by default**]
+
+## Test BLAS input arguments
+* To check input arguments have not been changed by the BLAS routines, configure using `-DTEST_INPUT_ARGS=ON`. [**OFF by default**]
+* Note: this will substantially increase the runtime of the tests.
 
 # Building the Tests
 After the successful configuration of CMake, we can build the tests. The following steps are taken by the building process:
@@ -162,9 +200,9 @@ You can also find more details in [CMake Documentation](https://cmake.org/cmake/
 ## Using the Executables
 As we mentioned earlier, all cpp files of each API directory are compiled into one executable. This executable can be run separately which can be very useful while developing or debugging.
 When MKL is used as a reference, the following environment variables need to be set before calling the executables, depending on the configuration.
-* MKL_INTERFACE_LAYER=LP64 or MKL_INTERFACE_LAYER=ILP64 depending on whether 32 or 64 bit integers are used, respectivelly.
+* MKL_INTERFACE_LAYER=LP64 or MKL_INTERFACE_LAYER=ILP64 depending on whether 32 or 64 bit integers are used, respectively.
 * MKL_THREADING_LAYER=SEQUENTIAL for sequential MKL.
-* MKL_THREADING_LAYER=INTEL or MKL_THREADING_LAYER=GNU depending on whether we execute on Windows or on Linux, respectivelly.
+* MKL_THREADING_LAYER=INTEL or MKL_THREADING_LAYER=GNU depending on whether we execute on Windows or on Linux, respectively.
 
 ### To run all addv tests use:
 ```console
@@ -174,6 +212,13 @@ $ ./testsuite.level1.addv
 ```console
 $ ./testuite.util.nrm2 --gtest_filter="*snrm2*"
 ```
+Alternatively, use the GTEST_FILTER environment variable. This is particularly useful for
+passing gtest filter options to executables run via ctest, e.g.:
+```console
+$ GTEST_FILTER="*snrm2*" ./testuite.util.nrm2
+$ GTEST_FILTER=-"EVT" ctest -R level2
+```
+
 ## Running tests using Valgrind
 We can run any executable using valgrind as usual. For example, use the following command
 ```console

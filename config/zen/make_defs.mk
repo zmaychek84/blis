@@ -5,7 +5,7 @@
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -78,15 +78,22 @@ endif
 # NOTE: The -fomit-frame-pointer option is needed for some kernels because
 # they make explicit use of the rbp register.
 CKOPTFLAGS     := $(COPTFLAGS) -fomit-frame-pointer
+# Additional flag which is required for lpgemm kernels
+CKLPOPTFLAGS   :=
+
 ifeq ($(CC_VENDOR),gcc)
   CKVECFLAGS += -march=znver1
   GCC_VERSION := $(strip $(shell $(CC) -dumpversion | cut -d. -f1))
 
   ifeq ($(shell test $(GCC_VERSION) -ge 9; echo $$?),0)
-    CKOPTFLAGS += -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize -fno-gcse
+    CKLPOPTFLAGS += -fno-tree-partial-pre -fno-tree-pre -fno-tree-loop-vectorize -fno-gcse
   endif
 endif# gcc
 
+
+ifeq ($(CC_VENDOR),clang)
+  CKVECFLAGS += -march=znver1
+endif # clang
 
 # Flags specific to reference kernels.
 CROPTFLAGS     := $(CKOPTFLAGS)

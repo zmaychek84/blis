@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -150,6 +150,10 @@ gint_t bli_env_get_var_arch_type( const char* env, gint_t fallback )
 				r_val = BLIS_ARCH_PENRYN;
 			}
 			// AMD
+			else if (strcmp(str, "zen5") == 0)
+			{
+				r_val = BLIS_ARCH_ZEN5;
+			}
 			else if (strcmp(str, "zen4") == 0)
 			{
 				r_val = BLIS_ARCH_ZEN4;
@@ -184,44 +188,99 @@ gint_t bli_env_get_var_arch_type( const char* env, gint_t fallback )
 				r_val = BLIS_ARCH_BULLDOZER;
 			}
 			// Some aliases for mapping AMD and Intel ISA
-			// names to a suitable sub-configuration.
-#if defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64) || defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_ZEN3) || defined(BLIS_FAMILY_ZEN2) || defined(BLIS_FAMILY_ZEN)
+			// names to a suitable sub-configuration for each
+			// x86-64 processor family.
+#if defined(BLIS_FAMILY_AMDZEN)
 			else if (strcmp(str, "avx512") == 0)
 			{
 				r_val = BLIS_ARCH_ZEN4;
 			}
-#endif
-#if defined(BLIS_FAMILY_INTEL64) || defined(BLIS_FAMILY_SKX) || defined(BLIS_FAMILY_HASWELL)
-			else if (strcmp(str, "avx512") == 0)
-			{
-				r_val = BLIS_ARCH_SKX;
-			}
-#endif
-#if defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64) || defined(BLIS_FAMILY_ZEN4) ||defined(BLIS_FAMILY_ZEN3)
 			else if (strcmp(str, "avx2") == 0)
 			{
 				r_val = BLIS_ARCH_ZEN3;
 			}
-#endif
-#if defined(BLIS_FAMILY_ZEN2)
-			else if (strcmp(str, "avx2") == 0)
+			else if (strcmp(str, "avx") == 0)
 			{
-				r_val = BLIS_ARCH_ZEN2;
+				r_val = BLIS_ARCH_GENERIC;
+			}
+			else if ((strcmp(str, "sse4_2") == 0) ||
+			         (strcmp(str, "sse4.2") == 0) ||
+			         (strcmp(str, "sse4_1") == 0) ||
+			         (strcmp(str, "sse4.1") == 0) ||
+			         (strcmp(str, "sse4a") == 0)  ||
+			         (strcmp(str, "sse4") == 0)   ||
+			         (strcmp(str, "ssse3") == 0)  ||
+			         (strcmp(str, "sse3") == 0)   ||
+			         (strcmp(str, "sse2") == 0))
+			{
+				r_val = BLIS_ARCH_GENERIC;
 			}
 #endif
-#if defined(BLIS_FAMILY_ZEN)
+#if defined(BLIS_FAMILY_X86_64)
+			else if (strcmp(str, "avx512") == 0)
+			{
+				r_val = BLIS_ARCH_ZEN4;
+			}
 			else if (strcmp(str, "avx2") == 0)
 			{
-				r_val = BLIS_ARCH_ZEN;
+				r_val = BLIS_ARCH_ZEN3;
+			}
+			else if (strcmp(str, "avx") == 0)
+			{
+				r_val = BLIS_ARCH_SANDYBRIDGE;
+			}
+			else if ((strcmp(str, "sse4_2") == 0) ||
+			         (strcmp(str, "sse4.2") == 0) ||
+			         (strcmp(str, "sse4_1") == 0) ||
+			         (strcmp(str, "sse4.1") == 0) ||
+			         (strcmp(str, "sse4a") == 0)  ||
+			         (strcmp(str, "sse4") == 0)   ||
+			         (strcmp(str, "ssse3") == 0)  ||
+			         (strcmp(str, "sse3") == 0)   ||
+			         (strcmp(str, "sse2") == 0))
+			{
+				r_val = BLIS_ARCH_GENERIC;
 			}
 #endif
-#if defined(BLIS_FAMILY_INTEL64) || defined(BLIS_FAMILY_SKX) || defined(BLIS_FAMILY_HASWELL)
+#if defined(BLIS_FAMILY_INTEL64)
+			else if (strcmp(str, "avx512") == 0)
+			{
+				r_val = BLIS_ARCH_SKX;
+			}
 			else if (strcmp(str, "avx2") == 0)
 			{
 				r_val = BLIS_ARCH_HASWELL;
 			}
+			else if (strcmp(str, "avx") == 0)
+			{
+				r_val = BLIS_ARCH_SANDYBRIDGE;
+			}
+			else if ((strcmp(str, "sse4_2") == 0) ||
+			         (strcmp(str, "sse4.2") == 0) ||
+			         (strcmp(str, "sse4_1") == 0) ||
+			         (strcmp(str, "sse4.1") == 0) ||
+			         (strcmp(str, "sse4a") == 0)  ||
+			         (strcmp(str, "sse4") == 0)   ||
+			         (strcmp(str, "ssse3") == 0)  ||
+			         (strcmp(str, "sse3") == 0)   ||
+			         (strcmp(str, "sse2") == 0))
+			{
+				r_val = BLIS_ARCH_GENERIC;
+			}
 #endif
 			// ARM
+			else if (strcmp(str, "armsve") == 0)
+			{
+				r_val = BLIS_ARCH_ARMSVE;
+			}
+			else if (strcmp(str, "a64fx") == 0)
+			{
+				r_val = BLIS_ARCH_A64FX;
+			}
+			else if (strcmp(str, "firestorm") == 0)
+			{
+				r_val = BLIS_ARCH_FIRESTORM;
+			}
 			else if (strcmp(str, "thunderx2") == 0)
 			{
 				r_val = BLIS_ARCH_THUNDERX2;
@@ -313,7 +372,17 @@ gint_t bli_env_get_var_model_type( const char* env, gint_t fallback )
 				str[i] = tolower(str[i]);
 			}
 			// AMD
-			if (strcmp(str, "genoa") == 0)
+			if (strcmp(str, "turin") == 0)
+			{
+				r_val = BLIS_MODEL_TURIN;
+			}
+			else if ((strcmp(str, "turin_dense") == 0) ||
+			         (strcmp(str, "turin-dense") == 0) ||
+			         (strcmp(str, "turindense") == 0))
+			{
+				r_val = BLIS_MODEL_TURIN_DENSE;
+			}
+			else if (strcmp(str, "genoa") == 0)
 			{
 				r_val = BLIS_MODEL_GENOA;
 			}

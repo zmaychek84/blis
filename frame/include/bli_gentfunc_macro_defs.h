@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 23, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -152,6 +152,18 @@ GENTFUNCR2( scomplex, float,  c, s, blasname, blisname ) \
 GENTFUNCR2( dcomplex, double, z, d, blasname, blisname )
 
 
+// -- Alternate three-operand macro (one char for complex, one for real proj
+//       for name, one for real proj for use) --
+
+
+#define INSERT_GENTFUNCR3_BLAS( blasname, blisname ) \
+\
+GENTFUNCR3( float,    float,  s,  , s, blasname, blisname ) \
+GENTFUNCR3( double,   double, d,  , d, blasname, blisname ) \
+GENTFUNCR3( scomplex, float,  c, s, s, blasname, blisname ) \
+GENTFUNCR3( dcomplex, double, z, d, d, blasname, blisname )
+
+
 // -- Extended two-operand macro (used only for scal) --
 
 #define INSERT_GENTFUNCSCAL_BLAS_C( blasname, blisname ) \
@@ -162,12 +174,12 @@ GENTFUNCSCAL( scomplex, float,    c, s, blasname, blisname )
 
 #define INSERT_GENTFUNCSCAL_BLAS( blasname, blisname ) \
 \
-GENTFUNCSCAL( float,    float,    s,  , blasname, blisname ) \
-GENTFUNCSCAL( double,   double,   d,  , blasname, blisname ) \
-GENTFUNCSCAL( scomplex, scomplex, c,  , blasname, blisname ) \
-GENTFUNCSCAL( dcomplex, dcomplex, z,  , blasname, blisname ) \
-GENTFUNCSCAL( scomplex, float,    c, s, blasname, blisname ) \
-GENTFUNCSCAL( dcomplex, double,   z, d, blasname, blisname )
+GENTFUNCSCAL( float,    float,    s,  , s, blasname, blisname ) \
+GENTFUNCSCAL( double,   double,   d,  , d, blasname, blisname ) \
+GENTFUNCSCAL( scomplex, scomplex, c,  , c, blasname, blisname ) \
+GENTFUNCSCAL( dcomplex, dcomplex, z,  , z, blasname, blisname ) \
+GENTFUNCSCAL( scomplex, float,    c, s, s, blasname, blisname ) \
+GENTFUNCSCAL( dcomplex, double,   z, d, d, blasname, blisname )
 
 // --GEMMT specific kernels ----------------------------------------------------
 
@@ -185,6 +197,31 @@ GENTFUNC(float,       s, opname, u, funcname) \
 GENTFUNC(double,      d, opname, u, funcname) \
 GENTFUNC(scomplex,    c, opname, u, funcname) \
 GENTFUNC(dcomplex,    z, opname, u, funcname)
+
+
+#define INSERT_GENTFUNC_L_SDC( opname, funcname ) \
+\
+GENTFUNC(float,       s, opname, l, funcname) \
+GENTFUNC(double,      d, opname, l, funcname) \
+GENTFUNC(scomplex,    c, opname, l, funcname)
+
+
+#define INSERT_GENTFUNC_U_SDC( opname, funcname ) \
+\
+GENTFUNC(float,       s, opname, u, funcname) \
+GENTFUNC(double,      d, opname, u, funcname) \
+GENTFUNC(scomplex,    c, opname, u, funcname)
+
+#define INSERT_GENTFUNC_L_SC( opname, funcname ) \
+\
+GENTFUNC(float,       s, opname, l, funcname) \
+GENTFUNC(scomplex,    c, opname, l, funcname)
+
+
+#define INSERT_GENTFUNC_U_SC( opname, funcname ) \
+\
+GENTFUNC(float,       s, opname, u, funcname) \
+GENTFUNC(scomplex,    c, opname, u, funcname)
 
 
 

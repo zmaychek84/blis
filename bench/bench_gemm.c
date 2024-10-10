@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -15,7 +15,7 @@
     - Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-    - Neither the name of The University of Texas nor the names of its
+    - Neither the name(s) of the copyright holder(s) nor the names of its
       contributors may be used to endorse or promote products derived
       from this software without specific prior written permission.
 
@@ -114,7 +114,7 @@ int main( int argc, char** argv )
 		n_repeats = atoi(argv[3]);
 	}
 
-    fprintf(fout, "Dt transa transb m n k alphaR alphaI lda ldb betaR betaI ldc gflops\n");
+    fprintf(fout, "Func Dt transa transb m n k alphaR alphaI lda ldb betaR betaI ldc gflops\n");
 
     // Following variables are needed for scanf to read inputs properly
     // however they are not used in bench.
@@ -240,7 +240,7 @@ int main( int argc, char** argv )
 #ifdef AOCL_MATRIX_INITIALISATION
         bli_randm( &a );
         bli_randm( &b );
-        bli_randm( &c );
+        bli_randm( &c_save );
 #endif
 
         bli_obj_set_conjtrans( transa, &a);
@@ -249,7 +249,7 @@ int main( int argc, char** argv )
         bli_setsc( alpha_r, alpha_i, &alpha );
         bli_setsc( beta_r, beta_i, &beta );
 
-        bli_copym( &c, &c_save );
+        // bli_copym( &c, &c_save );
 
         dtime_save = DBL_MAX;
 
@@ -482,8 +482,8 @@ int main( int argc, char** argv )
                (unsigned long)n,
                (unsigned long)k, gflops);
 
-        fprintf (fout, "%c %c %c %ld %ld %ld %lf %lf %ld %ld %lf %lf %ld %6.3f\n", \
-                 dt_ch, transA_c, transB_c, m, n, k, alpha_r, alpha_i, lda, ldb, beta_r, beta_i, ldc, gflops);
+        fprintf (fout, "%s %c %c %c %ld %ld %ld %lf %lf %ld %ld %lf %lf %ld %6.3f\n", \
+                 api_name, dt_ch, transA_c, transB_c, m, n, k, alpha_r, alpha_i, lda, ldb, beta_r, beta_i, ldc, gflops);
 
         fflush(fout);
 

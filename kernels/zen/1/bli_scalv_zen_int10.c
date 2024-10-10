@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2017 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2017 - 2024, Advanced Micro Devices, Inc. All rights reserved.
    Copyright (C) 2018, The University of Texas at Austin
 
    Redistribution and use in source and binary forms, with or without
@@ -60,8 +60,8 @@ void bli_sscalv_zen_int10
 	// If the vector dimension is zero, or if alpha is unit, return early.
 	if ( bli_zero_dim1( n ) || PASTEMAC(s,eq1)( *alpha ) ) return;
 
-	// If alpha is zero, use setv.
-	if ( PASTEMAC(s,eq0)( *alpha ) )
+	// If alpha is zero, use setv if not called from BLAS scal itself (indicated by n being negative).
+	if ( PASTEMAC(s,eq0)( *alpha ) && n > 0 )
 	{
 		float* zero = bli_s0;
 		if ( cntx == NULL ) cntx = bli_gks_query_cntx();
@@ -78,6 +78,8 @@ void bli_sscalv_zen_int10
 		return;
 	}
 
+	dim_t n0 = bli_abs(n);
+
 	// Initialize local pointers.
 	x0 = x;
 
@@ -88,11 +90,11 @@ void bli_sscalv_zen_int10
 		dim_t option;
 
 		// Unroll and the loop used is picked based on the input size.
-		if( n < 300)
+		if( n0 < 300)
 		{
 			option = 2;
 		}
-		else if( n < 500)
+		else if( n0 < 500)
 		{
 			option = 1;
 		}
@@ -105,7 +107,7 @@ void bli_sscalv_zen_int10
 		{
 			case 0:
 
-				for ( ; (i + 127) < n; i += 128 )
+				for ( ; (i + 127) < n0; i += 128 )
 				{
 					//Load the input values
 					xv[0] = _mm256_loadu_ps( x0 + 0*n_elem_per_reg );
@@ -175,7 +177,7 @@ void bli_sscalv_zen_int10
 	
 			case 1 :
 
-				for ( ; (i + 95) < n; i += 96 )
+				for ( ; (i + 95) < n0; i += 96 )
 				{
 					xv[0] = _mm256_loadu_ps( x0 + 0*n_elem_per_reg );
 					xv[1] = _mm256_loadu_ps( x0 + 1*n_elem_per_reg );
@@ -227,7 +229,7 @@ void bli_sscalv_zen_int10
 
 			case 2:
 		
-				for ( ; (i + 47) < n; i += 48 )
+				for ( ; (i + 47) < n0; i += 48 )
 				{
 					xv[0] = _mm256_loadu_ps( x0 + 0*n_elem_per_reg );
 					xv[1] = _mm256_loadu_ps( x0 + 1*n_elem_per_reg );
@@ -256,7 +258,7 @@ void bli_sscalv_zen_int10
 					x0 += 6*n_elem_per_reg;
 				}
 
-				for ( ; (i + 23) < n; i += 24 )
+				for ( ; (i + 23) < n0; i += 24 )
 				{
 					xv[0] = _mm256_loadu_ps( x0 + 0*n_elem_per_reg );
 					xv[1] = _mm256_loadu_ps( x0 + 1*n_elem_per_reg );
@@ -273,7 +275,7 @@ void bli_sscalv_zen_int10
 					x0 += 3*n_elem_per_reg;
 				}
 
-				for ( ; (i + 7) < n; i += 8 )
+				for ( ; (i + 7) < n0; i += 8 )
 				{
 					xv[0] = _mm256_loadu_ps( x0 + 0*n_elem_per_reg );
 
@@ -284,7 +286,7 @@ void bli_sscalv_zen_int10
 					x0 += 1*n_elem_per_reg;
 				}
 
-				for ( ; (i + 0) < n; i += 1 )
+				for ( ; (i + 0) < n0; i += 1 )
 				{
 					*x0 *= *alpha;
 
@@ -296,7 +298,7 @@ void bli_sscalv_zen_int10
 	{
 		const float alphac = *alpha;
 
-		for ( ; i < n; ++i )
+		for ( ; i < n0; ++i )
 		{
 			*x0 *= alphac;
 
@@ -307,7 +309,7 @@ void bli_sscalv_zen_int10
 
 // -----------------------------------------------------------------------------
 
-void bli_dscalv_zen_int10
+BLIS_EXPORT_BLIS void bli_dscalv_zen_int10
      (
        conj_t           conjalpha,
        dim_t            n,
@@ -329,8 +331,8 @@ void bli_dscalv_zen_int10
 	// If the vector dimension is zero, or if alpha is unit, return early.
 	if ( bli_zero_dim1( n ) || PASTEMAC(d,eq1)( *alpha ) ) return;
 
-	// If alpha is zero, use setv.
-	if ( PASTEMAC(d,eq0)( *alpha ) )
+	// If alpha is zero, use setv if not called from BLAS scal itself (indicated by n being negative).
+	if ( PASTEMAC(d,eq0)( *alpha ) && n > 0 )
 	{
 		double* zero = bli_d0;
 		if ( cntx == NULL ) cntx = bli_gks_query_cntx();
@@ -348,6 +350,8 @@ void bli_dscalv_zen_int10
 		return;
 	}
 
+	dim_t n0 = bli_abs(n);
+
 	// Initialize local pointers.
 	x0 = x;
 
@@ -358,11 +362,11 @@ void bli_dscalv_zen_int10
 		dim_t option;		
 
 		// Unroll and the loop used is picked based on the input size.
-		if(n < 200)
+		if(n0 < 200)
 		{
 			option = 2;
 		}
-		else if(n < 500)
+		else if(n0 < 500)
 		{
 			option = 1;
 		}
@@ -375,7 +379,7 @@ void bli_dscalv_zen_int10
 		{
 			case 0:
 
-				for (; (i + 63) < n; i += 64 )
+				for (; (i + 63) < n0; i += 64 )
 				{
 					xv[0] = _mm256_loadu_pd( x0 + 0*n_elem_per_reg );
 					xv[1] = _mm256_loadu_pd( x0 + 1*n_elem_per_reg );
@@ -440,7 +444,7 @@ void bli_dscalv_zen_int10
 					x0 += 16*n_elem_per_reg;
 				}
 
-				for (; (i + 47) < n; i += 48 )
+				for (; (i + 47) < n0; i += 48 )
 				{
 					xv[0] = _mm256_loadu_pd( x0 + 0*n_elem_per_reg );
 					xv[1] = _mm256_loadu_pd( x0 + 1*n_elem_per_reg );
@@ -492,7 +496,7 @@ void bli_dscalv_zen_int10
 
 			case 1:
 
-				for (; (i + 31) < n; i += 32 )
+				for (; (i + 31) < n0; i += 32 )
 				{
 					xv[0] = _mm256_loadu_pd( x0 + 0*n_elem_per_reg );
 					xv[1] = _mm256_loadu_pd( x0 + 1*n_elem_per_reg );
@@ -529,7 +533,7 @@ void bli_dscalv_zen_int10
 				
 			case 2:
 
-				for ( ; (i + 11) < n; i += 12 )
+				for ( ; (i + 11) < n0; i += 12 )
 				{
 					xv[0] = _mm256_loadu_pd( x0 + 0*n_elem_per_reg );
 					xv[1] = _mm256_loadu_pd( x0 + 1*n_elem_per_reg );
@@ -546,7 +550,7 @@ void bli_dscalv_zen_int10
 					x0 += 3*n_elem_per_reg;
 				}
 
-				for ( ; (i + 3) < n; i += 4 )
+				for ( ; (i + 3) < n0; i += 4 )
 				{
 					xv[0] = _mm256_loadu_pd( x0 + 0*n_elem_per_reg );
 
@@ -557,7 +561,7 @@ void bli_dscalv_zen_int10
 					x0 += 1*n_elem_per_reg;
 				}
 
-				for ( ; (i + 0) < n; i += 1 )
+				for ( ; (i + 0) < n0; i += 1 )
 				{
 					*x0 *= *alpha;
 
@@ -569,7 +573,7 @@ void bli_dscalv_zen_int10
 	{
 		const double alphac = *alpha;
 
-		for ( ; i < n; ++i )
+		for ( ; i < n0; ++i )
 		{
 			*x0 *= alphac;
 
@@ -587,6 +591,30 @@ void bli_zdscalv_zen_int10
        cntx_t* restrict cntx
      )
 {
+	// If the vector dimension is zero, or if alpha is unit, return early.
+	if ( bli_zero_dim1( n ) || PASTEMAC(z,eq1)( *alpha )) return;
+
+	// If alpha is zero, use setv if not called from BLAS scal itself (indicated by n being negative).
+	if ( PASTEMAC(z,eq0)( *alpha ) && n > 0 )
+	{
+		// Expert interface of setv is invoked when alpha is zero
+		dcomplex *zero = bli_z0;
+
+		/* When alpha is zero all the element in x are set to zero */
+		PASTEMAC2(z, setv, BLIS_TAPI_EX_SUF)
+		(
+			BLIS_NO_CONJUGATE,
+			n,
+			zero,
+			x, incx,
+			cntx,
+			NULL);
+
+		return;
+	}
+
+	dim_t n0 = bli_abs(n);
+
 	dim_t i = 0;
 	const dim_t n_elem_per_reg = 4;    // number of elements per register
 
@@ -607,7 +635,7 @@ void bli_zdscalv_zen_int10
 
 		alphav = _mm256_broadcast_sd( &alphac );
 
-		for ( ; ( i + 29 ) < n; i += 30 )
+		for ( ; ( i + 29 ) < n0; i += 30 )
 		{
 			xv[0] = _mm256_loadu_pd( x0 );
 			xv[1] = _mm256_loadu_pd( x0 + n_elem_per_reg );
@@ -660,7 +688,7 @@ void bli_zdscalv_zen_int10
 			x0 += 15 * n_elem_per_reg;
 		}
 
-		for ( ; ( i + 23 ) < n; i += 24 )
+		for ( ; ( i + 23 ) < n0; i += 24 )
 		{
 			xv[0] = _mm256_loadu_pd( x0 );
 			xv[1] = _mm256_loadu_pd( x0 + n_elem_per_reg );
@@ -704,7 +732,7 @@ void bli_zdscalv_zen_int10
 			x0 += 12 * n_elem_per_reg;
 		}
 
-		for ( ; ( i + 15 ) < n; i += 16 )
+		for ( ; ( i + 15 ) < n0; i += 16 )
 		{
 			xv[0] = _mm256_loadu_pd( x0 );
 			xv[1] = _mm256_loadu_pd( x0 + n_elem_per_reg );
@@ -736,7 +764,7 @@ void bli_zdscalv_zen_int10
 			x0 += 8 * n_elem_per_reg;
 		}
 
-		for ( ; ( i + 7 ) < n; i += 8 )
+		for ( ; ( i + 7 ) < n0; i += 8 )
 		{
 			xv[0] = _mm256_loadu_pd( x0 );
 			xv[1] = _mm256_loadu_pd( x0 + n_elem_per_reg );
@@ -756,7 +784,7 @@ void bli_zdscalv_zen_int10
 			x0 += 4 * n_elem_per_reg;
 		}
 
-		for ( ; ( i + 3 ) < n; i += 4 )
+		for ( ; ( i + 3 ) < n0; i += 4 )
 		{
 			xv[0] = _mm256_loadu_pd( x0 );
 			xv[1] = _mm256_loadu_pd( x0 + n_elem_per_reg );
@@ -770,7 +798,7 @@ void bli_zdscalv_zen_int10
 			x0 += 2 * n_elem_per_reg;
 		}
 
-		for ( ; ( i + 1 ) < n; i += 2 )
+		for ( ; ( i + 1 ) < n0; i += 2 )
 		{
 			xv[0] = _mm256_loadu_pd( x0 );
 
@@ -795,13 +823,180 @@ void bli_zdscalv_zen_int10
 
 	alpha_reg = _mm_set1_pd((*alpha).real);
 
-	for (; i < n; ++i)
+	for (; i < n0; ++i)
 	{
 		x_vec = _mm_loadu_pd(x0);
 
 		x_vec = _mm_mul_pd(x_vec, alpha_reg);
 
 		_mm_storeu_pd(x0, x_vec);
+
+		x0 += 2 * incx;
+	}
+}
+
+void bli_cscalv_zen_int
+	(
+	conj_t           conjalpha,
+	dim_t            n,
+	scomplex* restrict alpha,
+	scomplex* restrict x, inc_t incx,
+	cntx_t* restrict cntx
+	)
+{
+	// If the vector dimension is zero, or if alpha is unit, return early.
+	if ( bli_zero_dim1( n ) || PASTEMAC(c,eq1)( *alpha ) ) return;
+
+	// If alpha is zero, use setv if not called from BLAS scal itself (indicated by n being negative).
+	if ( PASTEMAC(c,eq0)( *alpha ) && n > 0 )
+	{
+		// Expert interface of setv is invoked when alpha is zero
+		scomplex *zero = bli_c0;
+
+		/* When alpha is zero all the element in x are set to zero */
+		PASTEMAC2(c, setv, BLIS_TAPI_EX_SUF)
+		(
+			BLIS_NO_CONJUGATE,
+			n,
+			zero,
+			x, incx,
+			cntx,
+			NULL);
+
+		return;
+	}
+
+	dim_t n0 = bli_abs(n);
+
+	dim_t i = 0;
+	scomplex alpha_conj;
+	float *x0 = (float *)x;
+
+	// Performs conjugation of alpha based on conjalpha
+	PASTEMAC(c, copycjs)(conjalpha, *alpha, alpha_conj)
+
+	float real = alpha_conj.real;
+	float imag = alpha_conj.imag;
+
+	// Handling computation for unit-strided vectors
+	if ( incx == 1 )
+	{
+		dim_t const n_elem_per_reg = 8;
+
+		__m256 alpha_real_ymm, alpha_imag_ymm;
+
+		alpha_real_ymm = _mm256_broadcast_ss(&real);
+		alpha_imag_ymm = _mm256_broadcast_ss(&imag);
+
+		__m256 x_vec_ymm[4], temp_ymm[8];
+
+		/*  Code logic
+
+			Consider,
+			x1= a1 + ib1, x2 = a1 + ib2
+			alpha = p + iq
+
+			Vector values
+			x_vec_ymm = a1, b1, a2, b2
+			alpha_real_ymm = p, p, p, p
+			alpha_imag_ymm = q, q, q, q
+
+			Computation
+
+			All real values
+			temp_1 = x_vec_ymm * alpha_real_ymm = a1p, b1p, a2p, b2p
+
+			All imaginary values
+			temp_2 = x_vec_ymm * alpha_imag_ymm = a1q, b1q, a2q, b2q
+
+			permute temp_2 to get
+
+			b1q, a1q, b2q, a2q
+
+			addsub temp_1 and temp_2 to get the final result
+			and then store
+		*/
+
+		for (; (i + 15) < n0; i += 16)
+		{
+			x_vec_ymm[0] = _mm256_loadu_ps(x0);
+			x_vec_ymm[1] = _mm256_loadu_ps(x0 + n_elem_per_reg);
+			x_vec_ymm[2] = _mm256_loadu_ps(x0 + 2 * n_elem_per_reg);
+			x_vec_ymm[3] = _mm256_loadu_ps(x0 + 3 * n_elem_per_reg);
+
+			temp_ymm[0] = _mm256_mul_ps(x_vec_ymm[0], alpha_imag_ymm);
+			temp_ymm[1] = _mm256_mul_ps(x_vec_ymm[1], alpha_imag_ymm);
+			temp_ymm[2] = _mm256_mul_ps(x_vec_ymm[2], alpha_imag_ymm);
+			temp_ymm[3] = _mm256_mul_ps(x_vec_ymm[3], alpha_imag_ymm);
+
+			temp_ymm[4] = _mm256_permute_ps(temp_ymm[0], 0xB1);
+			temp_ymm[5] = _mm256_permute_ps(temp_ymm[1], 0xB1);
+			temp_ymm[6] = _mm256_permute_ps(temp_ymm[2], 0xB1);
+			temp_ymm[7] = _mm256_permute_ps(temp_ymm[3], 0xB1);
+
+			temp_ymm[0] = _mm256_fmaddsub_ps(x_vec_ymm[0], alpha_real_ymm, temp_ymm[4]);
+			temp_ymm[1] = _mm256_fmaddsub_ps(x_vec_ymm[1], alpha_real_ymm, temp_ymm[5]);
+			temp_ymm[2] = _mm256_fmaddsub_ps(x_vec_ymm[2], alpha_real_ymm, temp_ymm[6]);
+			temp_ymm[3] = _mm256_fmaddsub_ps(x_vec_ymm[3], alpha_real_ymm, temp_ymm[7]);
+
+			_mm256_storeu_ps(x0, temp_ymm[0]);
+			_mm256_storeu_ps(x0 + n_elem_per_reg, temp_ymm[1]);
+			_mm256_storeu_ps(x0 + 2 * n_elem_per_reg, temp_ymm[2]);
+			_mm256_storeu_ps(x0 + 3 * n_elem_per_reg, temp_ymm[3]);
+
+			x0 += 4 * n_elem_per_reg;
+		}
+
+		for (; (i + 7) < n0; i += 8)
+		{
+			x_vec_ymm[0] = _mm256_loadu_ps(x0);
+			x_vec_ymm[1] = _mm256_loadu_ps(x0 + n_elem_per_reg);
+
+			temp_ymm[0] = _mm256_mul_ps(x_vec_ymm[0], alpha_imag_ymm);
+			temp_ymm[1] = _mm256_mul_ps(x_vec_ymm[1], alpha_imag_ymm);
+
+			temp_ymm[2] = _mm256_permute_ps(temp_ymm[0], 0xB1);
+			temp_ymm[3] = _mm256_permute_ps(temp_ymm[1], 0xB1);
+
+			temp_ymm[0] = _mm256_fmaddsub_ps(x_vec_ymm[0], alpha_real_ymm, temp_ymm[2]);
+			temp_ymm[1] = _mm256_fmaddsub_ps(x_vec_ymm[1], alpha_real_ymm, temp_ymm[3]);
+
+			_mm256_storeu_ps(x0, temp_ymm[0]);
+			_mm256_storeu_ps(x0 + n_elem_per_reg, temp_ymm[1]);
+
+			x0 += 2 * n_elem_per_reg;
+		}
+
+		for (; (i + 3) < n0; i += 4)
+		{
+			x_vec_ymm[0] = _mm256_loadu_ps(x0);
+
+			temp_ymm[0] = _mm256_mul_ps(x_vec_ymm[0], alpha_imag_ymm);
+
+			temp_ymm[1] = _mm256_permute_ps(temp_ymm[0], 0xB1);
+
+			temp_ymm[0] = _mm256_fmaddsub_ps(x_vec_ymm[0], alpha_real_ymm, temp_ymm[1]);
+
+			_mm256_storeu_ps(x0, temp_ymm[0]);
+
+			x0 += n_elem_per_reg;
+		}
+
+		// Issue vzeroupper instruction to clear upper lanes of ymm registers.
+		// This avoids a performance penalty caused by false dependencies when
+		// transitioning from AVX to SSE instructions (which may occur later,
+		// especially if BLIS is compiled with -mfpmath=sse).
+		_mm256_zeroupper();
+	}
+
+	for (; i < n0; i++)
+	{
+		float x_real, x_imag;
+		x_real = real * (*x0) - imag * (*(x0 + 1));
+		x_imag = real * (*(x0 + 1)) + imag * (*x0);
+
+		*x0 = x_real;
+		*(x0 + 1) = x_imag;
 
 		x0 += 2 * incx;
 	}
@@ -816,24 +1011,14 @@ void bli_zscalv_zen_int
 	cntx_t* restrict cntx
 	)
 {
-	/*
-		Undefined behaviour
-		-------------------
+	// If the vector dimension is zero, or if alpha is unit, return early.
+	if ( bli_zero_dim1( n ) || PASTEMAC(z,eq1)( *alpha ) ) return;
 
-		1. This layer is not BLAS complaint and the kernel results in
-		undefined behaviour when n <= 0 and incx <= 1. The expectation
-		is that the application/higher-layer invoking this layer should
-		the arg checks.
-	*/
-	// if (bli_zero_dim1(n) || PASTEMAC(z, eq1)(*alpha))
-	//	return;
-
-	// To Do: This call to SETV needs to be removed for BLAS compliance
-	// Currently removing this is resulting in ZHERK failures
-	if (PASTEMAC(z, eq0)(*alpha))
+	// If alpha is zero, use setv if not called from BLAS scal itself (indicated by n being negative).
+	if ( PASTEMAC(z,eq0)( *alpha ) && n > 0 )
 	{
 		// Expert interface of setv is invoked when alpha is zero
-		dcomplex *zero = PASTEMAC(z, 0);
+		dcomplex *zero = bli_z0;
 
 		/* When alpha is zero all the element in x are set to zero */
 		PASTEMAC2(z, setv, BLIS_TAPI_EX_SUF)
@@ -848,6 +1033,8 @@ void bli_zscalv_zen_int
 		return;
 	}
 
+	dim_t n0 = bli_abs(n);
+
 	dim_t i = 0;
 	dcomplex alpha_conj;
 	double *x0 = (double *)x;
@@ -858,8 +1045,8 @@ void bli_zscalv_zen_int
 	double real = alpha_conj.real;
 	double imag = alpha_conj.imag;
 
-	/*When incx is 1 and n >= 2 it is possible to use AVX2 instructions*/
-	if (incx == 1 && n >= 2)
+	/*When incx is 1 and n0 >= 2 it is possible to use AVX2 instructions*/
+	if (incx == 1 && n0 >= 2)
 	{
 		dim_t const n_elem_per_reg = 4;
 
@@ -897,7 +1084,7 @@ void bli_zscalv_zen_int
 			and then store
 		*/
 
-		for (; (i + 7) < n; i += 8)
+		for (; (i + 7) < n0; i += 8)
 		{
 			x_vec_ymm[0] = _mm256_loadu_pd(x0);
 			x_vec_ymm[1] = _mm256_loadu_pd(x0 + n_elem_per_reg);
@@ -931,7 +1118,7 @@ void bli_zscalv_zen_int
 			x0 += 4 * n_elem_per_reg;
 		}
 
-		for (; (i + 3) < n; i += 4)
+		for (; (i + 3) < n0; i += 4)
 		{
 			x_vec_ymm[0] = _mm256_loadu_pd(x0);
 			x_vec_ymm[1] = _mm256_loadu_pd(x0 + n_elem_per_reg);
@@ -951,7 +1138,7 @@ void bli_zscalv_zen_int
 			x0 += 2 * n_elem_per_reg;
 		}
 
-		for (; (i + 1) < n; i += 2)
+		for (; (i + 1) < n0; i += 2)
 		{
 			x_vec_ymm[0] = _mm256_loadu_pd(x0);
 
@@ -980,7 +1167,7 @@ void bli_zscalv_zen_int
 	alpha_real_xmm = _mm_set1_pd(real);
 	alpha_imag_xmm = _mm_set1_pd(imag);
 
-	for (; i < n; i++)
+	for (; i < n0; i++)
 	{
 		x_vec_xmm = _mm_loadu_pd(x0);
 

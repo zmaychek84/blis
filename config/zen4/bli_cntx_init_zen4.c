@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -44,26 +44,22 @@
 	bli_blksz_init_easy( &blkszs[ BLIS_MR ],    32,    32,     3,    12 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_NR ],    12,     6,     8,     4 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_MC ],   512,   128,   144,    60 );  \
-	bli_blksz_init     ( &blkszs[ BLIS_KC ],   480,   512,   256,   512,    \
-	                                           480,   320,   256,   160 );  \
+	bli_blksz_init_easy( &blkszs[ BLIS_KC ],   480,   512,   256,   512 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_NC ],  6144,  4002,  4080,  2004 );  \
 	                                                                        \
 	bli_blksz_init_easy( &blkszs[ BLIS_AF ],     5,     5,    -1,    -1 );  \
-	bli_blksz_init_easy( &blkszs[ BLIS_DF ],     8,     8,    -1,    -1 );  \
-
+	bli_blksz_init_easy( &blkszs[ BLIS_DF ],     8,     8,    -1,    -1 );
 
 #define BLI_CNTX_DEFAULT_BLKSZ_LIST_BERGAMO(blkszs) \
 	/*                                           s      d      c      z */  \
 	bli_blksz_init_easy( &blkszs[ BLIS_MR ],    32,    32,     3,    12 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_NR ],    12,     6,     8,     4 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_MC ],   512,    64,   144,    60 );  \
-	bli_blksz_init     ( &blkszs[ BLIS_KC ],   480,   512,   256,   512,    \
-	                                           480,   320,   256,   160 );  \
+	bli_blksz_init_easy( &blkszs[ BLIS_KC ],   480,   512,   256,   512 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_NC ],  6144,  3600,  4080,  2004 );  \
 	                                                                        \
 	bli_blksz_init_easy( &blkszs[ BLIS_AF ],     5,     5,    -1,    -1 );  \
-	bli_blksz_init_easy( &blkszs[ BLIS_DF ],     8,     8,    -1,    -1 );  \
-
+	bli_blksz_init_easy( &blkszs[ BLIS_DF ],     8,     8,    -1,    -1 );
 
 void bli_cntx_init_zen4( cntx_t* cntx )
 {
@@ -156,14 +152,17 @@ void bli_cntx_init_zen4( cntx_t* cntx )
 	// Update the context with optimized level-1v kernels.
 	bli_cntx_set_l1v_kers
 	(
-	  28,
+	  32,
+	  // addv
+	  BLIS_ADDV_KER,  BLIS_DOUBLE,     bli_daddv_zen_int_avx512,
+
 	  // amaxv
 	  BLIS_AMAXV_KER,  BLIS_FLOAT,    bli_samaxv_zen_int_avx512,
 	  BLIS_AMAXV_KER,  BLIS_DOUBLE,   bli_damaxv_zen_int,
 
 	  // axpbyv
 	  BLIS_AXPBYV_KER, BLIS_FLOAT,    bli_saxpbyv_zen_int10,
-	  BLIS_AXPBYV_KER, BLIS_DOUBLE,   bli_daxpbyv_zen_int10,
+	  BLIS_AXPBYV_KER, BLIS_DOUBLE,   bli_daxpbyv_zen_int_avx512,
 	  BLIS_AXPBYV_KER, BLIS_SCOMPLEX, bli_caxpbyv_zen_int,
 	  BLIS_AXPBYV_KER, BLIS_DCOMPLEX, bli_zaxpbyv_zen_int,
 
@@ -171,13 +170,13 @@ void bli_cntx_init_zen4( cntx_t* cntx )
 	  BLIS_AXPYV_KER,  BLIS_FLOAT,    bli_saxpyv_zen_int_avx512,
 	  BLIS_AXPYV_KER,  BLIS_DOUBLE,   bli_daxpyv_zen_int_avx512,
 	  BLIS_AXPYV_KER,  BLIS_SCOMPLEX, bli_caxpyv_zen_int5,
-	  BLIS_AXPYV_KER,  BLIS_DCOMPLEX, bli_zaxpyv_zen_int5,
+	  BLIS_AXPYV_KER,  BLIS_DCOMPLEX, bli_zaxpyv_zen_int_avx512,
 
 	  // dotv
 	  BLIS_DOTV_KER,   BLIS_FLOAT,    bli_sdotv_zen_int_avx512,
 	  BLIS_DOTV_KER,   BLIS_DOUBLE,   bli_ddotv_zen_int_avx512,
 	  BLIS_DOTV_KER,   BLIS_SCOMPLEX, bli_cdotv_zen_int5,
-	  BLIS_DOTV_KER,   BLIS_DCOMPLEX, bli_zdotv_zen_int5,
+	  BLIS_DOTV_KER,   BLIS_DCOMPLEX, bli_zdotv_zen_int_avx512,
 
 	  // dotxv
 	  BLIS_DOTXV_KER,  BLIS_FLOAT,    bli_sdotxv_zen_int,
@@ -187,22 +186,25 @@ void bli_cntx_init_zen4( cntx_t* cntx )
 	  // scalv
 	  BLIS_SCALV_KER,  BLIS_FLOAT,    bli_sscalv_zen_int_avx512,
 	  BLIS_SCALV_KER,  BLIS_DOUBLE,   bli_dscalv_zen_int_avx512,
-	  BLIS_SCALV_KER,  BLIS_DCOMPLEX, bli_zscalv_zen_int,
+	  BLIS_SCALV_KER,  BLIS_SCOMPLEX, bli_cscalv_zen_int_avx512,
+	  BLIS_SCALV_KER,  BLIS_DCOMPLEX, bli_zscalv_zen_int_avx512,
 
 	  // swapv
 	  BLIS_SWAPV_KER,  BLIS_FLOAT,    bli_sswapv_zen_int8,
 	  BLIS_SWAPV_KER,  BLIS_DOUBLE,   bli_dswapv_zen_int8,
 
 	  // copyv
-	  BLIS_COPYV_KER,  BLIS_FLOAT,    bli_scopyv_zen_int,
-	  BLIS_COPYV_KER,  BLIS_DOUBLE,   bli_dcopyv_zen_int,
-	  BLIS_COPYV_KER,  BLIS_DCOMPLEX, bli_zcopyv_zen_int,
+	  BLIS_COPYV_KER,  BLIS_FLOAT,    bli_scopyv_zen4_asm_avx512,
+	  BLIS_COPYV_KER,  BLIS_DOUBLE,   bli_dcopyv_zen4_asm_avx512,
+	  BLIS_COPYV_KER,  BLIS_DCOMPLEX, bli_zcopyv_zen4_asm_avx512,
 
 	  // setv
-	  BLIS_SETV_KER,   BLIS_FLOAT,    bli_ssetv_zen_int,
-	  BLIS_SETV_KER,   BLIS_DOUBLE,   bli_dsetv_zen_int,
+	  BLIS_SETV_KER,   BLIS_FLOAT,    bli_ssetv_zen_int_avx512,
+	  BLIS_SETV_KER,   BLIS_DOUBLE,   bli_dsetv_zen_int_avx512,
+	  BLIS_SETV_KER,   BLIS_DCOMPLEX, bli_zsetv_zen_int_avx512,
 
 	  // scal2v
+	  BLIS_SCAL2V_KER, BLIS_DOUBLE,   bli_dscal2v_zen_int_avx512,
 	  BLIS_SCAL2V_KER, BLIS_DCOMPLEX, bli_zscal2v_zen_int,
 	  cntx
 	);
@@ -359,11 +361,10 @@ void bli_cntx_init_zen4( cntx_t* cntx )
 	// triangular objects with architecture-specific values.
 	//
 	//                                           s      d      c      z
-	bli_blksz_init     ( &blkszs[ BLIS_MR ],     6,     6,     3,     3,
-	                                             9,     9,     3,     3 );
+	bli_blksz_init_easy( &blkszs[ BLIS_MR ],     6,    24,     3,     4 );
 	bli_blksz_init_easy( &blkszs[ BLIS_NR ],    16,     8,     8,     4 );
-	bli_blksz_init_easy( &blkszs[ BLIS_MC ],   144,    72,    72,    36 );
-	bli_blksz_init_easy( &blkszs[ BLIS_KC ],   512,   256,   128,    64 );
+	bli_blksz_init_easy( &blkszs[ BLIS_MC ],   144,   144,    72,    48 );
+	bli_blksz_init_easy( &blkszs[ BLIS_KC ],   512,   480,   128,    64 );
 	bli_blksz_init_easy( &blkszs[ BLIS_NC ],  8160,  4080,  2040,  1020 );
 
 	// Update the context with the current architecture's register and cache
@@ -392,14 +393,14 @@ void bli_cntx_init_zen4( cntx_t* cntx )
 	  BLIS_CCR, BLIS_FLOAT, bli_sgemmsup_rv_zen_asm_6x16n, TRUE,
 	  BLIS_CCC, BLIS_FLOAT, bli_sgemmsup_rv_zen_asm_6x16n, TRUE,
 
-	  BLIS_RRR, BLIS_DOUBLE, bli_dgemmsup_rv_haswell_asm_6x8m, TRUE,
+	  BLIS_RRR, BLIS_DOUBLE, bli_dgemmsup_rv_zen4_asm_24x8m,   FALSE,
 	  BLIS_RRC, BLIS_DOUBLE, bli_dgemmsup_rd_haswell_asm_6x8m, TRUE,
-	  BLIS_RCR, BLIS_DOUBLE, bli_dgemmsup_rv_haswell_asm_6x8m, TRUE,
-	  BLIS_RCC, BLIS_DOUBLE, bli_dgemmsup_rv_haswell_asm_6x8n, TRUE,
-	  BLIS_CRR, BLIS_DOUBLE, bli_dgemmsup_rv_haswell_asm_6x8m, TRUE,
+	  BLIS_RCR, BLIS_DOUBLE, bli_dgemmsup_rv_zen4_asm_24x8m,   FALSE,
+	  BLIS_RCC, BLIS_DOUBLE, bli_dgemmsup_rv_zen4_asm_24x8m,   FALSE,
+	  BLIS_CRR, BLIS_DOUBLE, bli_dgemmsup_rv_zen4_asm_24x8m,   FALSE,
 	  BLIS_CRC, BLIS_DOUBLE, bli_dgemmsup_rd_haswell_asm_6x8n, TRUE,
-	  BLIS_CCR, BLIS_DOUBLE, bli_dgemmsup_rv_haswell_asm_6x8n, TRUE,
-	  BLIS_CCC, BLIS_DOUBLE, bli_dgemmsup_rv_haswell_asm_6x8n, TRUE,
+	  BLIS_CCR, BLIS_DOUBLE, bli_dgemmsup_rv_zen4_asm_24x8m,   FALSE,
+	  BLIS_CCC, BLIS_DOUBLE, bli_dgemmsup_rv_zen4_asm_24x8m,   FALSE,
 
 	  BLIS_RRR, BLIS_SCOMPLEX, bli_cgemmsup_rv_zen_asm_3x8m, TRUE,
 	  BLIS_RCR, BLIS_SCOMPLEX, bli_cgemmsup_rv_zen_asm_3x8m, TRUE,
@@ -408,14 +409,14 @@ void bli_cntx_init_zen4( cntx_t* cntx )
 	  BLIS_CCR, BLIS_SCOMPLEX, bli_cgemmsup_rv_zen_asm_3x8n, TRUE,
 	  BLIS_CCC, BLIS_SCOMPLEX, bli_cgemmsup_rv_zen_asm_3x8n, TRUE,
 
-	  BLIS_RRR, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen_asm_3x4m, TRUE,
+	  BLIS_RRR, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen4_asm_4x4m, TRUE,
 	  BLIS_RRC, BLIS_DCOMPLEX, bli_zgemmsup_rd_zen_asm_3x4m, TRUE,
-	  BLIS_RCR, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen_asm_3x4m, TRUE,
-	  BLIS_RCC, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen_asm_3x4n, TRUE,
-	  BLIS_CRR, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen_asm_3x4m, TRUE,
+	  BLIS_RCR, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen4_asm_4x4m, TRUE,
+	  BLIS_RCC, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen4_asm_4x4m, TRUE,
+	  BLIS_CRR, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen4_asm_4x4m, TRUE,
 	  BLIS_CRC, BLIS_DCOMPLEX, bli_zgemmsup_rd_zen_asm_3x4n, TRUE,
-	  BLIS_CCR, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen_asm_3x4n, TRUE,
-	  BLIS_CCC, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen_asm_3x4n, TRUE,
+	  BLIS_CCR, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen4_asm_4x4m, TRUE,
+	  BLIS_CCC, BLIS_DCOMPLEX, bli_zgemmsup_rv_zen4_asm_4x4m, TRUE,
 	  cntx
 	);
 }

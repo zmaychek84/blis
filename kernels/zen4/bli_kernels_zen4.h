@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -34,22 +34,80 @@
 
 // -- level-1v --
 
+// addv (intrinsics)
+ADDV_KER_PROT( double,   d, addv_zen_int_avx512 )
+
 // amaxv (intrinsics)
 AMAXV_KER_PROT( float,    s, amaxv_zen_int_avx512 )
 AMAXV_KER_PROT( double,   d, amaxv_zen_int_avx512 )
 
 // scalv (AVX512 intrinsics)
 SCALV_KER_PROT( float,     s, scalv_zen_int_avx512 )
-SCALV_KER_PROT( double,    d, scalv_zen_int_avx512 )
+BLIS_EXPORT_BLIS SCALV_KER_PROT( double,    d, scalv_zen_int_avx512 )
+SCALV_KER_PROT( scomplex,  c, scalv_zen_int_avx512 )
+SCALV_KER_PROT( dcomplex,  z, scalv_zen_int_avx512 )
 SCALV_KER_PROT( dcomplex,  z, dscalv_zen_int_avx512) // ZDSCAL kernel
+
+// setv (intrinsics)
+SETV_KER_PROT(float,    s, setv_zen_int_avx512)
+SETV_KER_PROT(double,   d, setv_zen_int_avx512)
+SETV_KER_PROT(dcomplex, z, setv_zen_int_avx512)
 
 // dotv (intrinsics)
 DOTV_KER_PROT( float,    s, dotv_zen_int_avx512 )
 DOTV_KER_PROT( double,   d, dotv_zen_int_avx512 )
+DOTV_KER_PROT( dcomplex, z, dotv_zen_int_avx512 )
+DOTV_KER_PROT( dcomplex, z, dotv_zen4_asm_avx512 )
 
 // axpyv (intrinsics)
 AXPYV_KER_PROT( float,    s, axpyv_zen_int_avx512 )
-AXPYV_KER_PROT( double,   d, axpyv_zen_int_avx512 )
+BLIS_EXPORT_BLIS AXPYV_KER_PROT( double,   d, axpyv_zen_int_avx512 )
+AXPYV_KER_PROT( dcomplex, z, axpyv_zen_int_avx512 )
+
+// axpbyv ( intrinsics )
+AXPBYV_KER_PROT( double, d, axpbyv_zen_int_avx512 );
+
+// axpyf (intrinsics)
+AXPYF_KER_PROT( dcomplex, z, axpyf_zen_int_2_avx512 )
+AXPYF_KER_PROT( dcomplex, z, axpyf_zen_int_4_avx512 )
+AXPYF_KER_PROT( dcomplex, z, axpyf_zen_int_8_avx512 )
+
+// axpyf (intrinsics)
+AXPYF_KER_PROT( double,   d, axpyf_zen_int_avx512 )
+AXPYF_KER_PROT( double,   d, axpyf_zen_int2_avx512 )
+AXPYF_KER_PROT( double,   d, axpyf_zen_int4_avx512 )
+AXPYF_KER_PROT( double,   d, axpyf_zen_int6_avx512 )
+AXPYF_KER_PROT( double,   d, axpyf_zen_int8_avx512 )
+AXPYF_KER_PROT( double,   d, axpyf_zen_int12_avx512 )
+AXPYF_KER_PROT( double,   d, axpyf_zen_int16_avx512 )
+AXPYF_KER_PROT( double,   d, axpyf_zen_int32_avx512 )
+#ifdef BLIS_ENABLE_OPENMP
+AXPYF_KER_PROT( double,   d, axpyf_zen_int32_avx512_mt )
+#endif
+
+// dotxf (intrinsics)
+DOTXF_KER_PROT( double,   d, dotxf_zen_int_avx512 )
+
+// copyv (intrinsics)
+// COPYV_KER_PROT( float,    s, copyv_zen_int_avx512 )
+// COPYV_KER_PROT( double,   d, copyv_zen_int_avx512 )
+// COPYV_KER_PROT( dcomplex, z, copyv_zen_int_avx512 )
+
+// copyv (asm)
+COPYV_KER_PROT( float,    s, copyv_zen4_asm_avx512 )
+COPYV_KER_PROT( double,   d, copyv_zen4_asm_avx512 )
+COPYV_KER_PROT( dcomplex, z, copyv_zen4_asm_avx512 )
+
+// scal2v (intrinsics)
+SCAL2V_KER_PROT(double,   d, scal2v_zen_int_avx512)
+
+// dotxv (intrinsics)
+DOTXV_KER_PROT( dcomplex, z, dotxv_zen_int_avx512 )
+
+// dotxf (intrinsics)
+DOTXF_KER_PROT( dcomplex, z, dotxf_zen_int_8_avx512 )
+DOTXF_KER_PROT( dcomplex, z, dotxf_zen_int_4_avx512 )
+DOTXF_KER_PROT( dcomplex, z, dotxf_zen_int_2_avx512 )
 
 GEMMTRSM_UKR_PROT( double,   d, gemmtrsm_l_zen_asm_16x14)
 GEMMTRSM_UKR_PROT( double,   d, gemmtrsm_u_zen_asm_16x14)
@@ -136,6 +194,10 @@ TRSMSMALL_KER_PROT( d, trsm_small_AutXB_AlXB_AVX512 )
 TRSMSMALL_KER_PROT( d, trsm_small_XAltB_XAuB_AVX512 )
 TRSMSMALL_KER_PROT( d, trsm_small_XAutB_XAlB_AVX512 )
 TRSMSMALL_KER_PROT( d, trsm_small_AltXB_AuXB_AVX512 )
+TRSMSMALL_KER_PROT( z, trsm_small_AutXB_AlXB_AVX512 )
+TRSMSMALL_KER_PROT( z, trsm_small_XAltB_XAuB_AVX512 )
+TRSMSMALL_KER_PROT( z, trsm_small_XAutB_XAlB_AVX512 )
+TRSMSMALL_KER_PROT( z, trsm_small_AltXB_AuXB_AVX512 )
 
 #ifdef BLIS_ENABLE_OPENMP
 TRSMSMALL_PROT(trsm_small_mt_AVX512)
@@ -154,6 +216,21 @@ GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x1m)
 GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x8)
 GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_16x8)
 GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_8x8)
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_8x8m)
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_8x8m_lower)
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_8x8m_upper)
+
+/* DGEMMT 24x8 triangular kernels */
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x8m_lower_0)
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x8m_lower_1)
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x8m_lower_2)
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x8m_upper_0)
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x8m_upper_1)
+GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x8m_upper_2)
+
+GEMMSUP_KER_PROT( dcomplex,  z, gemmsup_rv_zen4_asm_4x4m)
+GEMMSUP_KER_PROT( dcomplex,  z, gemmsup_rv_zen4_asm_4x4m_lower)
+GEMMSUP_KER_PROT( dcomplex,  z, gemmsup_rv_zen4_asm_4x4m_upper)
 
 GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_24x7)
 GEMMSUP_KER_PROT( double,  d, gemmsup_rv_zen4_asm_16x7)
@@ -215,6 +292,26 @@ err_t bli_dgemm_24x8_avx512_k1_nn
       double* beta,
       double* c, const inc_t ldc
      );
+
+void bli_dnorm2fv_unb_var1_avx512
+     (
+       dim_t    n,
+       double*   x, inc_t incx,
+       double* norm,
+       cntx_t*  cntx
+     );
+
+err_t bli_zgemm_16x4_avx512_k1_nn
+(
+    dim_t  m,
+    dim_t  n,
+    dim_t  k,
+    dcomplex*    alpha,
+    dcomplex*    a, const inc_t lda,
+    dcomplex*    b, const inc_t ldb,
+    dcomplex*    beta,
+    dcomplex*    c, const inc_t ldc
+);
 
 // threshold functions
 bool bli_cntx_gemmsup_thresh_is_met_zen4

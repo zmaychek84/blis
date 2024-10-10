@@ -1,6 +1,38 @@
-##Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.##
+#[=[
 
-cmake_minimum_required(VERSION 3.15.0)
+   BLIS
+   An object-based framework for developing high-performance BLAS-like
+   libraries.
+
+   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are
+   met:
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+]=]
+
+cmake_minimum_required(VERSION 3.22.0)
 if(WIN32)
     project(AOCL-LibBlis LANGUAGES C CXX)
 else()
@@ -34,7 +66,7 @@ if(WIN32)
 else()
     set(BLIS_CONFIG_FAMILY "" CACHE STRING "Set the configuration family for which the BLIS library will be built.")
 endif()
-set_property(CACHE BLIS_CONFIG_FAMILY PROPERTY STRINGS "auto" "generic" "zen" "zen2" "zen3" "zen4" "amdzen")
+set_property(CACHE BLIS_CONFIG_FAMILY PROPERTY STRINGS "auto" "generic" "zen" "zen2" "zen3" "zen4" "zen5" "amdzen")
 # Throw an error if CMake was configured with a configuration which is not enabled yet.
 if(NOT ((BLIS_CONFIG_FAMILY STREQUAL auto) OR
         (BLIS_CONFIG_FAMILY STREQUAL generic) OR
@@ -42,10 +74,11 @@ if(NOT ((BLIS_CONFIG_FAMILY STREQUAL auto) OR
         (BLIS_CONFIG_FAMILY STREQUAL zen2) OR
         (BLIS_CONFIG_FAMILY STREQUAL zen3) OR
         (BLIS_CONFIG_FAMILY STREQUAL zen4) OR
+        (BLIS_CONFIG_FAMILY STREQUAL zen5) OR
         (BLIS_CONFIG_FAMILY STREQUAL amdzen)))
     message(FATAL_ERROR "Configuration for ${BLIS_CONFIG_FAMILY} is not supported. \
         Please re-run cmake and specify one of the following configurations for BLIS_CONFIG_FAMILY: \
-        auto, zen, zen2, zen3, zen4, amdzen, generic.")
+        auto, zen, zen2, zen3, zen4, zen5, amdzen, generic.")
 endif()
 
 # automatic hardware detection
@@ -69,7 +102,7 @@ if(BLIS_CONFIG_FAMILY STREQUAL "auto")
             COMPILE_DEFINITIONS -I${frame_include} -I${base_include} -I${thread_include}
                                -DBLIS_CONFIGURETIME_CPUID -DBLIS_CONFIG_SKX -DBLIS_CONFIG_KNL
                                -DBLIS_CONFIG_HASWELL -DBLIS_CONFIG_SANDYBRIDGE -DBLIS_CONFIG_PENRYN
-                               -DBLIS_CONFIG_ZEN4 -DBLIS_CONFIG_ZEN3 -DBLIS_CONFIG_ZEN2 -DBLIS_CONFIG_ZEN
+                               -DBLIS_CONFIG_ZEN5 -DBLIS_CONFIG_ZEN4 -DBLIS_CONFIG_ZEN3 -DBLIS_CONFIG_ZEN2 -DBLIS_CONFIG_ZEN
                                -DBLIS_CONFIG_EXCAVATOR -DBLIS_CONFIG_STEAMROLLER -DBLIS_CONFIG_PILEDRIVER
                                -DBLIS_CONFIG_BULLDOZER -DBLIS_CONFIG_THUNDERX2 -DBLIS_CONFIG_CORTEXA57
                                -DBLIS_CONFIG_CORTEXA15 -DBLIS_CONFIG_CORTEXA9
@@ -81,7 +114,8 @@ if(BLIS_CONFIG_FAMILY STREQUAL "auto")
     if( NOT(${HARDWARE_ARCH} STREQUAL zen OR
             ${HARDWARE_ARCH} STREQUAL zen2 OR
             ${HARDWARE_ARCH} STREQUAL zen3 OR
-            ${HARDWARE_ARCH} STREQUAL zen4) )
+            ${HARDWARE_ARCH} STREQUAL zen4 OR
+            ${HARDWARE_ARCH} STREQUAL zen5) )
            set(BLIS_CONFIG_FAMILY "generic")
            message(WARNING "Only AMD zen architectures are supported. \
            Detected ${HARDWARE_ARCH} hardware. Defaulting to generic configuration.")
@@ -142,6 +176,8 @@ foreach(KERN ${KERNEL_LIST})
     set(KERNEL_LIST_DEFINES "${KERNEL_LIST_DEFINES}#define BLIS_KERNELS_${UCONF}\n")
 endforeach()
 
+
+
 #------------------------------------
 #           Option Setting
 #------------------------------------
@@ -151,9 +187,11 @@ if(WIN32)
     option(ENABLE_UPPERCASE_API "Export APIs with uppercase." OFF)
     # Setting path to OpenMP runtime.
     set(OpenMP_libomp_LIBRARY "C:/Program Files/LLVM/lib/libomp.lib" CACHE STRING "openmp library path")
+else(WIN32)
+    set(OpenMP_libomp_LIBRARY "" CACHE STRING "openmp library path")
 endif()
 # Debug & Release flags option setting is only available for Linux. On Windows the default flags are used.
-if(NOT WIN32)
+if(NOT MSVC)
     set(ENABLE_DEBUG "off" CACHE STRING "Enable debugging symbols in the library.")
     set_property(CACHE ENABLE_DEBUG PROPERTY STRINGS "off" "noopt" "opt")
     if( NOT ((ENABLE_DEBUG STREQUAL "off") OR (ENABLE_DEBUG STREQUAL "noopt") OR (ENABLE_DEBUG STREQUAL "opt")) )
@@ -178,8 +216,16 @@ if(NOT WIN32)
         set(CMAKE_BUILD_TYPE "")
     endif()
 endif()
-# Build shared libraries by default
-option(BUILD_SHARED_LIBS "Build shared libraries (.dll/.so) instead of static ones (.lib/.a)" ON)
+
+if(WIN32)
+    # Build shared libraries only by default
+    option(BUILD_SHARED_LIBS "Build shared libraries (.dll/.lib) instead of static ones (.lib/.a)" ON)
+else()
+    # Build both shared and static libraries by default
+    option(BUILD_SHARED_LIBS "Build shared libraries (.dll/.lib)" ON)
+    option(BUILD_STATIC_LIBS "Build static libraries (.lib/.a)" ON)
+    option(TEST_WITH_SHARED "If both static and shared libraries are build, run the tests linking the shared library." OFF)
+endif()
 option(ENABLE_SYSTEM "Check if we are building with or without operating system support" ON)
 set(ENABLE_THREADING "no" CACHE STRING "the threading flag")
 if(WIN32)
@@ -273,12 +319,23 @@ else()
 endif()
 set(RENAME_BLIS_ARCH_TYPE "BLIS_ARCH_TYPE" CACHE STRING "BLIS_ARCH_TYPE env var renamed to supplied value")
 set(RENAME_BLIS_MODEL_TYPE "BLIS_MODEL_TYPE" CACHE STRING "BLIS_MODEL_TYPE env var renamed to supplied value")
-if(NOT WIN32)
-    set(ENABLE_ADDON "" CACHE STRING "Configure with specific addons using a ';'-separated list")
+if(ENABLE_ADDON)
+    if((NOT WIN32) OR
+       (WIN32 AND (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang") AND NOT (${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS "18.0")))
+        set(ENABLE_ADDON "" CACHE STRING "Configure with specific addons using a ';'-separated list")
+    else()
+        message(FATAL_ERROR "On Windows, aocl_gemm addon requires Clang version at least 18.0. Current version: ${CMAKE_CXX_COMPILER_VERSION}")
+    endif()
 endif()
 set(ENABLE_SANDBOX "" CACHE STRING "Enable a separate sandbox implementation of gemm.")
 # Do not let ENABLE_SANDBOX appear on cmake-gui since the functionality is not yet implemented.
 mark_as_advanced(ENABLE_SANDBOX)
+if(NOT WIN32)
+    option(ENABLE_COVERAGE "Enable Code Coverage using gcov(only GCC/Debug build)" OFF)
+endif()
+if(NOT WIN32)
+    option(ENABLE_ASAN "Enable Address Sanitizer (Debug build)" OFF)
+endif()
 
 #------------------------------------
 #           Check memkind
@@ -314,7 +371,7 @@ file(STRINGS ${CMAKE_SOURCE_DIR}/version VERSION)
 # Get timestamp.
 string(TIMESTAMP BUILD_DATE "%Y%m%d")
 # Update using the timestamp.
-set(VERSION_STRING "AOCL-BLIS ${VERSION} Build ${BUILD_DATE}")
+set(VERSION_STRING "AOCL-BLAS ${VERSION} Build ${BUILD_DATE}")
 # Initial message.
 message(STATUS "Starting configuration of BLIS ${VERSION_STRING}.")
 # Check if the user requested a custom version string.
@@ -337,23 +394,57 @@ list(GET SO_VERSION 1 SO_VERSION_MINOR)
 #------------------------------------
 include(CMakePrintHelpers)
 message(STATUS "Printing CMake Configuration Options...")
-cmake_print_variables(ENABLE_DEBUG)
-# Initialize debug type, using the corresponding cache variable.
-set(DEBUG_TYPE ${ENABLE_DEBUG})
-if(ENABLE_DEBUG STREQUAL "off")
-    message("   Debug symbols disabled.")
-elseif(ENABLE_DEBUG STREQUAL "opt")
-    message("   Enabling debug symbols with optimizations.")
-else() #ENABLE_DEBUG=noopt
-    message("   Enabling debug symbols; optimizations disabled.")
+if(NOT MSVC)
+    cmake_print_variables(ENABLE_DEBUG)
+    # Initialize debug type, using the corresponding cache variable.
+    set(DEBUG_TYPE ${ENABLE_DEBUG})
+    if(ENABLE_DEBUG STREQUAL "off")
+        message("   Debug symbols disabled.")
+    elseif(ENABLE_DEBUG STREQUAL "opt")
+        message("   Enabling debug symbols with optimizations.")
+    else() #ENABLE_DEBUG=noopt
+        message("   Enabling debug symbols; optimizations disabled.")
+    endif()
 endif()
-cmake_print_variables(BUILD_SHARED_LIBS)
-if(BUILD_SHARED_LIBS)
-    message("   Building BLIS as a shared library.")
-    set(ENABLE_SHARED_01 1)
+if(WIN32)
+    cmake_print_variables(BUILD_SHARED_LIBS)
+    if(BUILD_SHARED_LIBS)
+        message("   Building BLIS as a shared library.")
+        set(ENABLE_SHARED_01 1)
+        set(TEST_WITH_SHARED ON)
+    else()
+        message("   Building BLIS as a static library.")
+        set(ENABLE_SHARED_01 0)
+        set(BUILD_STATIC_LIBS ON)
+        set(TEST_WITH_SHARED OFF)
+    endif()
 else()
-    message("   Building BLIS as a static library.")
-    set(ENABLE_SHARED_01 0)
+    cmake_print_variables(BUILD_SHARED_LIBS)
+    cmake_print_variables(BUILD_STATIC_LIBS)
+    if(BUILD_SHARED_LIBS AND BUILD_STATIC_LIBS)
+        message("   Building BLIS as both static and shared libraries.")
+        set(ENABLE_SHARED_01 1)
+        cmake_print_variables(TEST_WITH_SHARED)
+        if(TEST_WITH_SHARED)
+            message("   Testing using shared library.")
+        else()
+            message("   Testing using static library.")
+        endif()
+    elseif(BUILD_STATIC_LIBS AND NOT BUILD_SHARED_LIBS)
+        message("   Building BLIS as a static library (shared library disabled).")
+        set(ENABLE_SHARED_01 0)
+        set(TEST_WITH_SHARED OFF)
+        cmake_print_variables(TEST_WITH_SHARED)
+        message("   Testing using static library.")
+    elseif(BUILD_SHARED_LIBS AND NOT BUILD_STATIC_LIBS)
+        message("   Building BLIS as a shared library (static library disabled).")
+        set(ENABLE_SHARED_01 1)
+        set(TEST_WITH_SHARED ON)
+        cmake_print_variables(TEST_WITH_SHARED)
+        message("   Testing using shared library.")
+    else()
+        message(FATAL_ERROR "Both static and shared libraries were disabled. Please enable one (or both) to continue.")
+    endif()
 endif()
 if(NOT WIN32)
 cmake_print_variables(EXPORT_SHARED)
@@ -429,7 +520,8 @@ if(ENABLE_SBA_POOLS)
     message("   Internal memory pools for small blocks are enabled.")
     set(ENABLE_SBA_POOLS_01 1)
 else()
-    message("   Internal memory pools for small blocks are disabled.")
+    #message("   Internal memory pools for small blocks are disabled.")
+    message(FATAL_ERROR  "Disabling memory pools for small blocks is currently disabled, awaiting fixes to this functionality.")
     set(ENABLE_SBA_POOLS_01 0)
 endif()
 cmake_print_variables(ENABLE_MEM_TRACING)
@@ -507,7 +599,7 @@ if(ENABLE_MIXED_DT)
     else()
         message("   Mixed datatype optimizations requiring extra memory are disabled.")
         set(ENABLE_MIXED_DT_EXTRA_MEM_01 0)
-    endif()    
+    endif()
     set(ENABLE_MIXED_DT_01 1)
 else()
     message("   Mixed datatype support is disabled.")
@@ -574,24 +666,22 @@ if((INT_TYPE_SIZE STREQUAL "32") AND (BLAS_INT_TYPE_SIZE STREQUAL "64"))
         To avoid the possibility of truncation, we do not allow use of 64-bit integers in the BLAS API with 32-bit integers in BLIS. \
         Please use a different configuration of integers.")
 endif()
-if(NOT WIN32)
-    cmake_print_variables(ENABLE_ADDON)
-    if(ENABLE_ADDON STREQUAL "")
-        message("   Configuring with no addons.")
-        set(ENABLE_ADDONS_01 0)
-    else()
-        # Remove duplicates in the addon list, if they exist.
-        list(REMOVE_DUPLICATES ENABLE_ADDON)
-        message("   Configuring with addons:")
-        foreach(ADDON ${ENABLE_ADDON})
-            message("   ${ADDON}")
-            if(NOT (EXISTS ${CMAKE_SOURCE_DIR}/addon/${ADDON}))
-                message(FATAL_ERROR "Requested addon sub-directory does not exist! Cannot continue. \
-                                        *** Please verify addon existence and name.")
-            endif()
-        endforeach()
-        set(ENABLE_ADDONS_01 1)
-    endif()
+cmake_print_variables(ENABLE_ADDON)
+if(ENABLE_ADDON STREQUAL "")
+    message("   Configuring with no addons.")
+    set(ENABLE_ADDONS_01 0)
+else()
+    # Remove duplicates in the addon list, if they exist.
+    list(REMOVE_DUPLICATES ENABLE_ADDON)
+    message("   Configuring with addons:")
+    foreach(ADDON ${ENABLE_ADDON})
+        message("   ${ADDON}")
+        if(NOT (EXISTS ${CMAKE_SOURCE_DIR}/addon/${ADDON}))
+            message(FATAL_ERROR "Requested addon sub-directory does not exist! Cannot continue. \
+                                    *** Please verify addon existence and name.")
+        endif()
+    endforeach()
+    set(ENABLE_ADDONS_01 1)
 endif()
 cmake_print_variables(ENABLE_SANDBOX)
 if(ENABLE_SANDBOX STREQUAL "")
@@ -650,6 +740,40 @@ if(WIN32)
         message("   Export APIs with lowercase.")
     endif()
 endif()
+if(NOT WIN32)
+    cmake_print_variables(ENABLE_COVERAGE)
+    if(ENABLE_COVERAGE)
+        if(NOT (${CMAKE_C_COMPILER_ID} MATCHES "GNU"))
+            message(FATAL_ERROR "Coverage is only supported for GNU/Linux GCC Debug build")
+            set(ENABLE_COVERAGE OFF)
+        endif()
+        if(NOT(ENABLE_DEBUG STREQUAL "noopt"))
+            message(WARNING "Coverage is only supported for debug builds, but ENABLE_DEBUG=noopt was set.\
+                             Disabling optimizations to generate the code coverage report.")
+            set(ENABLE_DEBUG "noopt")
+            set(DEBUG_TYPE ${ENABLE_DEBUG})
+        endif()
+    endif()
+    if(ENABLE_COVERAGE)
+        message("   Code Coverage is enabled.")
+    else()
+        message("   Code Coverage is disabled.")
+    endif()
+endif()
+
+if(NOT WIN32)
+    cmake_print_variables(ENABLE_ASAN)
+    if(ENABLE_ASAN)
+        if(NOT (${CMAKE_C_COMPILER_ID} MATCHES "Clang"))
+            message(FATAL_ERROR "ASAN is supported only for Clang/Linux" )
+        endif()
+    endif()
+    if(ENABLE_ASAN)
+        message("   Address Sanitizer is enabled.")
+    else()
+        message("   Address Sanitizer is disabled.")
+    endif()
+endif()
 
 # Initialize threading model, using the corresponding cache variable.
 set(THREADING_MODEL ${ENABLE_THREADING})
@@ -668,11 +792,6 @@ configure_file(build/cmake/bli_config.h.in ${PROJECT_BINARY_DIR}/bli_config.h)
 # Create a list of #includes, one for each addon in addon_list.
 set(ADDON_LIST_INCLUDES "")
 foreach(ADDON ${ENABLE_ADDON})
-    if(ADDON STREQUAL "aocl_gemm")
-        if(("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11.0.0))
-            message(FATAL_ERROR "aocl_gemm addon requires a gcc version 11.0.0 or higher.")
-        endif()
-    endif()
     set(ADDON_HEADER "\"${ADDON}.h\"")
     set(ADDON_LIST_INCLUDES "${ADDON_LIST_INCLUDES}#include ${ADDON_HEADER}\n")
 endforeach()
@@ -773,8 +892,9 @@ add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/include/${BLIS_CONFIG_FAMILY}/bl
                 "${PROJECT_BINARY_DIR}/include/${BLIS_CONFIG_FAMILY}/blis.h"
                 "${PROJECT_BINARY_DIR}/include"
                 "${ALL_HEADER_PATHS_STRING}"
-                COMMENT "Generating monolithic blis header file: ${CMAKE_SOURCE_DIR}/include/${BLIS_CONFIG_FAMILY}/blis.h"
+                COMMENT "Generating monolithic blis header file: ${PROJECT_BINARY_DIR}/include/${BLIS_CONFIG_FAMILY}/blis.h"
                 DEPENDS ${ALL_HEADER_FILES_LIST}
+                VERBATIM
                 )
 add_custom_target(flat-header DEPENDS ${PROJECT_BINARY_DIR}/include/${BLIS_CONFIG_FAMILY}/blis.h)
 #--------------------------------------------
@@ -788,8 +908,9 @@ if(ENABLE_CBLAS)
                     "${PROJECT_BINARY_DIR}/include/${BLIS_CONFIG_FAMILY}/cblas.h"
                     "${PROJECT_BINARY_DIR}/${include}"
                     "${ALL_HEADER_PATHS_STRING}"
-                    COMMENT "Generating monolithic cblas header file: ${CMAKE_SOURCE_DIR}/include/${BLIS_CONFIG_FAMILY}/cblas.h"
+                    COMMENT "Generating monolithic cblas header file: ${PROJECT_BINARY_DIR}/include/${BLIS_CONFIG_FAMILY}/cblas.h"
                     DEPENDS ${ALL_HEADER_FILES_LIST}
+                    VERBATIM
                     )
     add_custom_target(flat-cblas-header DEPENDS ${PROJECT_BINARY_DIR}/include/${BLIS_CONFIG_FAMILY}/cblas.h)
 endif()
@@ -804,7 +925,7 @@ endif()
 
 # Define the external libraries we may potentially need at link-time.
 # Add libm only on Linux and only if Intel compiler is not used.
-if((NOT WIN32) AND (NOT ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Intel")))
+if((NOT WIN32) AND (NOT ("${CMAKE_C_COMPILER_ID}" MATCHES "Intel")))
     set(LIBM -lm)
 endif()
 set(LIBMEMKIND -lmemkind)
@@ -822,6 +943,22 @@ if(ENABLE_MEMKIND STREQUAL "yes")
 endif()
 
 #--------------------------------------------
+#         Code-coverage flags
+#--------------------------------------------
+if(ENABLE_COVERAGE AND (NOT WIN32))
+    set(COVERAGE_FLAGS "-fprofile-arcs -ftest-coverage")
+    list(APPEND CMAKE_C_FLAGS ${COVERAGE_FLAGS})
+endif()
+
+#--------------------------------------------
+#         Address Sanitizer flags
+#--------------------------------------------
+if(ENABLE_ASAN AND (NOT WIN32))
+    set(ASAN_FLAGS "-g -fsanitize=address")
+    list(APPEND CMAKE_C_FLAGS ${ASAN_FLAGS})
+endif()
+
+#--------------------------------------------
 #         Configuration-agnostic flags
 #--------------------------------------------
 # --- Warning flags ---
@@ -834,7 +971,7 @@ if(NOT WIN32)
 endif()
 
 # Disable tautological comparision warnings in clang.
-if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+if("${CMAKE_C_COMPILER_ID}" MATCHES "Clang")
     list(APPEND CWARNFLAGS -Wno-tautological-compare -Wno-pass-failed)
 endif()
 
@@ -985,6 +1122,9 @@ foreach(ker ${KERNEL_LIST})
     if(TARGET ${ker}_KERNELS)
         list(APPEND OBJECT_LIBRARIES $<TARGET_OBJECTS:${ker}_KERNELS>)
     endif()
+    if(TARGET ${ker}_LPGEMM_KERNELS)
+        list(APPEND OBJECT_LIBRARIES $<TARGET_OBJECTS:${ker}_LPGEMM_KERNELS>)
+    endif()
 endforeach()
 # Add objects for reference kernels.
 foreach(conf ${CONFIG_LIST})
@@ -1026,7 +1166,7 @@ endif()
 # --- Library name and local paths ---
 # From old CMake
 if(WIN32)
-    add_definitions(-D_CRT_SECURE_NO_WARNINGS)    
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
     add_definitions(-D_CRT_SECURE_NO_DEPRECATE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /Oi")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP${CMake_MSVC_PARALLEL}")
@@ -1050,39 +1190,94 @@ if(NOT (THREADING_MODEL STREQUAL "no"))
     endif()
 endif()
 
-if(BUILD_SHARED_LIBS)
-    if(WIN32)
-        string(APPEND LIBBLIS -dll)
-    endif()
-    # Build shared library.
-    add_library(libblis SHARED ${OBJECT_LIBRARIES})
-    target_link_libraries(libblis PRIVATE ${LDFLAGS})
-    set_target_properties(libblis PROPERTIES LINKER_LANGUAGE C VERSION ${VERSION} SOVERSION ${SO_VERSION_MAJOR})
-    set_target_properties(libblis PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    if(THREADING_MODEL STREQUAL "openmp")
-        target_link_libraries(libblis PRIVATE OpenMP::OpenMP_C)
-    endif()
-else()
-    # Build static library.
-    add_library(libblis STATIC ${OBJECT_LIBRARIES})
-    set_target_properties(libblis PROPERTIES LINKER_LANGUAGE C)
+set(LIBBLIS_STATIC ${LIBBLIS})
+set(LIBBLIS_SHARED ${LIBBLIS})
+if(WIN32)
+    string(APPEND LIBBLIS_SHARED -dll)
 endif()
-add_dependencies(libblis flat-header)
-if(ENABLE_CBLAS)
-    add_dependencies(libblis flat-cblas-header)
-endif()
-# Add headers as a property to the library.
-set_target_properties(libblis PROPERTIES PUBLIC_HEADER "${BLIS_PUBLIC_HEADERS}")
-set_target_properties(libblis PROPERTIES OUTPUT_NAME ${LIBBLIS})
 
-# Install targets.
-install(TARGETS libblis LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
+# Set directories for installation of libraries and header files.
+set(LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
+set(INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
+# Set LDFLAGS to be replaced in pc file.
+set(LDFLAGS_STRING ${LDFLAGS})
+# Add OpenMP flags as required.
+if(THREADING_MODEL STREQUAL "openmp")
+ list(APPEND LDFLAGS_STRING "${OpenMP_C_FLAGS}")
+endif()
+string(JOIN " " LDFLAGS_STRING ${LDFLAGS_STRING})
+if(NOT WIN32)
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/build/cmake/aocl-blas.pc.in
+        ${CMAKE_BINARY_DIR}/aocl-blas.pc
+        @ONLY
+    )
+endif()
+include(GNUInstallDirs)
+
+if(BUILD_SHARED_LIBS)
+    # Build shared library.
+    add_library(libblis-shared SHARED ${OBJECT_LIBRARIES})
+    target_link_libraries(libblis-shared PRIVATE ${LDFLAGS})
+    set_target_properties(libblis-shared PROPERTIES LINKER_LANGUAGE C VERSION ${VERSION} SOVERSION ${SO_VERSION_MAJOR})
+    set_target_properties(libblis-shared PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    if(THREADING_MODEL STREQUAL "openmp")
+        if((NOT ${OpenMP_libomp_LIBRARY} STREQUAL "") AND (NOT WIN32))
+            target_link_libraries(libblis-shared PRIVATE ${OpenMP_libomp_LIBRARY})
+        else()
+            target_link_libraries(libblis-shared PRIVATE OpenMP::OpenMP_C)
+        endif()
+    endif()
+    add_dependencies(libblis-shared flat-header)
+    if(ENABLE_CBLAS)
+        add_dependencies(libblis-shared flat-cblas-header)
+    endif()
+    # Add headers as a property to the library.
+    set_target_properties(libblis-shared PROPERTIES PUBLIC_HEADER "${BLIS_PUBLIC_HEADERS}")
+    set_target_properties(libblis-shared PROPERTIES OUTPUT_NAME ${LIBBLIS_SHARED})
+    # Install targets for shared.
+    install(TARGETS libblis-shared LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+            RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
+    set(libblis_depends libblis-shared)
+endif()
+if(BUILD_STATIC_LIBS OR NOT BUILD_SHARED_LIBS)
+    # Build static library.
+    add_library(libblis-static STATIC ${OBJECT_LIBRARIES})
+    set_target_properties(libblis-static PROPERTIES LINKER_LANGUAGE C)
+    # Setting this for static to fix issues where test programs built with gcc 9.4.0 fail to link versions of BLIS build with AOCC 4.0.0.
+    set_target_properties(libblis-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    add_dependencies(libblis-static flat-header)
+    if(ENABLE_CBLAS)
+        add_dependencies(libblis-static flat-cblas-header)
+    endif()
+    # Add headers as a property to the library.
+    set_target_properties(libblis-static PROPERTIES PUBLIC_HEADER "${BLIS_PUBLIC_HEADERS}")
+    set_target_properties(libblis-static PROPERTIES OUTPUT_NAME ${LIBBLIS_STATIC})
+    # Install targets.
+    install(TARGETS libblis-static LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+            RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
+    list(APPEND libblis_depends libblis-static)
+endif()
+
+if(NOT WIN32)
+    # Install package-config file.
+    install(FILES ${CMAKE_BINARY_DIR}/aocl-blas.pc DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/pkgconfig)
+endif()
+
+# Set libblis to the shared or static libblis depending on the option setting.
+if(TEST_WITH_SHARED)
+    set(libblis_link libblis-shared)
+else()
+    set(libblis_link libblis-static)
+endif()
 
 # --- Primary targets ---
-add_custom_target(libs DEPENDS libblis)
+add_custom_target(libblis DEPENDS ${libblis_depends})
+add_custom_target(libs DEPENDS ${libblis})
 
 # Multiple BLIS API testing targets. Result files are generated in ${CMAKE_BINARY_DIR}/testsuite.
 add_subdirectory(testsuite EXCLUDE_FROM_ALL)
@@ -1095,16 +1290,49 @@ if(ENABLE_BLAS)
     add_subdirectory(blastest EXCLUDE_FROM_ALL)
 endif()
 
+if(ENABLE_BLAS AND WIN32 AND BUILD_SHARED_LIBS)
+set(DETAILED_BLATEST_MESSAGE "Details: Level2 and level3 API tests define a custom version of xerbla_() to test the error codes. \
+On Linux and on Windows/static versions of BLIS library, the custom xerbla_() gets called inside the library\
+due to the linking process and all tests work. On Windows/shared version of the library, symbol resolution\
+happens at load-time so the blis implementation of xerbla_() gets called instead of the custom one. \
+That causes errors when the tests are run which are independent of the BLIS library. \
+Please use static builds only on Windows.")
+endif()
+
 # Add generic testing target `test`.
 set(available_testsuites checkblis)
 if(ENABLE_BLAS)
     list(APPEND available_testsuites checkblas)
 endif()
-add_custom_target(test DEPENDS ${available_testsuites})
+
+if(WIN32 AND BUILD_SHARED_LIBS)
+    if(ENABLE_BLAS)
+        set(TEST_WARNING "Target `test` depends only on target `checkblis` because `checkblas` target is not available on Windows for shared builds of BLIS. ")
+    endif()
+else()
+    if(ENABLE_BLAS)
+        list(APPEND available_testsuites checkblas)
+    endif()
+endif()
+add_custom_target(tests
+                DEPENDS ${available_testsuites}
+                COMMENT "Running target `test`. ${TEST_WARNING} ${DETAILED_BLATEST_MESSAGE}")
 
 # Add generic testing target `check`.
 set(available_testsuites checkblis-fast)
-if(ENABLE_BLAS)
-    list(APPEND available_testsuites checkblas)
+if(WIN32 AND BUILD_SHARED_LIBS)
+    if(ENABLE_BLAS)
+        set(CHECK_WARNING "Target `check` depends only on target `checkblis-fast` because `checkblas` target is not available on Windows for shared builds of BLIS. ")
+    endif()
+else()
+    if(ENABLE_BLAS)
+        list(APPEND available_testsuites checkblas)
+    endif()
 endif()
-add_custom_target(check DEPENDS ${available_testsuites})
+add_custom_target(check
+                DEPENDS ${available_testsuites}
+                COMMENT "Running target `check`. ${CHECK_WARNING} ${DETAILED_BLATEST_MESSAGE}")
+
+add_subdirectory(bench EXCLUDE_FROM_ALL)
+
+add_subdirectory(test EXCLUDE_FROM_ALL)

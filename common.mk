@@ -5,7 +5,7 @@
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -71,6 +71,7 @@ $(eval $(call store-var-for,CWARNFLAGS, $(1)))
 $(eval $(call store-var-for,CDBGFLAGS,  $(1)))
 $(eval $(call store-var-for,COPTFLAGS,  $(1)))
 $(eval $(call store-var-for,CKOPTFLAGS, $(1)))
+$(eval $(call store-var-for,CKLPOPTFLAGS, $(1)))
 $(eval $(call store-var-for,CKVECFLAGS, $(1)))
 $(eval $(call store-var-for,CROPTFLAGS, $(1)))
 $(eval $(call store-var-for,CRVECFLAGS, $(1)))
@@ -159,6 +160,15 @@ get-kernel-cflags-for    = $(strip $(call load-var-for,CKOPTFLAGS,$(1)) \
                                    $(BUILD_SYMFLAGS) \
                             )
 
+get-kernel-lpgemm-cflags-for    = $(strip $(call load-var-for,CKOPTFLAGS,$(1)) \
+                                   $(call load-var-for,CKLPOPTFLAGS,$(1)) \
+                                   $(call load-var-for,CKVECFLAGS,$(1)) \
+                                   $(call get-noopt-cflags-for,$(1)) \
+                                   $(COMPSIMDFLAGS) \
+                                   $(BUILD_CPPFLAGS) \
+                                   $(BUILD_SYMFLAGS) \
+                            )
+
 # When compiling addons, we use flags similar to those of general framework
 # source. This ensures that the same code can be linked and run across various
 # sub-configurations.
@@ -224,6 +234,7 @@ get-config-text-for       = "('$(1)' CFLAGS for config code)"
 get-frame-text-for        = "('$(1)' CFLAGS for framework code)"
 get-aocldtl-text-for      = "('$(1)' CFLAGS for AOCL debug and trace code)"
 get-kernel-text-for       = "('$(1)' CFLAGS for kernels)"
+get-kernel-lpgemm-text-for= "('$(1)' CFLAGS for lpgemm kernels)"
 get-addon-c99text-for     = "('$(1)' CFLAGS for addons)"
 get-addon-cxxtext-for     = "('$(1)' CXXFLAGS for addons)"
 get-addon-kernel-text-for = "('$(1)' CFLAGS for addon kernels)"
@@ -557,11 +568,19 @@ LIBM       := -lm
 endif
 LIBMEMKIND := -lmemkind
 
+# Linking standard c++ library for aocl_gemm addon.
+STDCXX :=
+ifeq ($(GCC_OT_11_2_0),yes)
+    ifeq ($(filter aocl_gemm, $(ADDON_LIST)), aocl_gemm)
+       STDCXX := -lstdc++
+    endif
+endif
+
 # Default linker flags.
 # NOTE: -lpthread is needed unconditionally because BLIS uses pthread_once()
 # to initialize itself in a thread-safe manner. The one exception to this
 # rule: if --disable-system is given at configure-time, LIBPTHREAD is empty.
-LDFLAGS    := $(LDFLAGS_PRESET) $(LIBM) $(LIBPTHREAD)
+LDFLAGS    := $(LDFLAGS_PRESET) $(LIBM) $(LIBPTHREAD) $(STDCXX)
 
 # Add libmemkind to the link-time flags, if it was enabled at configure-time.
 ifeq ($(MK_ENABLE_MEMKIND),yes)
@@ -583,7 +602,11 @@ endif
 ifeq ($(OS_NAME),Darwin)
 # OS X shared library link flags.
 SOFLAGS    := -dynamiclib
+ifeq ($(MK_ENABLE_RPATH),yes)
+SOFLAGS    += -Wl,-install_name,@rpath/$(LIBBLIS_SONAME)
+else
 SOFLAGS    += -Wl,-install_name,$(libdir)/$(LIBBLIS_SONAME)
+endif
 else
 SOFLAGS    := -shared
 ifeq ($(IS_WIN),yes)
@@ -619,7 +642,17 @@ ifeq ($(MK_ENABLE_SHARED),yes)
     LIBBLIS_LINK   := $(LIBBLIS_SO_PATH)
     ifeq ($(IS_WIN),no)
       # For Linux and OS X: set rpath property of shared object.
-      LDFLAGS        += -Wl,-rpath,$(BASE_LIB_PATH)
+      ifeq ($(OS_NAME),Darwin)
+        # rpath for any executables generated in the top level directory
+        LDFLAGS        += -Wl,-rpath,@executable_path/$(BASE_LIB_PATH)
+        # rpath for BLAS tests and test_libblis.x
+        LDFLAGS        += -Wl,-rpath,@executable_path/../../../$(BASE_LIB_PATH)
+      else
+        # rpath for any executables generated in the top level directory
+        LDFLAGS        += -Wl,-rpath,'$$ORIGIN/$(BASE_LIB_PATH)'
+        # rpath for BLAS tests and test_libblis.x
+        LDFLAGS        += -Wl,-rpath,'$$ORIGIN/../../../../$(BASE_LIB_PATH)'
+      endif
     endif
   endif
   # On windows, use the shared library even if static is created.

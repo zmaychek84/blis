@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -132,44 +132,52 @@ gtint_t buff_dim( gtint_t n, gtint_t incx ) {
 
 gtint_t matsize( char storage, char trans, gtint_t m, gtint_t n, gtint_t ldm )
 {
-    gtint_t km;
+    gtint_t km, lm;
     if( (storage == 'c') || (storage == 'C') ) {
         /*Column_Major*/
         km  = chktrans( trans ) ? m : n ;
+        lm  = chktrans( trans ) ? n : m ;
     }
     else {
         /*Row_Major*/
         km  = chktrans( trans ) ? n : m ;
+        lm  = chktrans( trans ) ? m : n ;
     }
-    return (km*ldm);
+    if ( ldm <= 0 || ldm < lm )
+        return 0;
+    else
+        return (km*ldm);
 }
 
 /**
  * Returns the leading dimension of a matrix depending on the storage type,
- * whether it is transpose or not, and the size of rows and columns.
+ * whether it is transpose or not, and the size of rows and columns, and the stride.
  *
  * @param storage specifies the storage format of matrix in memory.
  * @param trns    specifies the form of given matrix.
  * @param m       specifies the number of rows of given matrix.
  * @param n       specifies the number of columns of given matrix.
  * @param inc     specifies the increment of the leading dimension.
+ * @param stride  specifies the stride between two "continuous" elements in the matrix.
 */
-gtint_t get_leading_dimension( char storage, char trans, gtint_t m, gtint_t n, gtint_t inc )
+gtint_t get_leading_dimension( char storage, char trans, gtint_t m, gtint_t n, gtint_t inc, gtint_t stride )
 {
     gtint_t lda;
+    gtint_t m_max = (std::max)(gtint_t(1),m);
+    gtint_t n_max = (std::max)(gtint_t(1),n);
     if( (storage == 'c') || (storage == 'C') ) //column-major order
     {
         if ((trans == 'n')||(trans == 'N'))
-            lda = (std::max)(gtint_t(1),m) + inc;
+            lda = ( ( m_max - 1 ) * stride + 1 ) + inc;
         else
-            lda = (std::max)(gtint_t(1),n) + inc;
+            lda = ( ( n_max - 1 ) * stride + 1 ) + inc;
     }
     else //row-major order
     {
         if ((trans == 'n')||(trans == 'N'))
-            lda = (std::max)(gtint_t(1),n) + inc;
+            lda = ( ( n_max - 1 ) * stride + 1 ) + inc;
         else
-            lda = (std::max)(gtint_t(1),m) + inc;
+            lda = ( ( m_max - 1 ) * stride + 1 ) + inc;
     }
     return lda;
 }
@@ -193,6 +201,24 @@ template scomplex getNaN<scomplex>();
 template dcomplex getNaN<dcomplex>();
 
 /**
+ * If T is real, returns NaN.
+ * If T is complex, returns {NaN, NaN}
+*/
+template<typename T>
+T getNaNNaN()
+{
+    using RT = typename testinghelpers::type_info<T>::real_type;
+    if constexpr (testinghelpers::type_info<T>::is_real)
+        return std::numeric_limits<RT>::quiet_NaN();
+    else
+        return T{std::numeric_limits<RT>::quiet_NaN(), std::numeric_limits<RT>::quiet_NaN()};
+}
+template float getNaNNaN<float>();
+template double getNaNNaN<double>();
+template scomplex getNaNNaN<scomplex>();
+template dcomplex getNaNNaN<dcomplex>();
+
+/**
  * If T is real, returns inf.
  * If T is complex, returns {inf, 0.0}
 */
@@ -210,11 +236,49 @@ template double getInf<double>();
 template scomplex getInf<scomplex>();
 template dcomplex getInf<dcomplex>();
 
+/**
+ * If T is real, returns inf.
+ * If T is complex, returns {inf, inf}
+*/
+template<typename T>
+T getInfInf()
+{
+    using RT = typename testinghelpers::type_info<T>::real_type;
+    if constexpr (testinghelpers::type_info<T>::is_real)
+        return std::numeric_limits<RT>::infinity();
+    else
+        return T{std::numeric_limits<RT>::infinity(), std::numeric_limits<RT>::infinity()};
+}
+template float getInfInf<float>();
+template double getInfInf<double>();
+template scomplex getInfInf<scomplex>();
+template dcomplex getInfInf<dcomplex>();
+
+/**
+ * If T is real, returns extval.
+ * If T is complex, returns {extval, extval}
+ * where extval = NaN or Inf
+*/
+template<typename T>
+T aocl_extreme()
+{
+#if EXT_VAL == NaN
+    return getNaNNaN<T>();
+#else
+    return getInfInf<T>();
+#endif
+}
+template float aocl_extreme<float>();
+template double aocl_extreme<double>();
+template scomplex aocl_extreme<scomplex>();
+template dcomplex aocl_extreme<dcomplex>();
 
 
 bool chktrans( char trns )
 {
-    return (!(trns=='n'));
+    trans_t trans;
+    char_to_blis_trans( trns, &trans );
+    return ( bool ) !( trans == BLIS_NO_TRANSPOSE );
 }
 
 bool chknotrans( char trns )
@@ -528,67 +592,38 @@ template void make_diag<scomplex>( char, gtint_t, gtint_t, scomplex, scomplex *,
 template void make_diag<dcomplex>( char, gtint_t, gtint_t, dcomplex, dcomplex *, gtint_t );
 
 /**
- * print scalar value
- * @param[in] x    specifies the value.
- * @param[in] spec specifies the format specifer.
- */
-template<typename T>
-void print_scalar( T x, const char *spec ) {
-    if constexpr (testinghelpers::type_info<T>::is_real)
-        printf(spec, x);
-    else {
-        printf( spec, x.real );
-        if(x.imag < 0)    printf( "-" );
-        else              printf( "+" );
-        printf( spec, abs(x.imag) );
-        printf( " " );
-    }
-}
-template void print_scalar<float>( float x, const char * );
-template void print_scalar<double>( double x, const char * );
-template void print_scalar<scomplex>( scomplex x, const char * );
-template void print_scalar<dcomplex>( dcomplex x, const char * );
-
-/**
  * print vector of length  n
- * @param[in] vec  specifies the vector name
  * @param[in] n    specifies the length of the given vector.
  * @param[in] a    specifies pointer which points to the first element of a.
  * @param[in] incx specifies storage spacing between elements of a.
- * @param[in] spec specifies the format specifer.
  */
 template<typename T>
-void print_vector( const char *vec, gtint_t n, T *x, gtint_t incx, const char *spec )
+void print_vector( gtint_t n, T *x, gtint_t incx)
 {
     gtint_t i, idx;
     T val;
-    std::cout << "Vector " << vec << std::endl;
     for ( i = 0; i < n; i++ )
     {
         idx = (incx > 0) ? (i * incx) : ( - ( n - i - 1 ) * incx );
         val = x[idx];
-        print_scalar<T>(val,spec);
-        printf( " " );
+        std::cout<<val<<" ";
     }
-    printf( "\n\n" );
 }
-template void print_vector<float>( const char *vec, gtint_t, float *, gtint_t, const char * );
-template void print_vector<double>( const char *vec, gtint_t, double *, gtint_t, const char * );
-template void print_vector<scomplex>( const char *vec, gtint_t, scomplex *, gtint_t, const char * );
-template void print_vector<dcomplex>( const char *vec, gtint_t, dcomplex *, gtint_t, const char * );
+template void print_vector<float>( gtint_t, float *, gtint_t);
+template void print_vector<double>( gtint_t, double *, gtint_t);
+template void print_vector<scomplex>( gtint_t, scomplex *, gtint_t);
+template void print_vector<dcomplex>( gtint_t, dcomplex *, gtint_t);
 
 /**
  * print matrix of size m x n
- * @param[in] mat     specifies the matrix name
  * @param[in] storage specifies the storage format of matrix in memory.
  * @param[in] m       specifies the number of rows of given matrix.
  * @param[in] n       specifies the number of columns of given matrix.
  * @param[in] a       specifies pointer which points to the first element of a.
  * @param[in] ld      specifies leading dimension for a given matrix.
- * @param[in] spec    specifies the format specifer.
  */
 template<typename T>
-void print_matrix( const char *mat, char storage, gtint_t m, gtint_t n, T *a, gtint_t ld, const char *spec )
+void print_matrix( char storage, gtint_t m, gtint_t n, T *a, gtint_t ld)
 {
     gtint_t rs,cs;
     rs=cs=1;
@@ -599,25 +634,20 @@ void print_matrix( const char *mat, char storage, gtint_t m, gtint_t n, T *a, gt
         rs = ld ;
 
     gtint_t i, j;
-    std::cout << "Matrix " << mat << std::endl;
     for ( i = 0; i < m; i++ )
     {
         for ( j = 0; j < n; j++ )
         {
             val = a[i*rs + j*cs];
-            print_scalar<T>(val,spec);
-            printf( " " );
+            std::cout<<val<<" ";
         }
-        printf( "\n" );
+        std::cout<<"\n";
     }
-    printf( "\n" );
 }
-template void print_matrix<float>( const char *mat, char, gtint_t, gtint_t, float *, gtint_t, const char * );
-template void print_matrix<double>( const char *mat, char, gtint_t, gtint_t, double *, gtint_t, const char * );
-template void print_matrix<scomplex>( const char *mat, char, gtint_t, gtint_t, scomplex *, gtint_t, const char * );
-template void print_matrix<dcomplex>( const char *mat, char, gtint_t, gtint_t, dcomplex *, gtint_t, const char * );
-
-
+template void print_matrix<float>( char, gtint_t, gtint_t, float *, gtint_t);
+template void print_matrix<double>( char, gtint_t, gtint_t, double *, gtint_t);
+template void print_matrix<scomplex>( char, gtint_t, gtint_t, scomplex *, gtint_t);
+template void print_matrix<dcomplex>( char, gtint_t, gtint_t, dcomplex *, gtint_t);
 /*
     Helper function that returns a string based on the value that is passed
     The return values are as follows :
@@ -627,66 +657,46 @@ template void print_matrix<dcomplex>( const char *mat, char, gtint_t, gtint_t, d
     If the datatype is complex : The string is concatenated with both the real and
     imaginary components values, based on analysis done separately to each of them
     (similar to real datatype).
+
+    Also handles values of datatype gtint_t.
 */
 template<typename T>
 std::string get_value_string(T exval)
 {
   std::string exval_str;
-  if constexpr (testinghelpers::type_info<T>::is_real)
+  if constexpr (std::is_integral<T>::value)
+  {
+    exval_str = ( exval >= 0) ? std::to_string(exval) : "m" + std::to_string(std::abs(exval));
+  }
+  else if constexpr (testinghelpers::type_info<T>::is_real)
   {
     if(std::isnan(exval))
       exval_str = "nan";
     else if(std::isinf(exval))
-      exval_str = (exval >= 0) ? "inf" : "minus_inf";
+      exval_str = (exval >= testinghelpers::ZERO<T>()) ? "inf" : "minus_inf";
     else
-      exval_str = ( exval >= 0) ? std::to_string(int(exval)) : "minus_" + std::to_string(int(std::abs(exval)));
+    {
+      // Handle -0.0 separately
+      if (exval == -testinghelpers::ZERO<T>())
+          exval_str = "m" + std::to_string(std::abs(exval));
+      else
+          exval_str = ( exval >= testinghelpers::ZERO<T>()) ? std::to_string(exval) : "m" + std::to_string(std::abs(exval));
+      exval_str = exval_str.substr(0, exval_str.find(".")+2);
+      exval_str = exval_str.replace(exval_str.find("."),1,"p");
+    }
   }
-  else
+  else if constexpr (testinghelpers::type_info<T>::is_complex)
   {
-    if(std::isnan(exval.real))
-    {
-      exval_str = "nan";
-      if(std::isinf(exval.imag))
-        exval_str = exval_str + "pi" + ((exval.imag >= 0) ? "inf" : "minus_inf");
-      else
-        exval_str = exval_str + "pi" + ((exval.imag >= 0)? std::to_string(int(exval.imag)) : "m" + std::to_string(int(std::abs(exval.imag))));
-    }
-    else if(std::isnan(exval.imag))
-    {
-      if(std::isinf(exval.real))
-        exval_str = ((exval.real >= 0) ? "inf" : "minus_inf");
-      else
-        exval_str = ((exval.real >= 0)? std::to_string(int(exval.real)) : "m" + std::to_string(int(std::abs(exval.real))));
-      exval_str = exval_str + "pinan";
-    }
-    else if(std::isinf(exval.real))
-    {
-      exval_str = ((exval.real >= 0) ? "inf" : "minus_inf");
-      if(std::isnan(exval.imag))
-        exval_str = exval_str + "pinan";
-      else
-        exval_str = exval_str + "pi" + ((exval.imag >= 0)? std::to_string(int(exval.imag)) : "m" + std::to_string(int(std::abs(exval.imag))));
-    }
-    else if(std::isinf(exval.imag))
-    {
-      if(std::isnan(exval.real))
-        exval_str = "nan";
-      else
-        exval_str = ((exval.real >= 0)? std::to_string(int(exval.real)) : "m" + std::to_string(int(std::abs(exval.real))));
-
-      exval_str = exval_str + ((exval.imag >= 0) ? "inf" : "minus_inf");
-    }
-    else
-    {
-        exval_str = ((exval.real >= 0)? std::to_string(int(exval.real)) : "m" + std::to_string(int(std::abs(exval.real))));
-        exval_str = exval_str + "pi" + ((exval.imag >= 0)? std::to_string(int(exval.imag)) : "m" + std::to_string(int(std::abs(exval.imag))));
-    }
+    using RT = typename testinghelpers::type_info<T>::real_type;
+    exval_str = get_value_string<RT>(exval.real) + std::string{"_"} + get_value_string<RT>(exval.imag) + std::string{"i"};
   }
+
   return exval_str;
 }
 template std::string testinghelpers::get_value_string( float );
 template std::string testinghelpers::get_value_string( double );
 template std::string testinghelpers::get_value_string( scomplex );
 template std::string testinghelpers::get_value_string( dcomplex );
+template std::string testinghelpers::get_value_string( gtint_t );
 
 } //end of namespace testinghelpers

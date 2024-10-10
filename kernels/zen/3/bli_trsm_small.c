@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -5123,7 +5123,10 @@ err_t bli_trsm_small
    switch(dt)
    {
         case BLIS_DOUBLE:
+        case BLIS_DCOMPLEX:
         {
+            // threshold checks for these datatypes is
+            // done at bla layer
             break;
         }
         case BLIS_FLOAT:
@@ -5131,13 +5134,6 @@ err_t bli_trsm_small
         {
             if((!is_parallel) && (m > 1000 || n > 1000)) {
                return BLIS_NOT_YET_IMPLEMENTED;
-            }
-            break;
-        }
-        case BLIS_DCOMPLEX:
-        {
-            if((!is_parallel) && (m > 500 || n > 500)) {
-                return BLIS_NOT_YET_IMPLEMENTED;
             }
             break;
         }
@@ -12921,7 +12917,10 @@ BLIS_INLINE  err_t bli_dtrsm_small_XAutB_XAlB
                 ymm0 = _mm256_broadcast_sd((double const *)(d11_pack ));
                 ymm3 = DTRSM_SMALL_DIV_OR_SCALE(ymm3, ymm0);
 
-                ymm0 = _mm256_loadu_pd((double const *)b11);
+                ymm0 = _mm256_broadcast_sd((double const *)b11 + 2);
+                xmm5 = _mm_loadu_pd((double *)(b11));
+                ymm0 = _mm256_insertf128_pd(ymm0, xmm5, 0);
+
                 ymm3 = _mm256_blend_pd(ymm6, ymm3, 0x07);
 
                 BLIS_POST_DTRSM_SMALL_1N_3M(b11,cs_b)
@@ -40221,8 +40220,8 @@ BLIS_INLINE void ctrsm_small_pack_diag_element
 		ymm18 = _mm256_setr_ps(-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0);\
 		for(k = 0; k< k_iter; k++) \
 		{ \
-			ymm0 = _mm256_broadcast_ps(( __m128 const *)(b10));\
-			ymm0 = _mm256_permute_ps(ymm0, 0x44);\
+			xmm5 = _mm_loadl_pi(xmm5,(__m64 *)(b10));\
+			ymm0 = _mm256_insertf128_ps(ymm0, xmm5, 0);\
             \
 			ymm2 = _mm256_broadcast_ss(tptr + p_lda * 0 + 0);\
 			ymm3 = _mm256_broadcast_ss(tptr + p_lda * 0 + 1);\
@@ -40246,10 +40245,8 @@ BLIS_INLINE void ctrsm_small_pack_diag_element
 	else {\
 		for(k = 0; k< k_iter; k++) \
 		{ \
-			ymm0 = _mm256_broadcast_ps(( __m128 const *)(b10 + 2));\
-			ymm0 = _mm256_permute_ps(ymm0, 0x44);\
-            		xmm5 = _mm_loadu_ps((float const *)(b10));\
-            		ymm0 = _mm256_insertf128_ps(ymm0, xmm5, 0);\
+			xmm5 = _mm_loadl_pi(xmm5,(__m64 *)(b10));\
+			ymm0 = _mm256_insertf128_ps(ymm0, xmm5, 0);\
 			\
 			ymm2 = _mm256_broadcast_ss(tptr + p_lda * 0 + 0);\
 			ymm3 = _mm256_broadcast_ss(tptr + p_lda * 0 + 1);\

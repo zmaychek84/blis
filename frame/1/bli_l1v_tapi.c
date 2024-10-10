@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -136,6 +136,14 @@ void PASTEMAC2(ch,opname,EX_SUF) \
 { \
 	AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_2) \
 \
+	/* Early exit in case n is 0, or alpha is 0 and beta is 1 */ \
+	if ( bli_zero_dim1( n ) || \
+		 ( PASTEMAC( ch, eq0 )( *alpha ) && PASTEMAC( ch, eq1 )( *beta ) ) ) \
+	{ \
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_2) \
+		return; \
+	} \
+\
 	bli_init_once(); \
 \
 	BLIS_TAPI_EX_DECLS \
@@ -161,7 +169,6 @@ void PASTEMAC2(ch,opname,EX_SUF) \
 }
 
 INSERT_GENTFUNC_BASIC( axpbyv, BLIS_AXPBYV_KER )
-
 
 #undef  GENTFUNC
 #define GENTFUNC( ctype, ch, opname, kerid ) \
@@ -203,6 +210,53 @@ void PASTEMAC2(ch,opname,EX_SUF) \
 }
 
 INSERT_GENTFUNC_BASIC( axpyv,  BLIS_AXPYV_KER )
+
+#undef  GENTFUNC
+#define GENTFUNC( ctype, ch, opname, kerid ) \
+\
+void PASTEMAC2(ch,opname,EX_SUF) \
+     ( \
+       conj_t  conjx, \
+       dim_t   n, \
+       ctype*  alpha, \
+       ctype*  x, inc_t incx, \
+       ctype*  y, inc_t incy  \
+       BLIS_TAPI_EX_PARAMS  \
+     ) \
+{ \
+	AOCL_DTL_TRACE_ENTRY(AOCL_DTL_LEVEL_TRACE_2) \
+\
+	/* The behaviour is undefined when increments are negative or 0 */ \
+	/* So, return early */ \
+	if( ( incx <= 0 ) || ( incy <= 0 ) ) \
+	{ \
+		AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_2) \
+		return; \
+	} \
+	bli_init_once(); \
+\
+	BLIS_TAPI_EX_DECLS \
+\
+	const num_t dt = PASTEMAC(ch,type); \
+\
+	/* Obtain a valid context from the gks if necessary. */ \
+	if ( cntx == NULL ) \
+		cntx = bli_gks_query_cntx(); \
+\
+	PASTECH2(ch,opname,_ker_ft) f = bli_cntx_get_l1v_ker_dt( dt, kerid, cntx ); \
+\
+	f \
+	( \
+	   conjx, \
+	   n, \
+	   alpha, \
+	   x, incx, \
+	   y, incy, \
+	   cntx  \
+	); \
+	AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_2) \
+}
+
 INSERT_GENTFUNC_BASIC( scal2v, BLIS_SCAL2V_KER )
 
 

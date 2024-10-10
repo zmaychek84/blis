@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -74,7 +74,15 @@ AOCL_GEMM_GET_REORDER_BUF_SIZE(f32f32f32of32)
 	const dim_t NR = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_NR, cntx );
 
 	// Extra space since packing does width in multiples of NR.
-	const dim_t n_reorder = ( ( n + NR - 1 ) / NR ) * NR;
+	dim_t n_reorder;
+	if(n == 1)
+	{
+		//When n == 1, LPGEMV doesn't expect B to be reordered.
+		n_reorder = 1;
+	}else
+	{
+		n_reorder = ( ( n + NR - 1 ) / NR ) * NR;
+	}
 
 	siz_t size_req = sizeof( float ) * k * n_reorder;
 
@@ -84,10 +92,32 @@ AOCL_GEMM_GET_REORDER_BUF_SIZE(f32f32f32of32)
 // Pack B into row stored column panels.
 AOCL_GEMM_REORDER(float,f32f32f32of32)
 {
+	trans_t blis_trans;
+	/* Map BLAS chars to their corresponding BLIS enumerated type value. */
+	bli_param_map_netlib_to_blis_trans(trans, &blis_trans);
+
 	if ( ( input_buf_addr == NULL ) || ( reorder_buf_addr == NULL ) ||
-	     ( k <= 0 ) || ( n <= 0 ) || ( ldb < n ) )
+	     ( k <= 0 ) || ( n <= 0 ) || ( bli_is_notrans( blis_trans ) && ( ldb < n ) ) ||
+	    ( bli_is_trans( blis_trans ) && ( ldb < k ) ) )
 	{
 		return; // Error.
+	}
+
+	// Only supports row major packing now.
+	inc_t rs_b, cs_b;
+	if ((order == 'r') || (order == 'R'))
+	{
+		rs_b = bli_is_notrans(blis_trans) ? ldb : 1;
+		cs_b = bli_is_notrans(blis_trans) ? 1 : ldb;
+	}
+	else if ((order == 'c') || (order == 'C'))
+	{
+		rs_b = bli_is_notrans(blis_trans) ? 1 : ldb;
+		cs_b = bli_is_notrans(blis_trans) ? ldb : 1;
+	}
+	else
+	{
+		return; // Error
 	}
 
 	// Check if AVX2 ISA is supported, lpgemm fp32 matmul only works with it.
@@ -97,7 +127,7 @@ AOCL_GEMM_REORDER(float,f32f32f32of32)
 				"cannot perform f32f32f32 gemm.", __FILE__, __LINE__ );
 		return; // Error.
 	}
-
+	
 	/* Initialize BLIS. */
 	bli_init_auto();
 
@@ -121,10 +151,6 @@ AOCL_GEMM_REORDER(float,f32f32f32of32)
 	const dim_t KC = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_KC, cntx );
 	const dim_t NR  = bli_cntx_get_l3_sup_blksz_def_dt( dt, BLIS_NR, cntx );
 
-	// Only supports row major packing now.
-	inc_t rs_b = ldb;
-	inc_t cs_b = 1;
-
 	inc_t rs_p = NR;
 
 	float one_local  = *PASTEMAC(s,1);
@@ -144,6 +170,23 @@ AOCL_GEMM_REORDER(float,f32f32f32of32)
 	dim_t n_threads = bli_rntm_num_threads( &rntm_g );
 	n_threads = ( n_threads > 0 ) ? n_threads : 1;
 
+	//When n == 1, B marix becomes a vector. 
+	//Reordering is avoided so that LPGEMV can process it efficiently.
+	if(n == 1)
+	{
+		if(rs_b == 1)
+		{
+			memcpy(reorder_buf_addr, input_buf_addr, (k * sizeof(BLIS_FLOAT)));
+		}else
+		{
+			for(dim_t k0 = 0; k0 < k; k0++)
+			{
+				reorder_buf_addr[k0] = input_buf_addr[k0*rs_b];
+			}
+		}
+		return;
+	}
+
 #ifdef BLIS_ENABLE_OPENMP
 	_Pragma( "omp parallel num_threads(n_threads)" )
 	{
@@ -162,7 +205,6 @@ AOCL_GEMM_REORDER(float,f32f32f32of32)
 		// gets multiple of NR columns.
 		dim_t jc_start, jc_end;
 		bli_thread_range_sub( &thread_jc, n, NR, FALSE, &jc_start, &jc_end );
-
 		for ( dim_t jc = jc_start; jc < jc_end; jc += NC )
 		{
 			dim_t nc0 = bli_min( ( jc_end - jc ), NC );
@@ -180,7 +222,7 @@ AOCL_GEMM_REORDER(float,f32f32f32of32)
 
 			// Compute the total number of iterations we'll need.
 			dim_t n_iter = ( nc0 + NR - 1 ) / NR;
-
+			
 			for ( dim_t pc = 0; pc < k; pc += KC )
 			{
 				dim_t kc0 = bli_min( ( k - pc ), KC );

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -35,10 +35,10 @@
 #include <gtest/gtest.h>
 #include "test_nrm2.h"
 
-class dnrm2Test :
+class dnrm2Generic :
         public ::testing::TestWithParam<std::tuple<gtint_t, gtint_t>> {};
 
-TEST_P( dnrm2Test, RandomData )
+TEST_P( dnrm2Generic, API )
 {
     using T = double;
     //----------------------------------------------------------
@@ -51,34 +51,20 @@ TEST_P( dnrm2Test, RandomData )
     gtint_t incx = std::get<1>(GetParam());
 
     // Set the threshold for the errors:
-    double thresh = std::sqrt(n)*testinghelpers::getEpsilon<T>();
+    // Check gtestsuite nrm2.h or netlib source code for reminder of the
+    // functionality from which we estimate operation count per element
+    // of output, and hence the multipler for epsilon.
+    double thresh;
+    if (n == 0)
+        thresh = 0.0;
+    else
+        thresh = std::sqrt(n)*testinghelpers::getEpsilon<T>();
 
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
     test_nrm2<T>( n, incx, thresh );
 }
-
-// Prints the test case combination
-class dnrm2TestPrint {
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<gtint_t, gtint_t>> str) const {
-        gtint_t n     = std::get<0>(str.param);
-        gtint_t incx  = std::get<1>(str.param);
-#ifdef TEST_BLAS
-        std::string str_name = "dnrm2_";
-#elif TEST_CBLAS
-        std::string str_name = "cblas_dnrm2";
-#else  //#elif TEST_BLIS_TYPED
-        std::string str_name = "bli_dnormfv";
-#endif
-        str_name    = str_name + "_" + std::to_string(n);
-        std::string incx_str = ( incx > 0) ? std::to_string(incx) : "m" + std::to_string(std::abs(incx));
-        str_name    = str_name + "_" + incx_str;
-        return str_name;
-    }
-};
 
 /**
  * dnrm2 implementation is composed by two parts:
@@ -90,7 +76,7 @@ public:
 
 INSTANTIATE_TEST_SUITE_P(
         AT_1T,
-        dnrm2Test,
+        dnrm2Generic,
         ::testing::Combine(
             // m size of vector
             ::testing::Values(gtint_t(1),  // trivial case n=1
@@ -112,7 +98,7 @@ INSTANTIATE_TEST_SUITE_P(
 #endif
         )
         ),
-        ::dnrm2TestPrint()
+        ::nrm2GenericPrint()
     );
 
 // Multithreading unit tester
@@ -139,7 +125,7 @@ INSTANTIATE_TEST_SUITE_P(
 */
 INSTANTIATE_TEST_SUITE_P(
         AT_MT_Unit_Tester,
-        dnrm2Test,
+        dnrm2Generic,
         ::testing::Combine(
             // m size of vector
             ::testing::Values(gtint_t(256),
@@ -162,7 +148,7 @@ INSTANTIATE_TEST_SUITE_P(
 #endif
         )
         ),
-        ::dnrm2TestPrint()
+        ::nrm2GenericPrint()
     );
 
 // Instantiator if AOCL_DYNAMIC is enabled
@@ -173,7 +159,7 @@ INSTANTIATE_TEST_SUITE_P(
 */
 INSTANTIATE_TEST_SUITE_P(
         AT_MT_AOCL_DYNAMIC,
-        dnrm2Test,
+        dnrm2Generic,
         ::testing::Combine(
             // m size of vector
             ::testing::Values(gtint_t(2950000),
@@ -188,5 +174,5 @@ INSTANTIATE_TEST_SUITE_P(
 #endif
         )
         ),
-        ::dnrm2TestPrint()
+        ::nrm2GenericPrint()
     );

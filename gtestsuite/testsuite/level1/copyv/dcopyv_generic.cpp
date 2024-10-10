@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -35,14 +35,14 @@
 #include <gtest/gtest.h>
 #include "test_copyv.h"
 
-class dcopyvGenericTest :
-        public ::testing::TestWithParam<std::tuple<char,
-                                                   gtint_t,
-                                                   gtint_t,
-                                                   gtint_t>> {};
+class dcopyvGeneric :
+        public ::testing::TestWithParam<std::tuple<char,                     // n: use x, c: use conj(x)
+                                                   gtint_t,                  // m size of vector
+                                                   gtint_t,                  // stride size for x
+                                                   gtint_t>> {};             // stride size for y
 
-// Tests using random integers as vector elements.
-TEST_P( dcopyvGenericTest, RandomData )
+// Tests using random values as vector elements.
+TEST_P( dcopyvGeneric, API )
 {
     using T = double;
     //----------------------------------------------------------
@@ -58,55 +58,23 @@ TEST_P( dcopyvGenericTest, RandomData )
     // stride size for y:
     gtint_t incy = std::get<3>(GetParam());
 
-    // Set the threshold for the errors:
-    double thresh = testinghelpers::getEpsilon<T>();
-
     //----------------------------------------------------------
     //     Call generic test body using those parameters
     //----------------------------------------------------------
-    test_copyv<T>( conjx, n, incx, incy, thresh );
+    test_copyv<T>( conjx, n, incx, incy );
 }
-
-// Used to generate a test case with a sensible name.
-// Beware that we cannot use fp numbers (e.g., 2.3) in the names,
-// so we are only printing int(2.3). This should be enough for debugging purposes.
-// If this poses an issue, please reach out.
-class dcopyvGenericTestPrint {
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<char,gtint_t,gtint_t,gtint_t>> str) const {
-        char conjx    = std::get<0>(str.param);
-        gtint_t n     = std::get<1>(str.param);
-        gtint_t incx  = std::get<2>(str.param);
-        gtint_t incy  = std::get<3>(str.param);
-#ifdef TEST_BLAS
-        std::string str_name = "dcopy_";
-#elif TEST_CBLAS
-        std::string str_name = "cblas_dcopy";
-#else  //#elif TEST_BLIS_TYPED
-        std::string str_name = "bli_dcopyv";
-#endif
-        str_name += "_" + std::to_string(n);
-        str_name += "_" + std::string(&conjx, 1);
-        std::string incx_str = ( incx > 0) ? std::to_string(incx) : "m" + std::to_string(std::abs(incx));
-        str_name += "_" + incx_str;
-        std::string incy_str = ( incy > 0) ? std::to_string(incy) : "m" + std::to_string(std::abs(incy));
-        str_name += "_" + incy_str;
-        return str_name;
-    }
-};
 
 // Black box testing for generic and main use of scopy.
 INSTANTIATE_TEST_SUITE_P(
-        Blackbox,
-        dcopyvGenericTest,
+        smallSize,
+        dcopyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                                          // n: use x, not conj(x) (since it is real)
             ::testing::Range(gtint_t(10), gtint_t(101), 10),                 // m size of vector takes values from 10 to 100 with step size of 10.
             ::testing::Values(gtint_t(1)),                                   // stride size for x
             ::testing::Values(gtint_t(1))                                    // stride size for y
         ),
-        ::dcopyvGenericTestPrint()
+        ::copyvGenericPrint()
     );
 
 #ifdef TEST_BLIS_TYPED // BLIS-api specific
@@ -115,14 +83,14 @@ INSTANTIATE_TEST_SUITE_P(
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
         ConjX,
-        dcopyvGenericTest,
+        dcopyvGeneric,
         ::testing::Combine(
             ::testing::Values('c'),                                          // c: use conj(x)
             ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
             ::testing::Values(gtint_t(1)),                                   // stride size for x
             ::testing::Values(gtint_t(1))                                    // stride size for y
         ),
-        ::dcopyvGenericTestPrint()
+        ::copyvGenericPrint()
     );
 #endif
 
@@ -131,14 +99,14 @@ INSTANTIATE_TEST_SUITE_P(
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
         NonUnitPositiveIncrements,
-        dcopyvGenericTest,
+        dcopyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                                          // use x, not conj(x) (since it is real)
             ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
             ::testing::Values(gtint_t(2), gtint_t(11)),                      // stride size for x
             ::testing::Values(gtint_t(3), gtint_t(33))                       // stride size for y
         ),
-        ::dcopyvGenericTestPrint()
+        ::copyvGenericPrint()
     );
 
 #ifndef TEST_BLIS_TYPED
@@ -147,13 +115,65 @@ INSTANTIATE_TEST_SUITE_P(
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
         NegativeIncrements,
-        dcopyvGenericTest,
+        dcopyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                                          // n: use x, c: use conj(x)
             ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
             ::testing::Values(gtint_t(-5), gtint_t(7)),                      // stride size for x
-            ::testing::Values(gtint_t(13), gtint_t(-9))                       // stride size for y
+            ::testing::Values(gtint_t(13), gtint_t(-9))                      // stride size for y
         ),
-        ::dcopyvGenericTestPrint()
+        ::copyvGenericPrint()
     );
 #endif
+// To cover small, medium and large sizes of M with unit increment.
+INSTANTIATE_TEST_SUITE_P(
+        differentSizesOfM,
+        dcopyvGeneric,
+        ::testing::Combine(
+            ::testing::Values('n'),                                          // n: use x, c: use conj(x)
+            ::testing::Values(gtint_t(1270),
+                              gtint_t(64),
+                              gtint_t(32),
+                              gtint_t(16),
+                              gtint_t(8),
+                              gtint_t(4),
+                              gtint_t(960),
+                              gtint_t(3120),
+                              gtint_t(1900),
+                              gtint_t(124),
+                              gtint_t(880),
+                              gtint_t(80),
+                              gtint_t(256),
+                              gtint_t(480),
+                              gtint_t(788),
+                              gtint_t(36),
+                              gtint_t(24)),                                  // m size of vector
+            ::testing::Values(gtint_t(1)),                                   // stride size for x
+            ::testing::Values(gtint_t(1))                                    // stride size for y
+        ),
+        ::copyvGenericPrint()
+    );
+//To cover large sizes with non unit increments.
+INSTANTIATE_TEST_SUITE_P(
+        largeSize,
+        dcopyvGeneric,
+        ::testing::Combine(
+            ::testing::Values('n'),                                          // n: use x, c: use conj(x)
+            ::testing::Values(gtint_t(1000)),                                // m size of vector
+            ::testing::Values(gtint_t(2)),                                   // stride size for x
+            ::testing::Values(gtint_t(3))                                    // stride size for y
+        ),
+        ::copyvGenericPrint()
+    );
+//incx and incy is greater than size of a vector m.
+INSTANTIATE_TEST_SUITE_P(
+        StrideGreaterThanSize,
+        dcopyvGeneric,
+        ::testing::Combine(
+            ::testing::Values('n'),                                          // n: use x, c: use conj(x)
+            ::testing::Values(gtint_t(4)),                                   // m size of vector
+            ::testing::Values(gtint_t(6)),                                   // stride size for x
+            ::testing::Values(gtint_t(8))                                    // stride size for y
+        ),
+        ::copyvGenericPrint()
+    );

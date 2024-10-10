@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -36,6 +36,7 @@
 
 #include "blis.h"
 #include "common/testing_helpers.h"
+#include "inc/check_error.h"
 
 /**
  * @brief Performs the operation:
@@ -59,6 +60,18 @@ static void her_( char uploa, gtint_t n, Tr* alpha, T* xp, gtint_t incx,
         zher_( &uploa, &n, alpha, xp, &incx, ap, &lda );
     else
         throw std::runtime_error("Error in testsuite/level2/her.h: Invalid typename in her_().");
+}
+
+template<typename T, typename Tr>
+static void her_blis_impl( char uploa, gtint_t n, Tr* alpha, T* xp, gtint_t incx,
+                                                  T* ap, gtint_t lda )
+{
+    if constexpr (std::is_same<T, scomplex>::value)
+        cher_blis_impl( &uploa, &n, alpha, xp, &incx, ap, &lda );
+    else if constexpr (std::is_same<T, dcomplex>::value)
+        zher_blis_impl( &uploa, &n, alpha, xp, &incx, ap, &lda );
+    else
+        throw std::runtime_error("Error in testsuite/level2/her.h: Invalid typename in her_blis_impl().");
 }
 
 template<typename T, typename Tr>
@@ -111,16 +124,72 @@ template<typename T, typename Tr>
 static void her( char storage, char uploa, char conj_x, gtint_t n,
                     Tr* alpha, T* xp, gtint_t incx, T* ap, gtint_t lda )
 {
+
+#ifdef TEST_UPPERCASE_ARGS
+    storage = static_cast<char>(std::toupper(static_cast<unsigned char>(storage)));
+    uploa = static_cast<char>(std::toupper(static_cast<unsigned char>(uploa)));
+    conj_x = static_cast<char>(std::toupper(static_cast<unsigned char>(conj_x)));
+#endif
+
+#ifdef TEST_INPUT_ARGS
+    // Create copy of scalar input values so we can check that they are not altered.
+    char storage_cpy = storage;
+    char uploa_cpy = uploa;
+    char conj_x_cpy = conj_x;
+    gtint_t n_cpy = n;
+    Tr* alpha_cpy = alpha;
+    gtint_t incx_cpy = incx;
+    gtint_t lda_cpy = lda;
+
+    // Create copy of input arrays so we can check that they are not altered.
+    T* xp_cpy = nullptr;
+    gtint_t size_xp;
+    size_xp = testinghelpers::buff_dim( n, incx );
+    {
+        xp_cpy = new T[size_xp];
+        memcpy( xp_cpy, xp, size_xp * sizeof( T ) );
+    }
+#endif
+
 #ifdef TEST_BLAS
     if( storage == 'c' || storage == 'C' )
         her_<T>( uploa, n, alpha, xp, incx, ap, lda );
     else
         throw std::runtime_error("Error in testsuite/level2/her.h: BLAS interface cannot be tested for row-major order.");
+#elif TEST_BLAS_BLIS_IMPL
+    if( storage == 'c' || storage == 'C' )
+        her_blis_impl<T>( uploa, n, alpha, xp, incx, ap, lda );
+    else
+        throw std::runtime_error("Error in testsuite/level2/her.h: BLAS_BLIS_IMPL interface cannot be tested for row-major order.");
 #elif TEST_CBLAS
     cblas_her<T>( storage, uploa, n, alpha, xp, incx, ap, lda );
 #elif TEST_BLIS_TYPED
     typed_her<T>( storage, uploa, conj_x, n, alpha, xp, incx, ap, lda );
 #else
     throw std::runtime_error("Error in testsuite/level2/her.h: No interfaces are set to be tested.");
+#endif
+
+#ifdef TEST_INPUT_ARGS
+    //----------------------------------------------------------
+    // Check scalar inputs have not been modified.
+    //----------------------------------------------------------
+
+    computediff<char>( "storage", storage, storage_cpy );
+    computediff<char>( "uploa", uploa, uploa_cpy );
+    computediff<char>( "conj_x", conj_x, conj_x_cpy );
+    computediff<gtint_t>( "n", n, n_cpy );
+    computediff<Tr>( "alpha", *alpha, *alpha_cpy );
+    computediff<gtint_t>( "incx", incx, incx_cpy );
+    computediff<gtint_t>( "lda", lda, lda_cpy );
+
+    //----------------------------------------------------------
+    // Bitwise-wise check array inputs have not been modified.
+    //----------------------------------------------------------
+
+    if (xp && size_xp > 0)
+    {
+        computediff<T>( "x", n, xp, xp_cpy, incx, true );
+        delete[] xp_cpy;
+    }
 #endif
 }

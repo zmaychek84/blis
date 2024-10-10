@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -43,7 +43,7 @@
     #define GEMM_BLIS_IMPL(ch, blasname) \
         PASTEF77S(ch,blasname) ( transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc ); \
         arch_t id = bli_arch_query_id(); \
-        if (id == BLIS_ARCH_ZEN4) \
+        if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4) \
         { \
             bli_zero_zmm(); \
         } \
@@ -602,8 +602,8 @@ void dgemm_blis_impl
                      c, *ldc
                     );
 	}
-#if defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64)
-	else if( arch_id == BLIS_ARCH_ZEN4 )
+#if defined(BLIS_FAMILY_ZEN5) || defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_AMDZEN) || defined(BLIS_FAMILY_X86_64)
+	else if( arch_id == BLIS_ARCH_ZEN5 || arch_id == BLIS_ARCH_ZEN4 )
 	{
            ret = bli_dgemm_24x8_avx512_k1_nn( m0, n0, k0,
                      (double*)alpha,
@@ -839,8 +839,20 @@ void dgemm_blis_impl
     }
 
     // fall back on native path when dgemm is not handled in sup path.
-    bli_gemmnat(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
+    //bli_gemmnat(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
 
+    /* Default to using native execution. */
+    ind_t im = BLIS_NAT;
+
+    /* Obtain a valid context from the gks using the induced
+       method id determined above. */
+    cntx_t* cntx = bli_gks_query_ind_cntx( im, dt );
+
+    rntm_t rntm_l;
+    bli_rntm_init_from_global( &rntm_l );
+
+    /* Invoke the operation's front-end and request the default control tree. */
+    PASTEMAC(gemm,_front)( &alphao, &ao, &bo, &betao, &co, cntx, &rntm_l, NULL );
 
     /* PASTEMAC(gemm, BLIS_OAPI_EX_SUF) */
     /*  ( */
@@ -876,7 +888,7 @@ void dgemm_
     dgemm_blis_impl(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
 #if defined(BLIS_KERNELS_ZEN4)
     arch_t id = bli_arch_query_id();
-    if (id == BLIS_ARCH_ZEN4)
+    if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4)
     {
         bli_zero_zmm();
     }
@@ -1116,23 +1128,94 @@ void zgemm_blis_impl
     - The input constraints are that k should be 1, and transa and transb
       should be N and N respectively.
     */
-    if( ( k0 == 1 ) && bli_is_notrans( blis_transa ) && bli_is_notrans( blis_transb ) )
+    if( ( k0 == 1 ) && bli_is_notrans( blis_transa ) &&
+        bli_is_notrans( blis_transb ) )
     {
-        bli_zgemm_4x4_avx2_k1_nn
-        ( 
-            m0, n0, k0,
-            (dcomplex*)alpha,
-            (dcomplex*)a, *lda,
-            (dcomplex*)b, *ldb,
-            (dcomplex*)beta,
-            c, *ldc
-        );
+        err_t ret = BLIS_FAILURE;
+        arch_t arch_id = bli_arch_query_id();
 
-        AOCL_DTL_LOG_GEMM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *m, *n, *k);
-        AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
-        /* Finalize BLIS */
-        bli_finalize_auto();
-        return;
+        if( arch_id == BLIS_ARCH_ZEN || arch_id == BLIS_ARCH_ZEN2 ||
+            arch_id == BLIS_ARCH_ZEN3 )
+        {
+            ret = bli_zgemm_4x4_avx2_k1_nn
+                  (
+                    m0, n0, k0,
+                    (dcomplex*)alpha,
+                    (dcomplex*)a, *lda,
+                    (dcomplex*)b, *ldb,
+                    (dcomplex*)beta,
+                    c, *ldc
+                  );
+        }
+
+#if defined(BLIS_KERNELS_ZEN4)
+        else if ( arch_id == BLIS_ARCH_ZEN4 )
+        {
+            // Redirecting to AVX-2 kernel if load direction( m0 ) is < 30.
+            // This holds true irrespective of the broadcast direction( n0 )
+            if( m0 < 30 )
+            {
+                ret = bli_zgemm_4x4_avx2_k1_nn
+                      (
+                        m0, n0, k0,
+                        (dcomplex*)alpha,
+                        (dcomplex*)a, *lda,
+                        (dcomplex*)b, *ldb,
+                        (dcomplex*)beta,
+                        c, *ldc
+                      );
+            }
+            else
+            {
+                ret = bli_zgemm_16x4_avx512_k1_nn
+                      (
+                        m0, n0, k0,
+                        (dcomplex*)alpha,
+                        (dcomplex*)a, *lda,
+                        (dcomplex*)b, *ldb,
+                        (dcomplex*)beta,
+                        c, *ldc
+                      );
+            }
+        }
+        else if ( arch_id == BLIS_ARCH_ZEN5 )
+        {
+            // Redirecting to AVX-2 kernel if the dimensions are < 30
+            // ( i.e, small or tiny sizes ), or if the load directon( m0 ) < 10
+            if( ( m0 < 30 && n0 < 30 ) || m0 < 10 )
+            {
+                ret = bli_zgemm_4x4_avx2_k1_nn
+                      (
+                        m0, n0, k0,
+                        (dcomplex*)alpha,
+                        (dcomplex*)a, *lda,
+                        (dcomplex*)b, *ldb,
+                        (dcomplex*)beta,
+                        c, *ldc
+                      );
+            }
+            else
+            {
+                ret = bli_zgemm_16x4_avx512_k1_nn
+                      (
+                        m0, n0, k0,
+                        (dcomplex*)alpha,
+                        (dcomplex*)a, *lda,
+                        (dcomplex*)b, *ldb,
+                        (dcomplex*)beta,
+                        c, *ldc
+                      );
+            }
+        }
+#endif
+        if( ret == BLIS_SUCCESS )
+        {
+            AOCL_DTL_LOG_GEMM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *m, *n, *k);
+            AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
+            /* Finalize BLIS */
+            bli_finalize_auto();
+            return;
+        }
     }
 
     const num_t dt     = BLIS_DCOMPLEX;
@@ -1212,7 +1295,32 @@ void zgemm_blis_impl
     }
 
     // fall back on native path when zgemm is not handled in sup path.
-    bli_gemmnat(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
+    //bli_gemmnat(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
+
+    /* Default to using native execution. */
+    ind_t im = BLIS_NAT;
+
+    /* As each matrix operand has a complex storage datatype, try to get an
+       induced method (if one is available and enabled). NOTE: Allowing
+       precisions to vary while using 1m, which is what we do here, is unique
+       to gemm; other level-3 operations use 1m only if all storage datatypes
+       are equal (and they ignore the computation precision). */
+
+    /* Find the highest priority induced method that is both enabled and
+       available for the current operation. (If an induced method is
+       available but not enabled, or simply unavailable, BLIS_NAT will
+       be returned here.) */
+    im = bli_gemmind_find_avail( dt );
+
+    /* Obtain a valid context from the gks using the induced
+       method id determined above. */
+    cntx_t* cntx = bli_gks_query_ind_cntx( im, dt );
+
+    rntm_t rntm_l;
+    bli_rntm_init_from_global( &rntm_l );
+
+    /* Invoke the operation's front-end and request the default control tree. */
+    PASTEMAC(gemm,_front)( &alphao, &ao, &bo, &betao, &co, cntx, &rntm_l, NULL );
 
     AOCL_DTL_LOG_GEMM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *m, *n, *k);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
@@ -1237,7 +1345,7 @@ void zgemm_
     zgemm_blis_impl(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
 #if defined(BLIS_KERNELS_ZEN4)
     arch_t id = bli_arch_query_id();
-    if (id == BLIS_ARCH_ZEN4)
+    if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4)
     {
         bli_zero_zmm();
     }
@@ -1367,7 +1475,23 @@ void dzgemm_blis_impl
     bli_obj_set_conjtrans( blis_transb, &bo );
 
     // fall back on native path when zgemm is not handled in sup path.
-    bli_gemmnat(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
+    //bli_gemmnat(&alphao, &ao, &bo, &betao, &co, NULL, NULL);
+
+    /* Default to using native execution. */
+    ind_t im = BLIS_NAT;
+
+    /* Mix of real and complex matrix data types, so assuming
+       induced methods will not be available */
+
+    /* Obtain a valid context from the gks using the induced
+       method id determined above. */
+    cntx_t* cntx = bli_gks_query_ind_cntx( im, dt );
+
+    rntm_t rntm_l;
+    bli_rntm_init_from_global( &rntm_l );
+
+    /* Invoke the operation's front-end and request the default control tree. */
+    PASTEMAC(gemm,_front)( &alphao, &ao, &bo, &betao, &co, cntx, &rntm_l, NULL );
 
     AOCL_DTL_LOG_GEMM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *m, *n, *k);
     AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
@@ -1392,7 +1516,7 @@ void dzgemm_
     dzgemm_blis_impl( transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc );
 #if defined(BLIS_KERNELS_ZEN4)
     arch_t id = bli_arch_query_id();
-    if (id == BLIS_ARCH_ZEN4)
+    if (id == BLIS_ARCH_ZEN5 || id == BLIS_ARCH_ZEN4)
     {
         bli_zero_zmm();
     }

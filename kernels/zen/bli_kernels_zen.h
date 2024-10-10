@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -39,8 +39,14 @@
 // -- level-1v --
 
 // amaxv (intrinsics)
+ADDV_KER_PROT( float,    s, addv_zen_int )
+ADDV_KER_PROT( double,   d, addv_zen_int )
+ADDV_KER_PROT( scomplex, c, addv_zen_int )
+ADDV_KER_PROT( dcomplex, z, addv_zen_int )
+
+// amaxv (intrinsics)
 AMAXV_KER_PROT( float,    s, amaxv_zen_int )
-AMAXV_KER_PROT( double,   d, amaxv_zen_int )
+BLIS_EXPORT_BLIS AMAXV_KER_PROT( double,   d, amaxv_zen_int )
 
 // axpbyv (intrinsics)
 AXPBYV_KER_PROT( float,    s, axpbyv_zen_int )
@@ -58,7 +64,7 @@ AXPYV_KER_PROT( double,   d, axpyv_zen_int )
 
 // axpyv (intrinsics unrolled x10)
 AXPYV_KER_PROT( float,    s, axpyv_zen_int10 )
-AXPYV_KER_PROT( double,   d, axpyv_zen_int10 )
+BLIS_EXPORT_BLIS AXPYV_KER_PROT( double,   d, axpyv_zen_int10 )
 AXPYV_KER_PROT( scomplex, c, axpyv_zen_int5 )
 AXPYV_KER_PROT( dcomplex, z, axpyv_zen_int5 )
 
@@ -81,28 +87,35 @@ DOTXV_KER_PROT( scomplex, c, dotxv_zen_int )
 // scalv (intrinsics)
 SCALV_KER_PROT( float,    s, scalv_zen_int )
 SCALV_KER_PROT( double,   d, scalv_zen_int )
+SCALV_KER_PROT( scomplex, c, scalv_zen_int )
 SCALV_KER_PROT( dcomplex, z, scalv_zen_int )
 
 // scalv (intrinsics unrolled x10)
 SCALV_KER_PROT( float,      s, scalv_zen_int10 )
-SCALV_KER_PROT( double,     d, scalv_zen_int10 )
+BLIS_EXPORT_BLIS SCALV_KER_PROT( double,     d, scalv_zen_int10 )
 SCALV_KER_PROT( dcomplex,   z, dscalv_zen_int10 )
 
 // swapv (intrinsics)
 SWAPV_KER_PROT(float,   s, swapv_zen_int8 )
-SWAPV_KER_PROT(double,  d, swapv_zen_int8 )
+BLIS_EXPORT_BLIS SWAPV_KER_PROT(double,  d, swapv_zen_int8 )
 
 // copyv (intrinsics)
 COPYV_KER_PROT( float,      s, copyv_zen_int )
 COPYV_KER_PROT( double,     d, copyv_zen_int )
+COPYV_KER_PROT( scomplex,   c, copyv_zen_int )
 COPYV_KER_PROT( dcomplex,   z, copyv_zen_int )
 
 // scal2v (intrinsics)
+SCAL2V_KER_PROT(float,    s, scal2v_zen_int)
+SCAL2V_KER_PROT(double,   d, scal2v_zen_int)
+SCAL2V_KER_PROT(scomplex, c, scal2v_zen_int)
 SCAL2V_KER_PROT(dcomplex, z, scal2v_zen_int)
 
 // setv (intrinsics)
-SETV_KER_PROT(float,    s, setv_zen_int)
-SETV_KER_PROT(double,   d, setv_zen_int)
+SETV_KER_PROT( float,    s, setv_zen_int)
+SETV_KER_PROT( double,   d, setv_zen_int)
+SETV_KER_PROT( scomplex, c, setv_zen_int)
+SETV_KER_PROT( dcomplex, z, setv_zen_int)
 
 // -- level-1f --
 
@@ -357,7 +370,7 @@ err_t bli_dgemm_8x6_avx2_k1_nn
       double* c, const inc_t ldc
      );
 
-void bli_zgemm_4x4_avx2_k1_nn
+err_t bli_zgemm_4x4_avx2_k1_nn
     (
       dim_t m,
       dim_t n,
@@ -473,3 +486,16 @@ GEMM_UKR_PROT( dcomplex, z, gemm_zen_asm_2x6)
 
 GEMMTRSM_UKR_PROT( dcomplex,   z, gemmtrsm_l_zen_asm_2x6)
 GEMMTRSM_UKR_PROT( dcomplex,   z, gemmtrsm_u_zen_asm_2x6)
+
+void bli_dgemv_zen_ref
+    (
+       trans_t          transa,
+       dim_t            m,
+       dim_t            b_n,
+       double* restrict alpha,
+       double* restrict a, inc_t inca, inc_t lda,
+       double* restrict x, inc_t incx,
+       double* restrict beta,
+       double* restrict y, inc_t incy,
+       cntx_t* restrict cntx
+     );

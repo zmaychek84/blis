@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2018 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -171,8 +171,36 @@ void bli_gemm_ker_var2
 	// function pointer.
 	f = ftypes[dt_exec];
 
-	// Invoke the function.
-	f( schema_a,
+#ifdef BLIS_KERNELS_ZEN5
+	const long MR = 8;
+	const long NR = 24;
+
+	// Optimizes macro kernel is avaible for DGEMM
+	// for ZEN5. This optimized macro kernel does not support
+	// fringe cases. Only row major stored C is supported.
+	// TODO: Add macro kernel function pointer in cntx
+	if
+	(
+		 ( bli_obj_dt( c ) == BLIS_DOUBLE ) &&
+		 ( bli_arch_query_id() == BLIS_ARCH_ZEN5 ) &&
+		 ( cs_c == 1 ) && // use this kernel only for row major C
+		 ( (n%NR) == 0 ) && ( (m%MR) == 0 ) &&
+		 // use generic macro kernel for mixed precision
+		 ( bli_obj_elem_size( a ) == 8 ) && // check if elem_sizeof(a) == sizeof(double)
+		 ( bli_obj_is_real( a ) )        && // check if A is real
+		 ( bli_obj_elem_size( b ) == 8 ) && // check if elem_sizeof(b) == sizeof(double)
+		 ( bli_obj_is_real( b ) )           // check if B is real
+	)
+	{
+		bli_dgemm_avx512_asm_8x24_macro_kernel
+		(
+			n, m, k, buf_c, buf_a, buf_b, rs_c, buf_beta
+		);
+	}
+	else
+#endif
+	{
+	  f( schema_a,
 	   schema_b,
 	   m,
 	   n,
@@ -187,6 +215,7 @@ void bli_gemm_ker_var2
 	   cntx,
 	   rntm,
 	   thread );
+	}
 	
 	AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_6);
 }
@@ -224,7 +253,17 @@ void PASTEMAC(ch,varname) \
 	/*const dim_t     PACKNR     = rs_b;*/ \
 \
 	/* Query the context for the micro-kernel address and cast it to its
-	   function pointer type. */ \
+	   function pointer type. Note that the virtual gemm ukernel is queried
+	   instead of the native gemm ukernel. This is needed for certain
+	   situations for the 1m method that require an extra layer of logic
+	   to allow for handling (for example) complex values of beta. Also
+	   note that under certain circumstances, the real-domain version of
+	   this macrokernel will be called for 1m (NOT the complex version)
+	   as an optimization. In these cases, the corresponding real-domain
+	   slots within the cntx_t's virtual gemm ukernel func_t will contain
+	   pointers to the *native* gemm ukernel, thanks to logic in the
+	   context initialization function for the induced method (defined
+	   in bli_cntx_ref.c). */ \
 	PASTECH(ch,gemm_ukr_ft) \
 	                gemm_ukr   = bli_cntx_get_l3_vir_ukr_dt( dt, BLIS_GEMM_UKR, cntx ); \
 \

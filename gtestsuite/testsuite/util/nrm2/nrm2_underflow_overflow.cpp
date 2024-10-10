@@ -1,13 +1,47 @@
+/*
+
+   BLIS
+   An object-based framework for developing high-performance BLAS-like
+   libraries.
+
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are
+   met:
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+*/
+
 #include <gtest/gtest.h>
 #include "test_nrm2.h"
 
 template <typename T>
-class OUT_nrm2 : public ::testing::Test {};
+class nrm2UOT : public ::testing::Test {};
 typedef ::testing::Types<float, double, scomplex, dcomplex> TypeParam;
-TYPED_TEST_SUITE(OUT_nrm2, TypeParam);
+TYPED_TEST_SUITE(nrm2UOT, TypeParam);
 
 // Testing for max representable number to see if overflow is handled correctly.
-TYPED_TEST(OUT_nrm2, maxFP_scalar) {
+TYPED_TEST(nrm2UOT, maxFP_scalar) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
 
@@ -15,9 +49,9 @@ TYPED_TEST(OUT_nrm2, maxFP_scalar) {
     T x = T{maxval};
 
     RT norm = nrm2<T>(1, &x, 1);
-    computediff<RT>(maxval, norm);
+    computediff<RT>("norm", norm, maxval);
 }
-TYPED_TEST(OUT_nrm2, maxFP_vectorized) {
+TYPED_TEST(nrm2UOT, maxFP_vectorized) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
     gtint_t n = 64;
@@ -25,20 +59,20 @@ TYPED_TEST(OUT_nrm2, maxFP_vectorized) {
     RT maxval = (std::numeric_limits<RT>::max)();
     x[17] = T{maxval};
     RT norm = nrm2<T>(n, x.data(), 1);
-    computediff<RT>(maxval, norm);
+    computediff<RT>("norm", norm, maxval);
 }
 
 // Testing for min representable number to see if underflow is handled correctly.
-TYPED_TEST(OUT_nrm2, minFP_scalar) {
+TYPED_TEST(nrm2UOT, minFP_scalar) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
 
     RT minval = (std::numeric_limits<RT>::min)();
     T x = T{minval};
     RT norm = nrm2<T>(1, &x, 1);
-    computediff<RT>(minval, norm);
+    computediff<RT>("norm", norm, minval);
 }
-TYPED_TEST(OUT_nrm2, minFP_vectorized) {
+TYPED_TEST(nrm2UOT, minFP_vectorized) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
     gtint_t n = 64;
@@ -46,27 +80,27 @@ TYPED_TEST(OUT_nrm2, minFP_vectorized) {
     RT minval = (std::numeric_limits<RT>::min)();
     x[17] = T{minval};
     RT norm = nrm2<T>(n, x.data(), 1);
-    computediff<RT>(minval, norm);
+    computediff<RT>("norm", norm, minval);
 }
 
 // Since there are 2 different paths, vectorized and scalar,
 // we break this into 2 tests, once for each case.
-TYPED_TEST(OUT_nrm2, zeroFP_scalar) {
+TYPED_TEST(nrm2UOT, zeroFP_scalar) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
     T x = T{0};
 
     RT norm = nrm2<T>(1, &x, 1);
-    computediff<RT>(0, norm);
+    computediff<RT>("norm", norm, 0);
 }
-TYPED_TEST(OUT_nrm2, zeroFP_vectorized) {
+TYPED_TEST(nrm2UOT, zeroFP_vectorized) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
     gtint_t n = 64;
     std::vector<T> x(n, T{0});
 
     RT norm = nrm2<T>(n, x.data(), 1);
-    computediff<RT>(0, norm);
+    computediff<RT>("norm", norm, 0);
 }
 
 /*
@@ -77,7 +111,7 @@ TYPED_TEST(OUT_nrm2, zeroFP_vectorized) {
 */
 
 // Checking only for overflow, based on the threshold
-TYPED_TEST( OUT_nrm2, OFlow_MT ) {
+TYPED_TEST( nrm2UOT, OFlow_MT ) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
     gtint_t n = 2950000;
@@ -101,11 +135,11 @@ TYPED_TEST( OUT_nrm2, OFlow_MT ) {
 
     RT norm = nrm2<T>( n, x.data(), 1 );
     RT ref_norm = testinghelpers::ref_nrm2<T>( n, x.data(), 1 );
-    computediff<RT>( norm, ref_norm, thresh );
+    computediff<RT>( "norm", norm, ref_norm, thresh );
 }
 
 // Checking only for underflow, based on the threshold
-TYPED_TEST( OUT_nrm2, UFlow_MT ) {
+TYPED_TEST( nrm2UOT, UFlow_MT ) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
     gtint_t n = 2950000;
@@ -129,11 +163,11 @@ TYPED_TEST( OUT_nrm2, UFlow_MT ) {
 
     RT norm = nrm2<T>( n, x.data(), 1 );
     RT ref_norm = testinghelpers::ref_nrm2<T>( n, x.data(), 1 );
-    computediff<RT>( norm, ref_norm, thresh );
+    computediff<RT>( "norm", norm, ref_norm, thresh );
 }
 
 // Checking for both overflow and underflow, based on the thresholds
-TYPED_TEST( OUT_nrm2, OUFlow_MT ) {
+TYPED_TEST( nrm2UOT, OUFlow_MT ) {
     using T = TypeParam;
     using RT = typename testinghelpers::type_info<T>::real_type;
     gtint_t n = 2950000;
@@ -159,7 +193,7 @@ TYPED_TEST( OUT_nrm2, OUFlow_MT ) {
 
     RT norm = nrm2<T>( n, x.data(), 1 );
     RT ref_norm = testinghelpers::ref_nrm2<T>( n, x.data(), 1 );
-    computediff<RT>( norm, ref_norm, thresh );
+    computediff<RT>( "norm", norm, ref_norm, thresh );
 }
 
 // Specific test case used by an ISV.
@@ -170,8 +204,8 @@ TEST(dnrm2, largeDouble) {
     std::vector<T> x{3e300, 4e300}, y{-4e300, -3e300};
 
     T norm = nrm2<T>(n, x.data(), 1);
-    computediff<T>(5e300, norm);
+    computediff<T>( "norm", norm, 5e300 );
 
     norm = nrm2<T>(n, y.data(), 1);
-    computediff<T>(5e300, norm);
+    computediff<T>( "norm", norm, 5e300 );
 }

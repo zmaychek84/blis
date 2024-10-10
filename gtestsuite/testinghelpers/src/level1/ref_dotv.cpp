@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -69,7 +69,6 @@ void ref_dotv(gtint_t len, const T* xp,
 template<typename T>
 void ref_dotv( char conj_x, char conj_y, gtint_t len, const T* xp, gtint_t incx,
                                              const T* yp, gtint_t incy, T* rho ) {
-
     typedef void (*Fptr_ref_cblas_dot)(f77_int, const T*, f77_int, const T*, f77_int, T* );
     Fptr_ref_cblas_dot ref_cblas_dot;
 
@@ -85,11 +84,11 @@ void ref_dotv( char conj_x, char conj_y, gtint_t len, const T* xp, gtint_t incx,
     memcpy(Y.data(), yp, svy*sizeof(T));
 
     if( cfx ) {
-        conj<T>( X.data(), len, incx );
+        conj<T>( X.data(), len, abs(incx) );
     }
 
     if( cfy ) {
-        conj<T>( Y.data(), len, incy );
+        conj<T>( Y.data(), len, abs(incy) );
     }
 
     // Call C function

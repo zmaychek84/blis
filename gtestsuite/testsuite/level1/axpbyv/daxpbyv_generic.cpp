@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -35,7 +35,7 @@
 #include <gtest/gtest.h>
 #include "test_axpbyv.h"
 
-class daxpbyvGenericTest :
+class daxpbyvGeneric :
         public ::testing::TestWithParam<std::tuple<char,
                                                    gtint_t,
                                                    gtint_t,
@@ -43,7 +43,7 @@ class daxpbyvGenericTest :
                                                    double,
                                                    double>> {};
 // Tests using random integers as vector elements.
-TEST_P( daxpbyvGenericTest, RandomData )
+TEST_P( daxpbyvGeneric, API )
 {
     using T = double;
     //----------------------------------------------------------
@@ -64,7 +64,42 @@ TEST_P( daxpbyvGenericTest, RandomData )
     T beta = std::get<5>(GetParam());
 
     // Set the threshold for the errors:
-    double thresh = testinghelpers::getEpsilon<T>();
+    // Check gtestsuite axpbyv.h (no netlib version) for reminder of the
+    // functionality from which we estimate operation count per element
+    // of output, and hence the multipler for epsilon.
+    double thresh;
+    if (n == 0)
+        thresh = 0.0;
+    else if (beta == testinghelpers::ZERO<T>())
+    {
+        // Like SETV or COPYV(no ops)
+        if (alpha == testinghelpers::ZERO<T>() || alpha == testinghelpers::ONE<T>())
+            thresh = 0.0;
+        // Like SCAL2V(1 mul)
+        else
+            thresh = testinghelpers::getEpsilon<T>();
+    }
+    else if (beta == testinghelpers::ONE<T>())
+    {
+        // Like ERS(no ops)
+        if (alpha == testinghelpers::ZERO<T>())
+            thresh = 0.0;
+        // Like ADDV(1 add)
+        else if (alpha == testinghelpers::ONE<T>())
+            thresh = testinghelpers::getEpsilon<T>();
+        // Like AXPYV(1 mul and 1 add)
+        else
+            thresh = 2 * testinghelpers::getEpsilon<T>();
+    }
+    else
+    {
+        // Like SCALV(1 mul)
+        if (alpha == testinghelpers::ZERO<T>())
+            thresh = testinghelpers::getEpsilon<T>();
+        // Like AXPBYV(2 muls and 1 add)
+        else
+            thresh = 3 * testinghelpers::getEpsilon<T>();
+    }
 
     //----------------------------------------------------------
     //     Call generic test body using those parameters
@@ -72,54 +107,21 @@ TEST_P( daxpbyvGenericTest, RandomData )
     test_axpbyv<T>( conj_x, n, incx, incy, alpha, beta, thresh );
 }
 
-// Used to generate a test case with a sensible name.
-// Beware that we cannot use fp numbers (e.g., 2.3) in the names,
-// so we are only printing int(2.3). This should be enough for debugging purposes.
-// If this poses an issue, please reach out.
-class daxpbyvGenericTestPrint {
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<char,gtint_t,gtint_t,gtint_t,double,double>> str) const {
-        char conj     = std::get<0>(str.param);
-        gtint_t n     = std::get<1>(str.param);
-        gtint_t incx  = std::get<2>(str.param);
-        gtint_t incy  = std::get<3>(str.param);
-        double alpha  = std::get<4>(str.param);
-        double beta   = std::get<5>(str.param);
-#ifdef TEST_BLAS
-        std::string str_name = "daxpby_";
-#elif TEST_CBLAS
-        std::string str_name = "cblas_daxpby";
-#else  //#elif TEST_BLIS_TYPED
-        std::string str_name = "bli_daxpbyv";
-#endif
-        str_name += "_" + std::to_string(n);
-        str_name += "_" + std::string(&conj, 1);
-        std::string incx_str = ( incx > 0) ? std::to_string(incx) : "m" + std::to_string(std::abs(incx));
-        str_name += "_" + incx_str;
-        std::string incy_str = ( incy > 0) ? std::to_string(incy) : "m" + std::to_string(std::abs(incy));
-        str_name += "_" + incy_str;
-        std::string alpha_str = ( alpha > 0) ? std::to_string(int(alpha)) : "m" + std::to_string(int(std::abs(alpha)));
-        str_name = str_name + "_a" + alpha_str;
-        std::string beta_str = ( beta > 0) ? std::to_string(int(beta)) : "m" + std::to_string(int(std::abs(beta)));
-        str_name = str_name + "_b" + beta_str;
-        return str_name;
-    }
-};
-
-// Black box testing for generic and main use of caxpy.
+// Black box testing for generic and main use of daxpby.
 INSTANTIATE_TEST_SUITE_P(
         Blackbox,
-        daxpbyvGenericTest,
+        daxpbyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                                   // n: use x, not conj(x) (since it is real)
             ::testing::Range(gtint_t(10), gtint_t(101), 10),          // m size of vector takes values from 10 to 100 with step size of 10.
             ::testing::Values(gtint_t(1)),                            // stride size for x
             ::testing::Values(gtint_t(1)),                            // stride size for y
-            ::testing::Values(double(2.0), double(-2.0)),             // alpha
-            ::testing::Values(double(-1.0))                           // beta
+            ::testing::Values(double(2.3), double(1.0),
+                              double(-1.0), double(0.0)),             // alpha
+            ::testing::Values(double(-4.9), double(1.0),
+                              double(-1.0), double(0.0))              // beta
         ),
-        ::daxpbyvGenericTestPrint()
+        ::axpbyvGenericPrint<double>()
     );
 
 #ifdef TEST_BLIS_TYPED
@@ -128,16 +130,18 @@ INSTANTIATE_TEST_SUITE_P(
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
         ConjX,
-        daxpbyvGenericTest,
+        daxpbyvGeneric,
         ::testing::Combine(
             ::testing::Values('c'),                                          // c: use conj(x)
             ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
             ::testing::Values(gtint_t(1)),                                   // stride size for x
             ::testing::Values(gtint_t(1)),                                   // stride size for y
-            ::testing::Values(double(2.0)),                                  // alpha
-            ::testing::Values(double(1.0))                                   // beta
+            ::testing::Values(double(2.3), double(1.0),
+                              double(-1.0), double(0.0)),                    // alpha
+            ::testing::Values(double(-4.9), double(1.0),
+                              double(-1.0), double(0.0))                     // beta
         ),
-        ::daxpbyvGenericTestPrint()
+        ::axpbyvGenericPrint<double>()
     );
 #endif
 
@@ -145,8 +149,8 @@ INSTANTIATE_TEST_SUITE_P(
 // Only test very few cases as sanity check.
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
-        NonUnitPositiveIncrements,
-        daxpbyvGenericTest,
+        nonUnitPositiveIncrements,
+        daxpbyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'
 #ifdef TEST_BLIS_TYPED
@@ -156,10 +160,12 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Range(gtint_t(10), gtint_t(31), 10),                  // m size of vector takes values from 10 to 100 with step size of 10.
             ::testing::Values(gtint_t(7)),                                   // stride size for x
             ::testing::Values(gtint_t(3)),                                   // stride size for y
-            ::testing::Values(4.0),                                          // alpha
-            ::testing::Values(-2.0)                                          // beta
+            ::testing::Values(double(2.3), double(1.0),
+                              double(-1.0), double(0.0)),                    // alpha
+            ::testing::Values(double(-4.9), double(1.0),
+                              double(-1.0), double(0.0))                     // beta
         ),
-        ::daxpbyvGenericTestPrint()
+        ::axpbyvGenericPrint<double>()
     );
 
 #ifndef TEST_BLIS_TYPED
@@ -167,16 +173,18 @@ INSTANTIATE_TEST_SUITE_P(
 // Only test very few cases as sanity check.
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
-        NegativeIncrements,
-        daxpbyvGenericTest,
+        negativeIncrements,
+        daxpbyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                                          // n: use x, c: use conj(x)
             ::testing::Range(gtint_t(10), gtint_t(31), 10),                  // m size of vector takes values from 10 to 100 with step size of 10.
             ::testing::Values(gtint_t(11), gtint_t(-11)),                    // stride size for x
             ::testing::Values(gtint_t(-3), gtint_t(4)),                      // stride size for y
-            ::testing::Values(4.0),                                          // alpha
-            ::testing::Values(-2.0)                                          // beta
+            ::testing::Values(double(2.3), double(1.0),
+                              double(-1.0), double(0.0)),                    // alpha
+            ::testing::Values(double(-4.9), double(1.0),
+                              double(-1.0), double(0.0))                     // beta
         ),
-        ::daxpbyvGenericTestPrint()
+        ::axpbyvGenericPrint<double>()
     );
 #endif

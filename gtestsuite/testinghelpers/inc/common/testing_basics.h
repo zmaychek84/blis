@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -77,15 +77,16 @@ gtint_t matsize(char storage, char trans, gtint_t m, gtint_t n, gtint_t ldm );
 
 /**
  * Returns the leading dimension of a matrix depending on the storage type,
- * whether it is transpose or not, and the size of rows and columns.
+ * whether it is transpose or not, and the size of rows and columns, and the stride.
  *
  * @param storage specifies the storage format of matrix in memory.
  * @param trns    specifies the form of given matrix.
  * @param m       specifies the number of rows of given matrix.
  * @param n       specifies the number of columns of given matrix.
  * @param inc     specifies the increment of the leading dimension.
+ * @param stride  specifies the stride between two "continuous" elements in the matrix.
 */
-gtint_t get_leading_dimension(char storage, char trans, gtint_t m, gtint_t n, gtint_t inc);
+gtint_t get_leading_dimension( char storage, char trans, gtint_t m, gtint_t n, gtint_t inc, gtint_t stride = 1 );
 
 /**
  * If T is real, returns NaN.
@@ -95,11 +96,33 @@ template<typename T>
 T getNaN();
 
 /**
+ * If T is real, returns NaN.
+ * If T is complex, returns {NaN, NaN}
+*/
+template<typename T>
+T getNaNNaN();
+
+/**
  * If T is real, returns inf.
  * If T is complex, returns {inf, 0.0}
 */
 template<typename T>
 T getInf();
+
+/**
+ * If T is real, returns inf.
+ * If T is complex, returns {inf, inf}
+*/
+template<typename T>
+T getInfInf();
+
+/**
+ * If T is real, returns extval.
+ * If T is complex, returns {extval, extval}
+ * where extval = NaN or Inf
+*/
+template<typename T>
+T aocl_extreme();
 
 /**
  * @brief Returns the conjugate of a scalar x.
@@ -173,8 +196,26 @@ static void alphax( gtint_t n, T alpha, T *xp, gtint_t incx )
     gtint_t ix = 0;
     for(i = 0 ; i < n ; i++) {
         xp[ix] = (alpha * xp[ix]);
-        ix = ix + incx;
+        // use absolute value of incx to ensure
+        // correctness when incx < 0
+        ix = ix + std::abs(incx);
     }
+}
+
+template<typename T>
+static T ONE() {
+    if constexpr (testinghelpers::type_info<T>::is_real)
+        return 1.0;
+    else
+        return {1.0, 0.0};
+}
+
+template<typename T>
+static T ZERO() {
+    if constexpr (testinghelpers::type_info<T>::is_real)
+        return 0.0;
+    else
+        return {0.0, 0.0};
 }
 
 /**
@@ -343,41 +384,29 @@ template<typename T>
 void make_diag( char storage, gtint_t m, gtint_t n, T alpha, T *a, gtint_t ld );
 
 /**
- * print scalar value
- * @param[in] x    specifies the value.
- * @param[in] spec specifies the format specifer.
- */
-template<typename T>
-void print_scalar( T x, const char *spec );
-
-/**
  * print vector of length  n
- * @param[in] vec  specifies the vector name
  * @param[in] n    specifies the length of the given vector.
  * @param[in] a    specifies pointer which points to the first element of a.
  * @param[in] incx specifies storage spacing between elements of a.
- * @param[in] spec specifies the format specifer.
  */
 template<typename T>
-void print_vector( const char *vec, gtint_t n, T *x, gtint_t incx, const char *spec );
+void print_vector( gtint_t n, T *x, gtint_t incx);
 
 /**
  * print matrix of size m x n
- * @param[in] mat     specifies the matrix name
  * @param[in] storage specifies the storage format of matrix in memory.
  * @param[in] m       specifies the number of rows of given matrix.
  * @param[in] n       specifies the number of columns of given matrix.
  * @param[in] a       specifies pointer which points to the first element of a.
  * @param[in] ld      specifies leading dimension for a given matrix.
- * @param[in] spec    specifies the format specifer.
  */
 template<typename T>
-void print_matrix( const char *mat, char storage, gtint_t m, gtint_t n, T *a, gtint_t ld, const char *spec );
+void print_matrix( char storage, gtint_t m, gtint_t n, T *a, gtint_t ld);
 
 /**
  * @brief returns a string with the correct NaN/Inf for printing
  *
- * @tparam T float, double, scomplex, dcomplex.
+ * @tparam T gtint_t, float, double, scomplex, dcomplex.
  * @param exval exception value for setting the string.
  */
 template<typename T>

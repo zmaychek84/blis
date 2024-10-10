@@ -1,21 +1,22 @@
 #[=[
+
    BLIS
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -28,9 +29,10 @@
    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 ]=]
 
-cmake_minimum_required(VERSION 3.20.0)
+cmake_minimum_required(VERSION 3.22.0)
 set(CMAKE_CXX_COMPILER ${CXX_COMPILER})
 set(CMAKE_CXX_STANDARD 17)
 
@@ -49,9 +51,10 @@ if(APPLE)
 endif()
 
 # Set the path to the BLIS installation.
-set(BLIS_PATH "undefined" CACHE STRING "Setting the path to a BLIS installation that needs testing.")
-if(BLIS_PATH STREQUAL "undefined")
-    message(FATAL_ERROR "Need to provide a BLIS installation path during CMake invocation. Please use \
+set(BLIS_PATH $ENV{AOCL_BLAS_PATH} CACHE STRING "Setting the path to a BLIS installation that needs testing.")
+if(BLIS_PATH STREQUAL "")
+    message(FATAL_ERROR "Need to provide a BLIS installation path during CMake invocation.\
+    Set environment variable \$AOCL_BLAS_PATH or set the cmake variable directly using\
     $ cmake .. -DBLIS_PATH=/home/username/blis_installation")
 endif()
 
@@ -59,6 +62,11 @@ endif()
 # Adding both paths so that testing works with installation using configure/Make or CMake.
 set(BLIS_INCLUDE ${BLIS_PATH}/include/ ${BLIS_PATH}/include/blis CACHE STRING "Setting the path to the BLIS headers.")
 set(BLIS_LIB_PATH ${BLIS_PATH}/lib CACHE STRING "Setting the path to the BLIS library.")
+
+# Use REF_BLAS to set the library that will be used for reference results.
+set(REF_CBLAS "Netlib" CACHE STRING "Library used to compute reference results.")
+# Use REF_LIB to set the library that will be used for reference results.
+set(REF_LIB $ENV{CBLAS_REF_LIB} CACHE STRING "Path to a shared library that will be used as a reference.")
 
 # Set OpenMP as the default option
 set(ENABLE_THREADING "openmp" CACHE STRING "the threading flag")
@@ -108,8 +116,8 @@ endif()
 # Set common libraries.
 if(LINUX)
     set(COMMON_LIBS pthread m dl)
-    option(ENABLE_ASAN "Run tests using Address Sanatizer" OFF)
-    option(ENABLE_COVERAGE "Run tests for Code Coderage" OFF)
+    option(ENABLE_ASAN "Run tests using Address Sanitizer" OFF)
+    option(ENABLE_COVERAGE "Run tests for Code Coverage" OFF)
 endif()
 
 # Use INT_SIZE to set the int type used for testing.
@@ -124,10 +132,10 @@ endif()
 # Use TEST_INTERFACE to set which interface, supported by BLIS is meant to be tested.
 set(TEST_INTERFACE "BLAS" CACHE STRING "Interface of BLIS that is being tested.")
 # Set the possible values of interfaces for cmake-gui
-set_property(CACHE TEST_INTERFACE PROPERTY STRINGS "BLAS" "CBLAS" "BLIS_TYPED")
-if( NOT ((TEST_INTERFACE STREQUAL "BLAS") OR (TEST_INTERFACE STREQUAL "CBLAS") OR (TEST_INTERFACE STREQUAL "BLIS_TYPED")) )
+set_property(CACHE TEST_INTERFACE PROPERTY STRINGS "BLAS" "BLAS_BLIS_IMPL" "CBLAS" "BLIS_TYPED")
+if( NOT ((TEST_INTERFACE STREQUAL "BLAS") OR (TEST_INTERFACE STREQUAL "BLAS_BLIS_IMPL") OR (TEST_INTERFACE STREQUAL "CBLAS") OR (TEST_INTERFACE STREQUAL "BLIS_TYPED")) )
     message(FATAL_ERROR "TEST_INTERFACE option ${TEST_INTERFACE} is not supported. Please use on of the following options \
-            during CMake invokation: BLAS, CBLAS, BLIS_TYPED")
+            during CMake invokation: BLAS, BLAS_BLIS_IMPL, CBLAS, BLIS_TYPED")
 endif()
 
 # Use BLIS_ELEMENT_TYPE to set whether the elements of any matrix/vector tested are integers or floating point values.
@@ -139,95 +147,102 @@ if( NOT ((BLIS_ELEMENT_TYPE STREQUAL "f") OR (BLIS_ELEMENT_TYPE STREQUAL "i")) )
             during CMake invokation: f, i")
 endif()
 
-if(LINUX)
-    if(REF_LIB)
-        get_filename_component(REFLIB_PATH ${REF_LIB}/.. ABSOLUTE)
-        get_filename_component(library ${REF_LIB} NAME)
-        find_library(reflib NAMES ${library} PATHS ${REFLIB_PATH} NO_DEFAULT_PATH)
-        if(${reflib} STREQUAL reflib-NOTFOUND)
-            message(FATAL_ERROR "Reference Library not found : " ${REF_LIB})
-        else()
-            message(STATUS "Found Reference Library : " ${reflib})
-        endif()
+# Option to enable testing with upper case character arguments in BLAS and BLIS calls.
+option(TEST_UPPERCASE_ARGS "Test upper case character arguments" OFF)
+
+# Option to enable testing with thresholds set to zero.
+option(THRESHOLD_ZERO "Set thresholds to zero" OFF)
+
+# Can we test the value of info stored within BLIS and returned by a call to
+# bli_info_get_info_value (introduced at AMD BLAS 4.2).
+option(CAN_TEST_INFO_VALUE "Can test value of info" ON)
+
+# Use EXT_VAL to get the extreme value (NaN or Inf) used for testing data that shouldn't be read.
+set(EXT_VAL "Inf" CACHE STRING "Extreme value (NaN or Inf) used for testing data that shouldn't be read")
+# Set the possible values of reference CBLAS for cmake-gui
+set_property(CACHE EXT_VAL PROPERTY STRINGS "NaN" "Inf")
+if( NOT ((EXT_VAL STREQUAL "NaN") OR (EXT_VAL STREQUAL "Inf")) )
+    message(FATAL_ERROR "EXT_VAL option '${EXT_VAL}' is not supported. Please use one of the following options \
+            during CMake invokation: NaN, Inf")
+endif()
+
+# Option to enable testing of input arguments to BLAS APIs.
+# Note: This imposes a significant runtime overhead.
+option(TEST_INPUT_ARGS "Test input arguments" OFF)
+
+if(REF_LIB)
+    get_filename_component(REFLIB_PATH ${REF_LIB}/.. ABSOLUTE)
+    get_filename_component(library ${REF_LIB} NAME)
+    find_library(reflib NAMES ${library} PATHS ${REFLIB_PATH} NO_DEFAULT_PATH)
+    if(${reflib} STREQUAL reflib-NOTFOUND)
+        message(FATAL_ERROR "Reference Library not found : " ${REF_LIB})
     else()
-        # Use REF_BLAS to set the library that will be used for reference results.
-        set(REF_CBLAS CACHE STRING "Library used to compute reference results.")
-        # Set the possible values of theading libraries for cmake-gui
-        set_property(CACHE REF_CBLAS PROPERTY STRINGS "OpenBLAS" "Netlib" "MKL")
-        if(NOT ((REF_CBLAS STREQUAL "OpenBLAS") OR (REF_CBLAS STREQUAL "Netlib") OR(REF_CBLAS STREQUAL "MKL")))
-            message(FATAL_ERROR "REF_CBLAS option '${REF_CBLAS}' is not supported. Please, use one of the following options \
-                    during CMake invokation: OpenBLAS, Netlib, MKL or modify CMakeLists.txt to include this option.")
-        endif()
-        if(REF_CBLAS STREQUAL "OpenBLAS")
-            if(NOT(OPENBLAS_PATH))
-                message(FATAL_ERROR "Need to provide an OpenBLAS installation path \
-                during CMake invokation when OpenBLAS is used for reference results. Please use \
-                $ cmake .. -DOPENBLAS_PATH=/home/username/openblas_installation")
-            endif()
-            find_library(reflib NAMES openblas PATHS ${OPENBLAS_PATH} NO_DEFAULT_PATH)
-            if(${reflib} STREQUAL reflib-NOTFOUND)
-                message(FATAL_ERROR "OpenBLAS Reference Library not found : " ${OPENBLAS_PATH})
-            else()
-                message(STATUS "Found OpenBLAS Reference Library : " ${reflib})
-            endif()
-            set(REF_LIB ${reflib})
-        elseif(REF_CBLAS STREQUAL "Netlib")
-            if(NOT(NETLIB_PATH))
-                message(FATAL_ERROR "Need to provide a Netlib installation path \
-                during CMake invokation when Netlib is used for reference results. Please use \
-                $ cmake .. -DNETLIB_PATH=/home/username/netlib_installation")
-            endif()
-            if(INT_SIZE STREQUAL "32")
-                find_library(netlib NAMES cblas PATHS ${NETLIB_PATH} NO_DEFAULT_PATH)
-            else()
-                find_library(netlib NAMES cblas64 PATHS ${NETLIB_PATH} NO_DEFAULT_PATH)
-            endif()
-            if(${netlib} STREQUAL netlib-NOTFOUND)
-                message(FATAL_ERROR "Netlib Reference Library not found : "  ${NETLIB_PATH})
-            else()
-                message(STATUS "Found Netlib Reference Library : "  ${netlib})
-            endif()
-            set(REF_LIB ${netlib})
-        elseif(REF_CBLAS STREQUAL "MKL")
-            set(MKL_PATH $ENV{MKLROOT}/lib/intel64
-                    CACHE STRING "The path to MKL.")
-            find_library(mkllib NAMES mkl_rt PATHS ${MKL_PATH} NO_DEFAULT_PATH)
-            if(${mkllib} STREQUAL mkllib-NOTFOUND)
-                message(FATAL_ERROR "MKL Reference Library not found : " ${MKL_PATH})
-            else()
-                message(STATUS "Found MKL Reference Library  : " ${mkllib})
-            endif()
-            set(REF_LIB ${mkllib})
-        else()
-            message(FATAL_ERROR "Need to set up a reference library. Please use on of the following options \
-                    during CMake invokation: -DREF_CBLAS=Netlib or -DREF_CBLAS=OpenBLAS or -DREF_CBLAS=MKL")
-        endif()
+        message(STATUS "Found Reference Library : " ${reflib})
     endif()
-else() #WIN32
-    # Use REF_BLAS to set the library that will be used for reference results.
-    set(REF_CBLAS CACHE STRING "Library used to compute reference results.")
+else()
     # Set the possible values of theading libraries for cmake-gui
-    set_property(CACHE REF_CBLAS PROPERTY STRINGS "OpenBLAS" "MKL")
-    if(NOT ((REF_CBLAS STREQUAL "OpenBLAS") OR (REF_CBLAS STREQUAL "MKL")))
+    set_property(CACHE REF_CBLAS PROPERTY STRINGS "OpenBLAS" "Netlib" "MKL")
+    if(NOT ((REF_CBLAS STREQUAL "OpenBLAS") OR (REF_CBLAS STREQUAL "Netlib") OR(REF_CBLAS STREQUAL "MKL")))
         message(FATAL_ERROR "REF_CBLAS option '${REF_CBLAS}' is not supported. Please, use one of the following options \
-                during CMake invokation: OpenBLAS, MKL or modify CMakeLists.txt to include this option.")
+        during CMake invokation: OpenBLAS, Netlib, MKL or modify CMakeLists.txt to include this option.")
     endif()
+
+    if(LINUX)
+        set(CMAKE_FIND_LIBRARY_PREFIXES "lib")
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".so")
+        set(LIBOpenBLAS openblas)
+        set(LIBCLAS cblas)
+        set(LIBCLAS64 cblas64)
+        set(LIBMKL mkl_rt)
+    else()
+        set(CMAKE_FIND_LIBRARY_PREFIXES "")
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".dll")
+        set(LIBOpenBLAS libopenblas)
+        set(LIBMKL mkl_rt.2)
+    endif()
+
     if(REF_CBLAS STREQUAL "OpenBLAS")
         if(NOT(OPENBLAS_PATH))
             message(FATAL_ERROR "Need to provide an OpenBLAS installation path \
-                    during CMake invokation when OpenBLAS is used for reference results. Please use \
-                    $ cmake .. -DOPENBLAS_PATH=/home/username/openblas_installation")
+            during CMake invokation when OpenBLAS is used for reference results. Please use \
+            $ cmake .. -DOPENBLAS_PATH=/home/username/openblas_installation")
         endif()
-        set(REF_LIB "${OPENBLAS_PATH}/libopenblas.dll" CACHE STRING "Reference OpenBLAS Library")
-        message(STATUS "Found OpenBLAS Reference Library : " ${REF_LIB})
+        find_library(reflib NAMES ${LIBOpenBLAS} PATHS ${OPENBLAS_PATH} NO_DEFAULT_PATH)
+        if(${reflib} STREQUAL reflib-NOTFOUND)
+            message(FATAL_ERROR "OpenBLAS Reference Library not found : " ${OPENBLAS_PATH})
+        else()
+            message(STATUS "Found OpenBLAS Reference Library : " ${reflib})
+        endif()
+        set(REF_LIB ${reflib})
+    elseif(REF_CBLAS STREQUAL "Netlib")
+        if(NOT(NETLIB_PATH))
+            message(FATAL_ERROR "Need to provide a Netlib installation path \
+            during CMake invokation when Netlib is used for reference results. Please use \
+            $ cmake .. -DNETLIB_PATH=/home/username/netlib_installation")
+        endif()
+        if(INT_SIZE STREQUAL "32")
+            find_library(netlib NAMES ${LIBCLAS} PATHS ${NETLIB_PATH} NO_DEFAULT_PATH)
+        else()
+            find_library(netlib NAMES ${LIBCLAS64} PATHS ${NETLIB_PATH} NO_DEFAULT_PATH)
+        endif()
+        if(${netlib} STREQUAL netlib-NOTFOUND)
+            message(FATAL_ERROR "Netlib Reference Library not found : "  ${NETLIB_PATH})
+        else()
+            message(STATUS "Found Netlib Reference Library : "  ${netlib})
+        endif()
+        set(REF_LIB ${netlib})
     elseif(REF_CBLAS STREQUAL "MKL")
-        if(NOT(MKL_PATH))
-            message(FATAL_ERROR "Need to provide an MKL_PATH installation path \
-                    during CMake invokation when MKL] is used for reference results. Please use \
-                    $ cmake .. -DMKL_PATH=/home/username/path_to_mkl_rt")
+        set(MKL_PATH $ENV{MKLROOT}/lib/intel64 CACHE STRING "The path to MKL.")
+        find_library(mkllib NAMES ${LIBMKL} PATHS ${MKL_PATH} NO_DEFAULT_PATH)
+        if(${mkllib} STREQUAL mkllib-NOTFOUND)
+            message(FATAL_ERROR "MKL Reference Library not found : " ${MKL_PATH})
+        else()
+            message(STATUS "Found MKL Reference Library  : " ${mkllib})
         endif()
-        set(REF_LIB "${MKL_PATH}/mkl_rt.2.dll" CACHE STRING "Reference MKL Library")
-        message(STATUS "Found MKL Reference Library : " ${REF_LIB})
+        set(REF_LIB ${mkllib})
+    else()
+        message(FATAL_ERROR "Need to set up a reference library. Please use on of the following options \
+        during CMake invokation: -DREF_CBLAS=Netlib or -DREF_CBLAS=OpenBLAS or -DREF_CBLAS=MKL")
     endif()
 endif()
 
@@ -273,12 +288,13 @@ if(LINUX)
     add_compile_options(-g -Wall -Wno-unused-function -Wfatal-errors -fPIC )
 
     if(ENABLE_ASAN)
-       add_compile_options(-fsanitize=address)
-       add_definitions(-DENABLE_ASAN)
+        set(ASAN_FLAGS "-fsanitize=address")
+        list(APPEND CMAKE_C_FLAGS ${ASAN_FLAGS})
     endif()
 
     if(ENABLE_COVERAGE)
-        set(CMAKE_CXX_FLAGS "-O0 --coverage")
+        set(COVERAGE_FLAGS "-O0 --coverage")
+        list(APPEND CMAKE_C_FLAGS ${COVERAGE_FLAGS})
     endif()
 endif()
 
@@ -292,6 +308,47 @@ if(WIN32)
     endif()
 endif()
 
+# The following part will be used to set up a list of defines that dictate
+# which kernel tests can be build and run on the current architecture.
+# Given that the symbols of kernel functions are not exported for shared libraries
+# we only set up those defines for static libs.
+# This way, kernel tests won't be compiled/run for shared versions of BLIS.
+if(BLIS_LINKING_TYPE STREQUAL "static")
+    if(ENABLE_THREADING STREQUAL "openmp")
+        try_run(RUNRESULT COMPILERESULT "${CMAKE_BINARY_DIR}/temp" SOURCES ${CMAKE_SOURCE_DIR}/cmake/config_ukr_tests.cpp
+            COMPILE_DEFINITIONS -I${BLIS_PATH}/include/ -I${BLIS_PATH}/include/blis
+            LINK_LIBRARIES ${BLIS_LIBRARY} ${COMMON_LIBS} OpenMP::OpenMP_CXX ${ASAN_FLAGS} ${COVERAGE_FLAGS}
+            RUN_OUTPUT_VARIABLE UKR_CONFIG
+            COMPILE_OUTPUT_VARIABLE COMP_VAR
+        )
+    else()
+        try_run(RUNRESULT COMPILERESULT "${CMAKE_BINARY_DIR}/temp" SOURCES ${CMAKE_SOURCE_DIR}/cmake/config_ukr_tests.cpp
+            COMPILE_DEFINITIONS -I${BLIS_PATH}/include/ -I${BLIS_PATH}/include/blis
+            LINK_LIBRARIES ${BLIS_LIBRARY} ${COMMON_LIBS} ${ASAN_FLAGS} ${COVERAGE_FLAGS}
+            RUN_OUTPUT_VARIABLE UKR_CONFIG
+            COMPILE_OUTPUT_VARIABLE COMP_VAR
+        )
+    endif()
+    # Uncomment this to debug this snippet above, if necessary.
+    if(NOT COMPILERESULT)
+        message(FATAL_ERROR "Compiling config_ukr_tests.cpp failed with the following error ${COMP_VAR}.")
+    endif()
+    # Remove all empty items from the list.
+    list(REMOVE_ITEM UKR_CONFIG "")
+    # We iterate through the list returned from the snippet above.
+    # For example, UKR_CONFIG = AVX2FMA3 for zen3
+    # or UKR_CONFIG = AVX2FMA3;AVX512;AVX512VNNI;AVX512BF16 for zen4
+    # Depending on the values of this list we define corresponding macros
+    # -DGTEST_AVX2FMA3 on zen3
+    # or -DGTEST_AVX2FMA3;-DGTEST_AVX512;-DGTEST_AVX512VNNI;-DGTEST_AVX512BF16 on zen4
+    # Those macros are passed when compiling the tests in testsuite/CMakeLists.txt.
+    foreach(ukrconf ${UKR_CONFIG})
+        list(APPEND UKR_DEFINES "-DGTEST_${ukrconf}")
+    endforeach()
+    message(STATUS "Since BLIS GTestSuite is used to check the static version of blis, all kernel tests are enabled.")
+else()
+    message(WARNING "Since BLIS GTestSuite is used to check the shared version of blis, all kernel tests are disabled.")
+endif()
 
 add_subdirectory(testinghelpers)
 add_subdirectory(testsuite)

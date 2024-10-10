@@ -6,7 +6,7 @@
 
    Copyright (C) 2014, The University of Texas at Austin
    Copyright (C) 2016, Hewlett Packard Enterprise Development LP
-   Copyright (C) 2019 - 2022, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -62,6 +62,9 @@ CNTX_INIT_PROTS( penryn )
 #endif
 
 // -- AMD64 architectures --
+#ifdef BLIS_CONFIG_ZEN5
+CNTX_INIT_PROTS( zen5 )
+#endif
 #ifdef BLIS_CONFIG_ZEN4
 CNTX_INIT_PROTS( zen4 )
 #endif
@@ -94,6 +97,9 @@ CNTX_INIT_PROTS( armsve )
 #endif
 #ifdef BLIS_CONFIG_A64FX
 CNTX_INIT_PROTS( a64fx )
+#endif
+#ifdef BLIS_CONFIG_FIRESTORM
+CNTX_INIT_PROTS( firestorm )
 #endif
 #ifdef BLIS_CONFIG_THUNDERX2
 CNTX_INIT_PROTS( thunderx2 )
@@ -177,6 +183,9 @@ CNTX_INIT_PROTS( generic )
 
 // -- AMD64 architectures --
 
+#ifdef BLIS_FAMILY_ZEN5
+#include "bli_family_zen5.h"
+#endif
 #ifdef BLIS_FAMILY_ZEN4
 #include "bli_family_zen4.h"
 #endif
@@ -202,6 +211,14 @@ CNTX_INIT_PROTS( generic )
 #include "bli_family_bulldozer.h"
 #endif
 
+// -- ARM families --
+#ifdef BLIS_FAMILY_ARM64
+#include "bli_family_arm64.h"
+#endif
+#ifdef BLIS_FAMILY_ARM32
+#include "bli_family_arm32.h"
+#endif
+
 // -- ARM architectures --
 
 #ifdef BLIS_FAMILY_ARMSVE
@@ -209,6 +226,9 @@ CNTX_INIT_PROTS( generic )
 #endif
 #ifdef BLIS_FAMILY_A64FX
 #include "bli_family_a64fx.h"
+#endif
+#ifdef BLIS_FAMILY_FIRESTORM
+#include "bli_family_firestorm.h"
 #endif
 #ifdef BLIS_FAMILY_THUNDERX2
 #include "bli_family_thunderx2.h"
@@ -276,9 +296,15 @@ CNTX_INIT_PROTS( generic )
 #endif
 
 // -- AMD64 architectures --
+#ifdef BLIS_KERNELS_ZEN5
+#include "bli_kernels_zen5.h"
+#endif
 #ifdef BLIS_KERNELS_ZEN4
 #include "bli_kernels_zen4.h"
 #endif
+//#ifdef BLIS_KERNELS_ZEN3
+//#include "bli_kernels_zen3.h"
+//#endif
 #ifdef BLIS_KERNELS_ZEN2
 #include "bli_kernels_zen2.h"
 #endif

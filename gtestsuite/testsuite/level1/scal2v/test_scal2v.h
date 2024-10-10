@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -66,5 +66,27 @@ static void test_scal2v(char conjx, gtint_t n, gtint_t incx, gtint_t incy, T alp
     //----------------------------------------------------------
     //              Compute component-wise error.
     //----------------------------------------------------------
-    computediff<T>( n, y.data(), y_ref.data(), incy, thresh );
+    computediff<T>( "y", n, y.data(), y_ref.data(), incy, thresh );
 }
+
+// Test-case logger : Used to print the test-case details based on parameters
+template <typename T>
+class scal2vGenericPrint {
+public:
+    std::string operator()(
+        testing::TestParamInfo<std::tuple<char, gtint_t, gtint_t, gtint_t, T>> str) const {
+        char conjx = std::get<0>(str.param);
+        gtint_t n = std::get<1>(str.param);
+        gtint_t incx = std::get<2>(str.param);
+        gtint_t incy = std::get<3>(str.param);
+        T alpha = std::get<4>(str.param);
+
+        std::string str_name = API_PRINT;
+        str_name += "_n_" + std::to_string(n);
+        str_name += "_conjx_" + std::string(&conjx, 1);
+        str_name += "_incx_" + testinghelpers::get_value_string(incx);
+        str_name += "_incy_" + testinghelpers::get_value_string(incy);
+        str_name += "_alpha_" + testinghelpers::get_value_string(alpha);
+        return str_name;
+    }
+};

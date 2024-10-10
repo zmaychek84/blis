@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -35,7 +35,7 @@
 #include <gtest/gtest.h>
 #include "test_trmm3.h"
 
-class dtrmm3Test :
+class dtrmm3Generic :
         public ::testing::TestWithParam<std::tuple<char,
                                                    char,
                                                    char,
@@ -50,9 +50,9 @@ class dtrmm3Test :
                                                    gtint_t,
                                                    gtint_t>> {};
 
-GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(dtrmm3Test);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(dtrmm3Generic);
 
-TEST_P(dtrmm3Test, RandomData)
+TEST_P( dtrmm3Generic, API )
 {
     using T = double;
     //----------------------------------------------------------
@@ -88,7 +88,20 @@ TEST_P(dtrmm3Test, RandomData)
     gtint_t ldc_inc = std::get<12>(GetParam());
 
     // Set the threshold for the errors:
-    double thresh = m*n*testinghelpers::getEpsilon<T>();
+    // Check gtestsuite trmm3.h or netlib source code for reminder of the
+    // functionality from which we estimate operation count per element
+    // of output, and hence the multipler for epsilon.
+    double thresh;
+    if (m == 0 || n == 0)
+        thresh = 0.0;
+    else if (alpha == testinghelpers::ZERO<T>() &&
+            (beta == testinghelpers::ZERO<T>() || beta == testinghelpers::ONE<T>()))
+        thresh = 0.0;
+    else
+        if ( side == 'l' || side == 'L' )
+            thresh = (3*m+1)*testinghelpers::getEpsilon<T>();
+        else
+            thresh = (3*n+1)*testinghelpers::getEpsilon<T>();
 
     //----------------------------------------------------------
     //     Call test body using these parameters
@@ -96,45 +109,11 @@ TEST_P(dtrmm3Test, RandomData)
     test_trmm3<T>( storage, side, uploa, transa, diaga, transb, m, n, alpha, lda_inc, ldb_inc, beta, ldc_inc, thresh );
 }
 
-class dtrmm3TestPrint {
-public:
-    std::string operator()(
-        testing::TestParamInfo<std::tuple<char, char, char, char, char, char, gtint_t, gtint_t, double, double, gtint_t, gtint_t, gtint_t>> str) const {
-        char sfm        = std::get<0>(str.param);
-        char side       = std::get<1>(str.param);
-        char uploa      = std::get<2>(str.param);
-        char transa     = std::get<3>(str.param);
-        char transb     = std::get<4>(str.param);
-        char diaga      = std::get<5>(str.param);
-        gtint_t m       = std::get<6>(str.param);
-        gtint_t n       = std::get<7>(str.param);
-        double alpha    = std::get<8>(str.param);
-        double beta     = std::get<9>(str.param);
-        gtint_t lda_inc = std::get<10>(str.param);
-        gtint_t ldb_inc = std::get<11>(str.param);
-        gtint_t ldc_inc = std::get<12>(str.param);
-        std::string str_name = "bli_dtrmm3";
-        str_name = str_name + "_" + sfm+sfm+sfm;
-        str_name = str_name + "_" + side + uploa + transa + transb;
-        str_name = str_name + "_d" + diaga;
-        str_name = str_name + "_" + std::to_string(m);
-        str_name = str_name + "_" + std::to_string(n);
-        std::string alpha_str = ( alpha > 0) ? std::to_string(int(alpha)) : "m" + std::to_string(int(std::abs(alpha)));
-        std::string beta_str = ( beta > 0) ? std::to_string(int(beta)) : "m" + std::to_string(int(std::abs(beta)));
-        str_name = str_name + "_a" + alpha_str;
-        str_name = str_name + "_b" + beta_str;
-        str_name = str_name + "_" + std::to_string(lda_inc);
-        str_name = str_name + "_" + std::to_string(ldb_inc);
-        str_name = str_name + "_" + std::to_string(ldc_inc);
-        return str_name;
-    }
-};
-
 #ifdef TEST_BLIS_TYPED
 // Black box testing.
 INSTANTIATE_TEST_SUITE_P(
         Blackbox,
-        dtrmm3Test,
+        dtrmm3Generic,
         ::testing::Combine(
             ::testing::Values('c','r'),                                      // storage format
             ::testing::Values('l','r'),                                      // side  l:left, r:right
@@ -150,6 +129,6 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(gtint_t(0)),                                   // increment to the leading dim of b
             ::testing::Values(gtint_t(0))                                    // increment to the leading dim of c
         ),
-        ::dtrmm3TestPrint()
+        ::trmm3GenericPrint<double>()
     );
 #endif

@@ -4,19 +4,19 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
-	- Redistributions of source code must retain the above copyright
-	  notice, this list of conditions and the following disclaimer.
-	- Redistributions in binary form must reproduce the above copyright
-	  notice, this list of conditions and the following disclaimer in the
-	  documentation and/or other materials provided with the distribution.
-	- Neither the name(s) of the copyright holder(s) nor the names of its
-	  contributors may be used to endorse or promote products derived
-	  from this software without specific prior written permission.
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -51,13 +51,20 @@ void test_hemv( char storage, char uploa, char conja, char conjx, gtint_t n,
     //        Initialize matrics with random integer numbers.
     //----------------------------------------------------------
     std::vector<T> a = testinghelpers::get_random_matrix<T>( -2, 5, storage, 'n', n, n, lda );
-    std::vector<T> x = testinghelpers::get_random_vector<T>( -3, 3, n, incx );
-    std::vector<T> y = testinghelpers::get_random_vector<T>( -3, 3, n, incy );
-
     testinghelpers::make_herm<T>( storage, uploa, n, a.data(), lda );
     testinghelpers::make_triangular<T>( storage, uploa, n, a.data(), lda );
 
-    // Create a copy of c so that we can check reference results.
+    std::vector<T> x = testinghelpers::get_random_vector<T>( -3, 3, n, incx );
+    std::vector<T> y( testinghelpers::buff_dim(n, incy) );
+    if (beta != testinghelpers::ZERO<T>())
+        testinghelpers::datagenerators::randomgenerators<T>( -3, 3, n, incy, y.data() );
+    else
+    {
+        // Vector Y should not be read, only set.
+        testinghelpers::set_vector( n, incy, y.data(), testinghelpers::aocl_extreme<T>() );
+    }
+
+    // Create a copy of y so that we can check reference results.
     std::vector<T> y_ref(y);
     //----------------------------------------------------------
     //                  Call BLIS function
@@ -74,5 +81,43 @@ void test_hemv( char storage, char uploa, char conja, char conjx, gtint_t n,
     //----------------------------------------------------------
     //              check component-wise error.
     //----------------------------------------------------------
-    computediff<T>( n, y.data(), y_ref.data(), incy, thresh );
+    computediff<T>( "y", n, y.data(), y_ref.data(), incy, thresh );
+
+#ifdef CAN_TEST_INFO_VALUE
+    gtint_t info = bli_info_get_info_value();
+    computediff<gtint_t>( "info", info, 0 );
+#endif
 }
+
+// Test-case logger : Used to print the test-case details based on parameters
+template <typename T>
+class hemvGenericPrint {
+public:
+    std::string operator()(
+        testing::TestParamInfo<std::tuple<char,char,char,char,gtint_t,T,T,gtint_t,gtint_t,gtint_t>> str) const {
+        char storage    = std::get<0>(str.param);
+        char uploa      = std::get<1>(str.param);
+        char conja      = std::get<2>(str.param);
+        char conjx      = std::get<3>(str.param);
+        gtint_t n       = std::get<4>(str.param);
+        T alpha         = std::get<5>(str.param);
+        T beta          = std::get<6>(str.param);
+        gtint_t incx    = std::get<7>(str.param);
+        gtint_t incy    = std::get<8>(str.param);
+        gtint_t lda_inc = std::get<9>(str.param);
+
+        std::string str_name = API_PRINT;
+        str_name += "_stor_" + std::string(&storage, 1);
+        str_name += "_uploa_" + std::string(&uploa, 1);
+        str_name += "_conja_" + std::string(&conja, 1);
+        str_name += "_conjx_" + std::string(&conjx, 1);
+        str_name += "_n_" + std::to_string(n);
+        str_name += "_alpha_" + testinghelpers::get_value_string(alpha);
+        gtint_t lda = testinghelpers::get_leading_dimension( storage, 'n', n, n, lda_inc );
+        str_name += "_lda_i" + std::to_string(lda_inc) + "_" + std::to_string(lda);
+        str_name += "_incx_" + testinghelpers::get_value_string(incx);
+        str_name += "_beta_" + testinghelpers::get_value_string(beta);
+        str_name += "_incy_" + testinghelpers::get_value_string(incy);
+        return str_name;
+    }
+};

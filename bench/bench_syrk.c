@@ -4,8 +4,9 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2021 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 
+   Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
    met:
     - Redistributions of source code must retain the above copyright
@@ -13,7 +14,7 @@
     - Redistributions in binary form must reproduce the above copyright
       notice, this list of conditions and the following disclaimer in the
       documentation and/or other materials provided with the distribution.
-    - Neither the name of The University of Texas nor the names of its
+    - Neither the name(s) of the copyright holder(s) nor the names of its
       contributors may be used to endorse or promote products derived
       from this software without specific prior written permission.
 
@@ -106,7 +107,7 @@ int main( int argc, char** argv )
         printf("Error opening output file %s\n", argv[2]);
         exit(1);
       }
-    fprintf(fout, "Dt uploc transa n\t  k\t alphaR\t alphaI\t betaR\t betaI\t lda\t ldc\t  gflops\n");
+    fprintf(fout, "Func Dt uploc transa n k alphaR alphaI lda betaR betaI ldc gflops\n");
 
 
     inc_t lda;
@@ -411,12 +412,11 @@ int main( int argc, char** argv )
                 ( unsigned long )n,
                 ( unsigned long )k, gflops );
 
-        fprintf(fout, "%c %c %c %ld\t %ld\t %lf\t %lf\t %lf\t %lf\t %lu\t %lu\t %6.3f\n", \
-                dt_ch, uplo_c, transA_c, n, k,
+        fprintf(fout, "%s %c %c %c %ld %ld %lf %lf %lu %lf %lf %lu %6.3f\n", \
+                tmp, dt_ch, uplo_c, transA_c, n, k,
                 alpha_r, alpha_i,
-                beta_r, beta_i,
-                lda, ldc,
-                gflops
+                lda, beta_r, beta_i,
+                ldc, gflops
                 );
 
         fflush(fout);

@@ -1,4 +1,36 @@
-##Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc ##
+#[=[
+
+   BLIS
+   An object-based framework for developing high-performance BLAS-like
+   libraries.
+
+   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are
+   met:
+    - Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    - Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    - Neither the name(s) of the copyright holder(s) nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+]=]
 
 # Writing a function that will be used to generate the required object
 # libraries for the required configs.
@@ -52,10 +84,8 @@ function(generate_config_targets config_target)
         # in get-noopt-cflags-for
         target_compile_options(${config_target}_CONFIG PRIVATE ${CTHREADFLAGS})
     endif()
-    if(BUILD_SHARED_LIBS)
-        # Equivalent to CPICFLAGS in get-noopt-cflags-for
-        set_target_properties(${config_target}_CONFIG PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    endif()
+    # Equivalent to CPICFLAGS in get-noopt-cflags-for
+    set_target_properties(${config_target}_CONFIG PROPERTIES POSITION_INDEPENDENT_CODE ON)
     add_dependencies(${config_target}_CONFIG flat-header)
     # Put all those targets under object-libs-targets folder name so that they appear all together in IDE.
     set_target_properties(${config_target}_CONFIG PROPERTIES FOLDER object-libs-targets)
@@ -108,10 +138,8 @@ function(generate_config_targets config_target)
         # in get-noopt-cflags-for
         target_compile_options(${config_target}_REFINIT PRIVATE ${CTHREADFLAGS})
     endif()
-    if(BUILD_SHARED_LIBS)
-        # Equivalent to CPICFLAGS in get-noopt-cflags-for
-        set_target_properties(${config_target}_REFINIT PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    endif()
+    # Equivalent to CPICFLAGS in get-noopt-cflags-for
+    set_target_properties(${config_target}_REFINIT PROPERTIES POSITION_INDEPENDENT_CODE ON)
     add_dependencies(${config_target}_REFINIT flat-header)
     # Put all those targets under object-libs-targets folder name so that they appear all together in IDE.
     set_target_properties(${config_target}_REFINIT PROPERTIES FOLDER object-libs-targets)
@@ -172,10 +200,8 @@ function(generate_config_targets config_target)
         # in get-noopt-cflags-for
         target_compile_options(${config_target}_REFKERN PRIVATE ${CTHREADFLAGS})
     endif()
-    if(BUILD_SHARED_LIBS)
-        # Equivalent to CPICFLAGS in get-noopt-cflags-for
-        set_target_properties(${config_target}_REFKERN PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    endif()
+    # Equivalent to CPICFLAGS in get-noopt-cflags-for
+    set_target_properties(${config_target}_REFKERN PROPERTIES POSITION_INDEPENDENT_CODE ON)
     add_dependencies(${config_target}_REFKERN flat-header)
     # Put all those targets under object-libs-targets folder name so that they appear all together in IDE.
     set_target_properties(${config_target}_REFKERN PROPERTIES FOLDER object-libs-targets)

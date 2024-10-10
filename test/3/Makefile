@@ -1,11 +1,11 @@
-#!/bin/bash
+#
 #
 #  BLIS    
 #  An object-based framework for developing high-performance BLAS-like
 #  libraries.
 #
 #  Copyright (C) 2014, The University of Texas at Austin
-#  Copyright (C) 2018 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+#  Copyright (C) 2018 - 2024, Advanced Micro Devices, Inc. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are
@@ -195,20 +195,10 @@ BLA_DEF  := -DBLAS
 EIG_DEF  := -DEIGEN
 
 # Complex implementation type
-D3MHW    := -DIND=BLIS_3MH
-D3M1     := -DIND=BLIS_3M1
-D4MHW    := -DIND=BLIS_4MH
-D4M1B    := -DIND=BLIS_4M1B
-D4M1A    := -DIND=BLIS_4M1A
 D1M      := -DIND=BLIS_1M
 DNAT     := -DIND=BLIS_NAT
 
 # Implementation string
-#STR_3MHW := -DSTR=\"3mhw\"
-#STR_3M1  := -DSTR=\"3m1\"
-#STR_4MHW := -DSTR=\"4mhw\"
-#STR_4M1B := -DSTR=\"4m1b\"
-#STR_4M1A := -DSTR=\"4m1a\"
 #STR_1M   := -DSTR=\"1m\"
 STR_NAT  := -DSTR=\"asm_blis\"
 STR_OBL  := -DSTR=\"openblas\"
