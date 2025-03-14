@@ -40,6 +40,12 @@
 
 #ifdef AOCL_DEV
 
+    #define AOCL_51
+
+#endif
+
+#ifdef AOCL_51
+
     #define K_bli_zgemmsup_cd_zen4_asm_12x2m 1
     #define K_bli_zgemmsup_cd_zen4_asm_12x4m 1
     #define K_bli_zgemmsup_cd_zen4_asm_2x2 1
@@ -287,6 +293,6 @@
 
 // If kernels have been removed, we need to undefine them here.
 
-#ifdef AOCL_DEV
+#ifdef AOCL_51
     #undef K_bli_dgemm_zen4_asm_8x24
 #endif
