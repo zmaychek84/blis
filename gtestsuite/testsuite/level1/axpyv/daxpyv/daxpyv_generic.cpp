@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -77,85 +77,88 @@ TEST_P( daxpyvGeneric, API )
     //----------------------------------------------------------
     //     Call generic test body using those parameters
     //----------------------------------------------------------
-    test_axpyv<T>( conj_x, n, incx, incy, alpha, thresh );
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_axpyv<T>( conj_x, n, incx, incy, alpha, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_axpyv<T>( conj_x, n, incx, incy, alpha, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_axpyv<T>( conj_x, n, incx, incy, alpha, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_axpyv<T>( conj_x, n, incx, incy, alpha, thresh );
+#endif
 }
 
 // Black box testing for generic and main use of daxpy.
 INSTANTIATE_TEST_SUITE_P(
-        Blackbox,
+        unitStride,
         daxpyvGeneric,
         ::testing::Combine(
-            ::testing::Values('n'),                                          // n: use x, not conj(x) (since it is real)
-            ::testing::Range(gtint_t(10), gtint_t(101), 10),                 // m size of vector takes values from 10 to 100 with step size of 10.
-            ::testing::Values(gtint_t(1)),                                   // stride size for x
-            ::testing::Values(gtint_t(1)),                                   // stride size for y
-            ::testing::Values(double(0.0), double(1.0),
-                              double(-1.0), double(4.1))                     // alpha
-        ),
-        ::axpyvGenericPrint<double>()
-    );
-
-#ifdef TEST_BLIS_TYPED
-// Test when conjugate of x is used as an argument. This option is BLIS-api specific.
-// Only test very few cases as sanity check since conj(x) = x for real types.
-// We can modify the values using implementantion details.
-INSTANTIATE_TEST_SUITE_P(
-        ConjX,
-        daxpyvGeneric,
-        ::testing::Combine(
-            ::testing::Values('c'),                                          // c: use conj(x)
-            ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
-            ::testing::Values(gtint_t(1)),                                   // stride size for x
-            ::testing::Values(gtint_t(1)),                                   // stride size for y
-            ::testing::Values(double(0.0), double(1.0),
-                              double(-1.0), double(4.1))                     // alpha
-        ),
-        ::axpyvGenericPrint<double>()
-    );
+            ::testing::Values('n'
+            #ifndef TEST_BLIS_TYPED
+                            , 'c'
 #endif
+            ),                                          // n: use x, not conj(x) (since it is real)
+            ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(35), gtint_t(112)), // m size of vector takes values from 10 to 100 with step size of 10.
+            ::testing::Values(gtint_t(1)),                                   // stride size for x
+            ::testing::Values(gtint_t(1)),                                   // stride size for y
+            ::testing::Values(double(0.0), double(1.0),
+                              double(-1.0), double(4.1))                     // alpha
+        ),
+        ::axpyvGenericPrint<double>()
+    );
 
 // Test for non-unit increments.
 // Only test very few cases as sanity check.
 // We can modify the values using implementantion details.
 INSTANTIATE_TEST_SUITE_P(
-        nonUnitPositiveIncrements,
+        nonUnitIncrements,
         daxpyvGeneric,
         ::testing::Combine(
-            ::testing::Values('n'),                                          // n: use x, not conj(x) (since it is real)
-            ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
-            ::testing::Values(gtint_t(2)),                                   // stride size for x
-            ::testing::Values(gtint_t(3)),                                   // stride size for y
+            ::testing::Values('n'
+            #ifdef TEST_BLIS_TYPED
+                            , 'c'
+            #endif
+            ),                                           // n: use x, not conj(x) (since it is real)
+            ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
+            ::testing::Values(gtint_t(2)
+            #ifdef TEST_BLIS_TYPED
+                            , gtint_t(-2)
+            #endif
+            ),                                   // stride size for x
+            ::testing::Values(gtint_t(3)
+            #ifdef TEST_BLIS_TYPED
+                            , gtint_t(-4)
+            #endif
+            ),                                                              // stride size for y
             ::testing::Values(double(0.0), double(1.0),
                               double(-1.0), double(4.1))                     // alpha
         ),
         ::axpyvGenericPrint<double>()
     );
-
-#ifndef TEST_BLIS_TYPED
-// Test for negative increments.
-// Only test very few cases as sanity check.
-// We can modify the values using implementantion details.
-INSTANTIATE_TEST_SUITE_P(
-        negativeIncrements,
-        daxpyvGeneric,
-        ::testing::Combine(
-            ::testing::Values('n'),                                          // n: use x, c: use conj(x)
-            ::testing::Range(gtint_t(10), gtint_t(101), 10),                 // m size of vector takes values from 10 to 100 with step size of 10.
-            ::testing::Values(gtint_t(-4)),                                  // stride size for x
-            ::testing::Values(gtint_t(-3)),                                  // stride size for y
-            ::testing::Values(double(0.0), double(1.0),
-                              double(-1.0), double(4.1))                     // alpha
-        ),
-        ::axpyvGenericPrint<double>()
-    );
-#endif
 
 // The following instantiator is enabled only if BLIS has been configured for openmp
 // with aocl-dynamic enabled.
 #if defined(BLIS_ENABLE_OPENMP) && defined(AOCL_DYNAMIC)
 // Checking for the thresholds with unit strides
 INSTANTIATE_TEST_SUITE_P(
-        aoclDynamicThresholds_unitStrides,
+        AOCLDynamicThresholds_unitStrides,
         daxpyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                         // n: use x, c: use conj(x)
@@ -177,7 +180,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 // Checking for the thresholds with non-unit strides
 INSTANTIATE_TEST_SUITE_P(
-        aoclDynamicThresholds_nonUnitStrides,
+        AOCLDynamicThresholds_nonUnitStrides,
         daxpyvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                         // n: use x, c: use conj(x)

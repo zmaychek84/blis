@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2024 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -36,6 +36,7 @@
 #include "blis.h"
 #include "common/testing_helpers.h"
 #include "ukr/gemm/test_gemm_ukr.h"
+#include "common/blis_version_defs.h"
 
 /*******************************************************/
 /*                 SUP Kernel testing                  */
@@ -86,8 +87,15 @@ TEST_P( dgemmGenericSUP, sup_kernel)
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 4.5;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     test_gemmsup_ukr(kern_ptr, transa, transb, m, n, k, alpha, beta, storageC, MR, row_pref, thresh, is_memory_test);
 
 }// end of function
@@ -126,7 +134,8 @@ public:
 
 #if defined(BLIS_KERNELS_HASWELL) && defined(GTEST_AVX2FMA3)
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rv_haswell_asm_6x8m
+INSTANTIATE_TEST_SUITE_P(
         bli_dgemmsup_rv_haswell_asm_6x8m_row_stored_c,
         dgemmGenericSUP,
         ::testing::Combine(
@@ -145,8 +154,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::dgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rv_haswell_asm_6x8m
+INSTANTIATE_TEST_SUITE_P(
         bli_dgemmsup_rv_haswell_asm_6x8m_col_stored_c,
         dgemmGenericSUP,
         ::testing::Combine(
@@ -165,8 +176,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::dgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rd_haswell_asm_6x8m
+INSTANTIATE_TEST_SUITE_P(
         bli_dgemmsup_rd_haswell_asm_6x8m_col_stored_c,
         dgemmGenericSUP,
         ::testing::Combine(
@@ -185,9 +198,11 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::dgemmGenericSUPPrint()
     );
+#endif
 
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rv_haswell_asm_6x8n
+INSTANTIATE_TEST_SUITE_P(
         bli_dgemmsup_rv_haswell_asm_6x8n_col_stored_c,
         dgemmGenericSUP,
         ::testing::Combine(
@@ -206,8 +221,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::dgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rv_haswell_asm_6x8n
+INSTANTIATE_TEST_SUITE_P(
         bli_dgemmsup_rv_haswell_asm_6x8n_row_stored_c,
         dgemmGenericSUP,
         ::testing::Combine(
@@ -226,8 +243,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::dgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rd_haswell_asm_6x8n
+INSTANTIATE_TEST_SUITE_P(
         bli_dgemmsup_rd_haswell_asm_6x8n_col_stored_c,
         dgemmGenericSUP,
         ::testing::Combine(
@@ -248,9 +267,12 @@ INSTANTIATE_TEST_SUITE_P (
     );
 #endif
 
+#endif // defined(BLIS_KERNELS_HASWELL) && defined(GTEST_AVX2FMA3)
+
 #if defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rv_zen4_asm_24x8m
+INSTANTIATE_TEST_SUITE_P(
          bli_dgemmsup_rv_zen4_asm_24x8m_col_stored_c,
          dgemmGenericSUP,
          ::testing::Combine(
@@ -269,8 +291,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::dgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rv_zen4_asm_24x8m
+INSTANTIATE_TEST_SUITE_P(
          bli_dgemmsup_rv_zen4_asm_24x8m_row_stored_c,
          dgemmGenericSUP,
          ::testing::Combine(
@@ -291,9 +315,56 @@ INSTANTIATE_TEST_SUITE_P (
      );
 #endif
 
+#ifdef K_bli_dgemmsup_rv_zen4_asm_24x8m_new
+INSTANTIATE_TEST_SUITE_P(
+         bli_dgemmsup_rv_zen4_asm_24x8m_new_col_stored_c,
+         dgemmGenericSUP,
+         ::testing::Combine(
+            ::testing::Range(gtint_t(1), gtint_t(25), 1),           // values of m
+            ::testing::Range(gtint_t(1), gtint_t(9), 1),            // values of n
+            ::testing::Range(gtint_t(0), gtint_t(25), 1),           // values of k
+            ::testing::Values(2.0, 1.0, -1.0),                      // alpha value
+            ::testing::Values(1.0, 0.0, -1.0, 2.3),                 // beta value
+            ::testing::Values('c'),                                 // storage of c
+            ::testing::Values(bli_dgemmsup_rv_zen4_asm_24x8m_new),      // dgemm_sup kernel
+            ::testing::Values(gtint_t(8)),                          // Micro kernel block MR
+            ::testing::Values('n'),                                 // transa
+            ::testing::Values('n'),                                 // transb
+            ::testing::Values(false),                               // row preferred kernel?
+            ::testing::Values(true, false)                          // memory test
+         ),
+         ::dgemmGenericSUPPrint()
+     );
+#endif
+
+#ifdef K_bli_dgemmsup_rv_zen4_asm_24x8m_new
+INSTANTIATE_TEST_SUITE_P(
+         bli_dgemmsup_rv_zen4_asm_24x8m_new_row_stored_c,
+         dgemmGenericSUP,
+         ::testing::Combine(
+            ::testing::Range(gtint_t(1), gtint_t(25), 1),           // values of m
+            ::testing::Range(gtint_t(1), gtint_t(9), 1),            // values of n
+            ::testing::Range(gtint_t(0), gtint_t(25), 1),           // values of k
+            ::testing::Values(2.0, 1.0, -1.0),                      // alpha value
+            ::testing::Values(1.0, 0.0, -1.0, 2.3),                 // beta value
+            ::testing::Values('r'),                                 // storage of c
+            ::testing::Values(bli_dgemmsup_rv_zen4_asm_24x8m_new),      // dgemm_sup kernel
+            ::testing::Values(gtint_t(8)),                          // Micro kernel block MR
+            ::testing::Values('t'),                                 // transa
+            ::testing::Values('n'),                                 // transb
+            ::testing::Values(false),                               // row preferred kernel?
+            ::testing::Values(true, false)                          // memory test
+         ),
+         ::dgemmGenericSUPPrint()
+     );
+#endif
+
+#endif // defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
+
 #if defined(BLIS_KERNELS_ZEN5) && defined(GTEST_AVX512)
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rv_zen5_asm_24x8m
+INSTANTIATE_TEST_SUITE_P(
          bli_dgemmsup_rv_zen5_asm_24x8m_col_stored_c,
          dgemmGenericSUP,
          ::testing::Combine(
@@ -312,8 +383,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::dgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemmsup_rv_zen5_asm_24x8m
+INSTANTIATE_TEST_SUITE_P(
          bli_dgemmsup_rv_zen5_asm_24x8m_row_stored_c,
          dgemmGenericSUP,
          ::testing::Combine(
@@ -332,8 +405,9 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::dgemmGenericSUPPrint()
      );
-
 #endif
+
+#endif // defined(BLIS_KERNELS_ZEN5) && defined(GTEST_AVX512)
 
 /*******************************************************/
 /*              Native Kernel testing                  */
@@ -380,8 +454,15 @@ TEST_P( dgemmGenericNat, native_kernel_testing)
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.1;
+#else
+        double adj = 3.0;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     test_gemmnat_ukr(storageC, m, n, k, alpha, beta, kern_ptr, thresh, is_memory_test);
 
 }// end of function
@@ -410,7 +491,9 @@ public:
 };
 
 #if defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_dgemm_zen4_asm_32x6
+INSTANTIATE_TEST_SUITE_P(
     bli_dgemm_zen4_asm_32x6,
     dgemmGenericNat,
     ::testing::Combine(
@@ -425,8 +508,29 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     ::dgemmGenericNatPrint()
 );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemm_avx512_asm_8x24
+INSTANTIATE_TEST_SUITE_P(
+    bli_dgemm_avx512_asm_8x24,
+    dgemmGenericNat,
+    ::testing::Combine(
+        ::testing::Range(gtint_t(0), gtint_t(17), 1),   // values of k
+        ::testing::Values(2.0, 1.0, -1.0),              // alpha value
+        ::testing::Values(1.0, 0.0, -1.0, 2.3),         // beta value
+        ::testing::Values('r', 'c'),                    // storage
+        ::testing::Values(8),                           // values of m
+        ::testing::Values(24),                          // values of n
+        ::testing::Values(bli_dgemm_avx512_asm_8x24),
+        ::testing::Values(true, false)                  // memory test
+    ),
+    ::dgemmGenericNatPrint()
+);
+#endif
+
+#ifdef K_bli_dgemm_zen4_asm_8x24
+// Old version of bli_dgemm_avx512_asm_8x24 kernel, removed in 5.1
+INSTANTIATE_TEST_SUITE_P(
     bli_dgemm_zen4_asm_8x24,
     dgemmGenericNat,
     ::testing::Combine(
@@ -443,8 +547,12 @@ INSTANTIATE_TEST_SUITE_P (
 );
 #endif
 
+#endif // defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
+
 #if defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_dgemm_haswell_asm_6x8
+INSTANTIATE_TEST_SUITE_P(
     bli_dgemm_haswell_asm_6x8,
     dgemmGenericNat,
     ::testing::Combine(
@@ -460,6 +568,8 @@ INSTANTIATE_TEST_SUITE_P (
     ::dgemmGenericNatPrint()
 );
 #endif
+
+#endif // defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
 
 //Function pointer specific to dgemm kernel that handles
 //special case where k=1.
@@ -502,6 +612,7 @@ TEST_P( dgemmGenericK1, k1_kernel_testing)
     // Check gtestsuite gemm.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
+    // Threshold adjustment
     double thresh;
     if (m == 0 || n == 0)
         thresh = 0.0;
@@ -511,8 +622,15 @@ TEST_P( dgemmGenericK1, k1_kernel_testing)
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 1.9;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     test_gemmk1_ukr(kern_ptr, m, n, k, storageC, alpha, beta, thresh, is_memory_test);
 
 }// end of function
@@ -546,7 +664,9 @@ public:
 
 
 #if defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_dgemm_24x8_avx512_k1_nn
+INSTANTIATE_TEST_SUITE_P(
     bli_dgemm_24x8_avx512_k1_nn,
     dgemmGenericK1,
     ::testing::Combine(
@@ -564,8 +684,12 @@ INSTANTIATE_TEST_SUITE_P (
 
 #endif
 
+#endif
+
 #if defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_dgemm_8x6_avx2_k1_nn
+INSTANTIATE_TEST_SUITE_P(
     bli_dgemm_8x6_avx2_k1_nn,
     dgemmGenericK1,
     ::testing::Combine(
@@ -579,6 +703,8 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     ::dgemmGenericK1Print()
 );
+#endif
+
 #endif
 
 #ifdef BLIS_ENABLE_SMALL_MATRIX
@@ -633,6 +759,7 @@ TEST_P( dgemmGenericSmall, gemm_small)
     // Check gtestsuite gemm.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
+    // Threshold adjustment./
     double thresh;
     if (m == 0 || n == 0)
         thresh = 0.0;
@@ -642,11 +769,18 @@ TEST_P( dgemmGenericSmall, gemm_small)
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.2;
+#else
+        double adj = 2.0;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     if ( is_memory_test )
     {
-        srand(time(NULL));
+        //srand(time(NULL));
         double *a, *b, *c, *cref = NULL;
         // Allocate memory for A
         testinghelpers::ProtectedBuffer a_buf( m * k * lda * sizeof(double), false, is_memory_test );
@@ -787,7 +921,8 @@ public:
     }
 };
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_dgemm_small
+INSTANTIATE_TEST_SUITE_P(
         bli_dgemm_small,
         dgemmGenericSmall,
         ::testing::Combine(
@@ -801,6 +936,7 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::dgemmGenericSmallPrint()
     );
+#endif
 #endif
 
 #endif

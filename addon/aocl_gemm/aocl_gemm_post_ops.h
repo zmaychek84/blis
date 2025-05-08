@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -46,6 +46,8 @@ typedef enum
 	GELU_ERF = 3,
 	CLIP = 4,
 	SWISH = 5,
+	TANH = 6,
+	SIGMOID = 7,
 } AOCL_ELT_ALGO_TYPE;
 
 typedef enum
@@ -57,6 +59,17 @@ typedef enum
 	MATRIX_ADD = 5,
 	MATRIX_MUL = 6,
 } AOCL_POST_OP_TYPE;
+
+typedef enum
+{
+	AOCL_GEMM_F32 = 0,
+	AOCL_GEMM_BF16 = 1,
+	AOCL_GEMM_INT8 = 2,
+	AOCL_GEMM_UINT8 = 3,
+	AOCL_GEMM_INT4 = 4,
+	AOCL_GEMM_INT32 = 5,
+	NULLTYPE = 6,
+} AOCL_PARAMS_STORAGE_TYPES;
 
 typedef struct
 {
@@ -73,6 +86,7 @@ typedef struct
 	void* zero_point;
 	dim_t scale_factor_len;
 	dim_t zero_point_len;
+	AOCL_PARAMS_STORAGE_TYPES zp_stor_type;
 } aocl_post_op_sum; // Also use for scale.
 
 typedef struct
@@ -86,33 +100,43 @@ typedef struct
 typedef struct
 {
 	void* bias;
+	AOCL_PARAMS_STORAGE_TYPES stor_type;
 } aocl_post_op_bias;
 
 typedef struct
 {
 	void* matrix;
+	void* scale_factor;
+	dim_t scale_factor_len;
 	dim_t ldm;
+	AOCL_PARAMS_STORAGE_TYPES stor_type;
 } aocl_post_op_matrix_add;
 
 typedef struct
 {
 	void* matrix;
+	void* scale_factor;
+	dim_t scale_factor_len;
 	dim_t ldm;
+	AOCL_PARAMS_STORAGE_TYPES stor_type;
 } aocl_post_op_matrix_mul;
+
 typedef struct
 {
 	void* zero_point;
 	//len should be one which is one or n i.e., one zp
-    //per tensor or one zp per channel respectively
+	//per tensor or one zp per channel respectively
 	dim_t zero_point_len;
+	AOCL_PARAMS_STORAGE_TYPES zero_point_type;
 } aocl_pre_op_zp;
 
 typedef struct
 {
 	void* scale_factor;
 	//len should be one which is one or n i.e., one sf
-    //per tensor or one sf per channel respectively
+	//per tensor or one sf per channel respectively
 	dim_t scale_factor_len;
+	AOCL_PARAMS_STORAGE_TYPES scale_factor_type;
 } aocl_pre_op_sf;
 
 typedef struct
@@ -120,7 +144,23 @@ typedef struct
 	aocl_pre_op_zp *b_zp;
 	aocl_pre_op_sf *b_scl;
 	dim_t seq_length;
+	dim_t group_size;
 } aocl_pre_op;
+
+typedef struct
+{
+	dim_t group_size;
+	dim_t seq_length;
+	aocl_pre_op_sf *a_scl;
+	aocl_pre_op_sf *b_scl;
+	aocl_pre_op_zp *a_zp;
+	aocl_pre_op_zp *b_zp;
+} aocl_group_post_op;
+
+typedef struct
+{
+	dim_t group_size;
+} AOCL_SYMM_STAT_QUANT;
 
 typedef struct
 {
@@ -139,6 +179,10 @@ typedef struct
 
 	//Pass pre-op structure also through post-ops
 	aocl_pre_op  *pre_ops;
+
+	aocl_group_post_op *post_op_grp;
+	// To keep track of eltwise operations.
+	dim_t num_eltwise;
 
 } aocl_post_op;
 

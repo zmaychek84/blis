@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -77,25 +77,52 @@ TEST_P( ztrsvGeneric, API )
     // Check gtestsuite trsv.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // With adjustment for complex data.
     double thresh;
-#ifdef BLIS_INT_ELEMENT_TYPE
-    double adj = 1.0;
-#else
-    double adj = 2.0;
-#endif
     if (n == 0 || alpha == T{0.0})
         thresh = 0.0;
     else
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 2.0;
+#endif
         if(alpha == T{1.0})
           thresh = adj*2*n*testinghelpers::getEpsilon<T>();
         else
           thresh = adj*3*n*testinghelpers::getEpsilon<T>();
-
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_trsv<T>( storage, uploa, transa, diaga, n, alpha, lda_inc, incx, thresh, is_mem_test );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_trsv<T>( storage, uploa, transa, diaga, n, alpha, lda_inc, incx, thresh, is_mem_test );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_trsv<T>( storage, uploa, transa, diaga, n, alpha, lda_inc, incx, thresh, is_mem_test );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_trsv<T>( storage, uploa, transa, diaga, n, alpha, lda_inc, incx, thresh, is_mem_test );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_trsv<T>( storage, uploa, transa, diaga, n, alpha, lda_inc, incx, thresh, is_mem_test );
+#endif
 }
 
 // Black box testing.

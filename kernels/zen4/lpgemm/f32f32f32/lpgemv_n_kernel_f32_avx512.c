@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-  Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+  Copyright (C) 2024 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -86,17 +86,18 @@ LPGEMV_N_EQ1_KERN( float, float, float, f32f32f32of32 )
           &&POST_OPS_GELU_TANH_6x64F,
           &&POST_OPS_GELU_ERF_6x64F,
           &&POST_OPS_CLIP_6x64F,
-          NULL, // Virtual node for downscale, else segfault
+          &&POST_OPS_DOWNSCALE_6x64F,
           &&POST_OPS_MATRIX_ADD_6x64F,
           &&POST_OPS_SWISH_6x64F,
-          &&POST_OPS_MATRIX_MUL_6x64F
+          &&POST_OPS_MATRIX_MUL_6x64F,
+          &&POST_OPS_TANH_6x64F,
+          &&POST_OPS_SIGMOID_6x64F
       };
 
   // Strides are updated based on matrix packing/reordering.
   const float *a_use = NULL;
   const float *b_use = NULL;
   float *c_use = NULL;
-
   lpgemm_post_op_attr post_ops_attr = *(post_op_attr);
 
   for (dim_t mr = 0; mr < m0; mr += MR)
@@ -215,7 +216,8 @@ LPGEMV_N_EQ1_KERN( float, float, float, f32f32f32of32 )
         zmm8 = _mm512_insertf32x4(zmm8, xmm1, 1);
         zmm8 = _mm512_insertf32x4(zmm8, xmm2, 2);
         zmm8 = _mm512_insertf32x4(zmm8, xmm3, 3);
-    }else
+    }
+    else
     {
       //Handle fringe cases when mr0 < MR
       const float *a_use_fringe = a_use;
@@ -388,7 +390,8 @@ LPGEMV_N_EQ1_KERN( float, float, float, f32f32f32of32 )
       if (rs_c == 1)
       {
         zmm0 = _mm512_maskz_loadu_ps(k2, _cbuf);
-      }else
+      }
+      else
       {
         //load C into zmm0
         float ctemp[16];
@@ -408,13 +411,23 @@ LPGEMV_N_EQ1_KERN( float, float, float, f32f32f32of32 )
 
   POST_OPS_BIAS_6x64F:
   {
+    if ( ( *( char* )post_ops_list_temp->op_args2 == 'r' ) ||
+			  ( *( char* )post_ops_list_temp->op_args2 == 'R' ) )
+    {
+      zmm9 = _mm512_set1_ps(*( ( float * )post_ops_list_temp->op_args1 ) );
+    }
+    else
+    {
       // If original output was columns major, then by the time
       // kernel sees it, the matrix would be accessed as if it were
       // transposed. Due to this the bias array will be accessed by
       // the ic index, and each bias element corresponds to an
       // entire row of the transposed output array, instead of an
       // entire column.
-    zmm9 = _mm512_set1_ps(*((float *)post_ops_list_temp->op_args1));
+      zmm9 =  _mm512_maskz_loadu_ps( k2,
+                              ( float* )post_ops_list_temp->op_args1 +
+                              post_ops_attr.post_op_c_i );
+    }
     zmm8 = _mm512_add_ps(zmm9, zmm8);
     POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
   }
@@ -464,18 +477,158 @@ LPGEMV_N_EQ1_KERN( float, float, float, f32f32f32of32 )
 
     POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
   }
-  POST_OPS_MATRIX_ADD_6x64F:
+  POST_OPS_DOWNSCALE_6x64F:
   {
-    float *matptr = (float *)post_ops_list_temp->op_args1;
-    zmm0 = _mm512_maskz_loadu_ps(k2, (matptr + post_ops_attr.post_op_c_i));
-    zmm8 = _mm512_add_ps(zmm8, zmm0);
+    __m512 zero_point0 = _mm512_setzero_ps();
+    __m512 selector1 = _mm512_setzero_ps();
+    // Need to account for row vs column major swaps. For scalars
+    // scale and zero point, no implications.
+    // Even though different registers are used for scalar in column
+    // and row major downscale path, all those registers will contain
+    // the same value.
+    if ( post_ops_list_temp->scale_factor_len == 1 )
+    {
+      selector1 =
+        _mm512_set1_ps( *( ( float* )post_ops_list_temp->scale_factor ) );
+
+    }
+    if ( *( ( dim_t* )post_ops_list_temp->op_args3 ) == 1 )
+    {
+      zero_point0 = _mm512_set1_ps( *(float *)post_ops_list_temp->op_args1 );
+    }
+    if ( ( *( char* )post_ops_list_temp->op_args2 == 'r' ) ||
+        ( *( char* )post_ops_list_temp->op_args2 == 'R' ) )
+    {
+      // Scale/zp len cannot be > 1, since orignal n = 1.
+      F32_SCL_MULRND(zmm8, selector1, zero_point0);
+    }
+    else
+    {
+      // If original output was columns major, then by the time
+      // kernel sees it, the matrix would be accessed as if it were
+      // transposed. Due to this the scale as well as zp array will
+      // be accessed by the ic index, and each scale/zp element
+      // corresponds to an entire row of the transposed output array,
+      // instead of an entire column.
+      if( post_ops_list_temp->scale_factor_len > 1 )
+      {
+        selector1 = _mm512_maskz_loadu_ps( k2,
+                              ( float* )post_ops_list_temp->scale_factor +
+                              post_ops_attr.post_op_c_i );
+      }
+      if( *( dim_t*)post_ops_list_temp->op_args3 > 1 )
+      {
+        zero_point0 = _mm512_maskz_loadu_ps( k2,
+                              ( float * )post_ops_list_temp->op_args1 +
+                              post_ops_attr.post_op_c_i );
+      }
+      F32_SCL_MULRND(zmm8, selector1, zero_point0);
+    }
     POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
   }
-   POST_OPS_MATRIX_MUL_6x64F:
+  POST_OPS_MATRIX_ADD_6x64F:
   {
-    float *matptr = (float *)post_ops_list_temp->op_args1;
-    zmm0 = _mm512_maskz_loadu_ps(k2, (matptr + post_ops_attr.post_op_c_i));
-    zmm8 = _mm512_mul_ps(zmm8, zmm0);
+
+    __m512 selector1 = _mm512_setzero_ps();
+
+    dim_t ldm = *( dim_t* )post_ops_list_temp->op_args3;
+
+    __m512 scl_fctr1 = _mm512_setzero_ps();
+
+    // Even though different registers are used for scalar in column and
+    // row major case, all those registers will contain the same value.
+    // For column major, if m==1, then it means n=1 and scale_factor_len=1.
+    if ( post_ops_list_temp->scale_factor_len == 1 )
+    {
+      scl_fctr1 =
+        _mm512_set1_ps( *( ( float* )post_ops_list_temp->scale_factor ) );
+    }
+    else
+    {
+      if ( ( *( char* )post_ops_list_temp->op_args2 == 'c' ) ||
+          ( *( char* )post_ops_list_temp->op_args2 == 'C' ) )
+      {
+        scl_fctr1 =
+          _mm512_maskz_loadu_ps( k2,
+              ( float* )post_ops_list_temp->scale_factor +
+              post_ops_attr.post_op_c_i + ( 0 * 16 ) );
+      }
+    }
+    float* matptr = ( float* )post_ops_list_temp->op_args1;
+
+    if( ldm == 1 )
+    {
+      selector1 = _mm512_maskz_loadu_ps(k2, ( matptr +
+                                   post_ops_attr.post_op_c_i ) );
+	    selector1 = _mm512_mul_ps( selector1, scl_fctr1 );
+      zmm8 = _mm512_add_ps( selector1, zmm8 );
+
+    }
+    else
+    {
+      float ctemp[16];
+      for( dim_t i = 0; i < mr0; i++ )
+      {
+        ctemp[i] = *( matptr +
+                    ( ( post_ops_attr.post_op_c_i + i )
+                        * ldm ) );
+      }
+      selector1 = _mm512_maskz_loadu_ps( k2, ctemp );
+      selector1 = _mm512_mul_ps( selector1, scl_fctr1 ); \
+      zmm8 = _mm512_add_ps( selector1, zmm8 );
+    }
+    POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
+ }
+  POST_OPS_MATRIX_MUL_6x64F:
+  {
+    __m512 selector1 = _mm512_setzero_ps();
+
+    dim_t ldm = *( dim_t* )post_ops_list_temp->op_args3;
+
+    __m512 scl_fctr1 = _mm512_setzero_ps();
+
+    // Even though different registers are used for scalar in column and
+    // row major case, all those registers will contain the same value.
+    // For column major, if m==1, then it means n=1 and scale_factor_len=1.
+    if ( post_ops_list_temp->scale_factor_len == 1 )
+    {
+      scl_fctr1 =
+        _mm512_set1_ps( *( ( float* )post_ops_list_temp->scale_factor ) );
+    }
+    else
+    {
+      if ( ( *( char* )post_ops_list_temp->op_args2 == 'c' ) ||
+          ( *( char* )post_ops_list_temp->op_args2 == 'C' ) )
+      {
+        scl_fctr1 =
+          _mm512_maskz_loadu_ps( k2,
+              ( float* )post_ops_list_temp->scale_factor +
+              post_ops_attr.post_op_c_i + ( 0 * 16 ) );
+      }
+    }
+    float* matptr = ( float* )post_ops_list_temp->op_args1;
+
+    if( ldm == 1 )
+    {
+      selector1 = _mm512_maskz_loadu_ps(k2, ( matptr +
+                                   post_ops_attr.post_op_c_i ) );
+	    selector1 = _mm512_mul_ps( selector1, scl_fctr1 );
+      zmm8 = _mm512_mul_ps( selector1, zmm8 );
+    }
+    else
+    {
+      float ctemp[16];
+      for( dim_t i = 0; i < mr0; i++ )
+      {
+        ctemp[i] = *( matptr +
+                    ( ( post_ops_attr.post_op_c_i + i )
+                        * ldm ) );
+      }
+      selector1 = _mm512_maskz_loadu_ps( k2, ctemp );
+      selector1 = _mm512_mul_ps( selector1, scl_fctr1 ); \
+      zmm8 = _mm512_mul_ps( selector1, zmm8 );
+    }
+
     POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
   }
   POST_OPS_SWISH_6x64F:
@@ -486,6 +639,25 @@ LPGEMV_N_EQ1_KERN( float, float, float, f32f32f32of32 )
 
     // c[0, 0-15]
     SWISH_F32_AVX512_DEF(zmm8, zmm7, zmm0, zmm1, zmm2, zmm3, zmm4, ex_out);
+
+    POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
+  }
+  POST_OPS_TANH_6x64F:
+  {
+    __m512i zmm6;
+    // c[0, 0-15]
+    TANH_F32S_AVX512(zmm8, zmm0, zmm1, zmm2, zmm3, zmm4, zmm6)
+
+    POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
+  }
+  POST_OPS_SIGMOID_6x64F:
+  {
+    __m512i ex_out;
+
+    // c[0, 0-15]
+    SIGMOID_F32_AVX512_DEF(zmm8, zmm0, zmm1, zmm2, zmm3, zmm4, ex_out);
+
+    POST_OP_LABEL_LASTK_SAFE_JUMP_WITH_NEXT_PTR
   }
   POST_OPS_6x64F_DISABLE:
   {

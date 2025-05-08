@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -34,6 +34,26 @@
 
 #ifndef BLIS_GEMM_INT8_PACKA
 #define BLIS_GEMM_INT8_PACKA
+
+// The strides needs to be updated based on the m_fringe value to account
+// for different schemas used to pack A fringe cases.
+BLIS_INLINE void get_packa_strides_mfringe_u8s8s32os32
+     (
+       const dim_t rs,
+       const dim_t cs,
+       dim_t* rs_use,
+       dim_t* cs_use,
+       dim_t MR,
+       dim_t m_fringe
+     )
+{
+	// Only applicable for row major packing.
+	if ( ( rs != 1 ) && ( cs == 1 ) && ( ( *cs_use ) > MR ))
+	{
+		( *rs_use ) = 4;
+		( *cs_use ) = ( ( *cs_use ) / MR ) * m_fringe;
+	}
+}
 
 typedef void (*packa_s32)
      (

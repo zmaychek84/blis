@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2024 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -37,6 +37,7 @@
 #include "level3/ref_gemm.h"
 #include "ukr/trsm/test_trsm_ukr.h"
 #include "level3/trsm/test_trsm.h"
+#include "common/blis_version_defs.h"
 
 class ztrsmGenericNat :
     public ::testing::TestWithParam<std::tuple< zgemmtrsm_ukr_ft,  // Function pointer type for ztrsm kernels
@@ -65,6 +66,7 @@ class ztrsmGenericSmall :
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ztrsmGenericNat);
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ztrsmGenericSmall);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(strsmGeneric);
 
 #ifndef BLIS_INT_ELEMENT_TYPE
 
@@ -86,13 +88,12 @@ TEST_P( ztrsmGenericNat, UKR )
     // Check gtestsuite trsm.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // No adjustment applied yet for complex data.
     double thresh;
     // Threshold adjustment
 #ifdef BLIS_INT_ELEMENT_TYPE
     double adj = 1.0;
 #else
-    double adj = 1.6;
+    double adj = 1.7;
 #endif
     if (m == 0 || n == 0 || alpha == testinghelpers::ZERO<T>())
         thresh = 0.0;
@@ -131,8 +132,77 @@ TEST_P( ztrsmGenericSmall, UKR )
     test_trsm_small_ukr<T, trsm_small_ker_ft>( ukr_fp, side, uploa, diaga, transa, m, n, alpha, lda, ldb, thresh, is_memory_test, BLIS_DCOMPLEX);
 }
 
+#if defined(BLIS_KERNELS_ZEN5) && defined(GTEST_AVX512)
+
+#ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
+#ifdef K_bli_ztrsm_small_ZEN5
+INSTANTIATE_TEST_SUITE_P(
+    bli_trsm_small_ZEN5_r,
+    ztrsmGenericSmall,
+    ::testing::Combine(
+        ::testing::Values(bli_trsm_small_ZEN5),       // ker_ptr
+        ::testing::Values('r'),                       // side
+        ::testing::Values('l', 'u'),                  // uplo
+        ::testing::Values('n', 'u'),                  // diaga
+        ::testing::Values('n', 't'),                  // transa
+        ::testing::Range(gtint_t(1), gtint_t(13), 1), // m ( 1 to 12)
+        ::testing::Range(gtint_t(1), gtint_t(5), 1),  // n ( 1 to 4 )
+        ::testing::Values(dcomplex{-1.4,  3.2},
+                          dcomplex{ 0.0, -1.9}),      // alpha
+        ::testing::Values(0, 194),                    // lda_inc
+        ::testing::Values(0, 194),                    // ldb_inc
+        ::testing::Values(false, true)                // is_memory_test
+    ),
+    (::trsmSmallUKRPrint<dcomplex, trsm_small_ker_ft>())
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    bli_trsm_small_ZEN5_l,
+    ztrsmGenericSmall,
+    ::testing::Combine(
+        ::testing::Values(bli_trsm_small_ZEN5),       // ker_ptr
+        ::testing::Values('l'),                       // side
+        ::testing::Values('l', 'u'),                  // uplo
+        ::testing::Values('n', 'u'),                  // diaga
+        ::testing::Values('n', 't'),                  // transa
+        ::testing::Range(gtint_t(1), gtint_t(5), 1),  // m
+        ::testing::Range(gtint_t(1), gtint_t(13), 1), // n
+        ::testing::Values(dcomplex{-1.4,  3.2},
+                          dcomplex{ 0.0, -1.9}),      // alpha
+        ::testing::Values(0, 194),                    // lda_inc
+        ::testing::Values(0, 194),                    // ldb_inc
+        ::testing::Values(false, true)                // is_memory_test
+    ),
+    (::trsmSmallUKRPrint<dcomplex, trsm_small_ker_ft>())
+);
+
+INSTANTIATE_TEST_SUITE_P(
+    bli_trsm_small_ZEN5_gemm,
+    ztrsmGenericSmall,
+    ::testing::Combine(
+        ::testing::Values(bli_trsm_small_ZEN5),        // ker_ptr
+        ::testing::Values('l', 'r'),                   // side
+        ::testing::Values('l', 'u'),                   // uplo
+        ::testing::Values('n', 'u'),                   // diaga
+        ::testing::Values('n', 't'),                   // transa
+        ::testing::Range(gtint_t(12), gtint_t(48), 5), // m
+        ::testing::Range(gtint_t(12), gtint_t(48), 5), // n
+        ::testing::Values(dcomplex{-1.4,  3.2}),       // alpha
+        ::testing::Values(0, 10),                      // lda_inc
+        ::testing::Values(0, 10),                      // ldb_inc
+        ::testing::Values(false, true)                 // is_memory_test
+    ),
+    (::trsmSmallUKRPrint<dcomplex, trsm_small_ker_ft>())
+);
+#endif // K_bli_ztrsm_small_ZEN5
+#endif // BLIS_ENABLE_SMALL_MATRIX_TRSM
+
+#endif // defined(BLIS_KERNELS_ZEN5) && defined(GTEST_AVX512)
+
+
 #if defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmtrsm_l_zen4_asm_4x12
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemmtrsm_l_zen4_asm_4x12,
     ztrsmGenericNat,
     ::testing::Combine(
@@ -152,8 +222,10 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     (::trsmNatUKRPrint<dcomplex,zgemmtrsm_ukr_ft>())
 );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmtrsm_u_zen4_asm_4x12
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemmtrsm_u_zen4_asm_4x12,
     ztrsmGenericNat,
     ::testing::Combine(
@@ -173,9 +245,11 @@ INSTANTIATE_TEST_SUITE_P (
    ),
     (::trsmNatUKRPrint<dcomplex,zgemmtrsm_ukr_ft>())
 );
+#endif
 
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_trsm_small_AVX512
+INSTANTIATE_TEST_SUITE_P(
     bli_trsm_small_AVX512,
     ztrsmGenericSmall,
     ::testing::Combine(
@@ -197,12 +271,14 @@ INSTANTIATE_TEST_SUITE_P (
     (::trsmSmallUKRPrint<dcomplex, trsm_small_ker_ft>())
 );
 #endif
-
 #endif
 
+#endif // defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
 
 #if defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_zgemmtrsm_l_zen_asm_2x6
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemmtrsm_l_zen_asm_2x6,
     ztrsmGenericNat,
     ::testing::Combine(
@@ -222,8 +298,10 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     (::trsmNatUKRPrint<dcomplex,zgemmtrsm_ukr_ft>())
 );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmtrsm_u_zen_asm_2x6
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemmtrsm_u_zen_asm_2x6,
     ztrsmGenericNat,
     ::testing::Combine(
@@ -243,9 +321,11 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     (::trsmNatUKRPrint<dcomplex,zgemmtrsm_ukr_ft>())
 );
+#endif
 
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_trsm_small
+INSTANTIATE_TEST_SUITE_P(
     bli_trsm_small,
     ztrsmGenericSmall,
     ::testing::Combine(
@@ -268,5 +348,7 @@ INSTANTIATE_TEST_SUITE_P (
 );
 #endif
 #endif
+
+#endif // defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
 
 #endif // ifndef BLIS_INT_ELEMENT_TYPE

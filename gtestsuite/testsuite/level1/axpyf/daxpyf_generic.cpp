@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2024 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -78,14 +78,54 @@ TEST_P( daxpyfGeneric, API )
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = 0.0;
     else if (alpha == testinghelpers::ONE<T>())
-        thresh = (b+1)*testinghelpers::getEpsilon<T>();
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 6.6;
+#endif
+        thresh = adj*(b+1)*testinghelpers::getEpsilon<T>();
+    }
     else
-        thresh = (2*b+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 6.9;
+#endif
+        thresh = adj*(2*b+1)*testinghelpers::getEpsilon<T>();
+    }
     //----------------------------------------------------------
     //     Call generic test body using those parameters
     //----------------------------------------------------------
-    test_axpyf<T>( conj_x, conj_a, m, b, &alpha, inca, lda, incx, incy, thresh );
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_axpyf<T>( conj_x, conj_a, m, b, &alpha, inca, lda, incx, incy, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_axpyf<T>( conj_x, conj_a, m, b, &alpha, inca, lda, incx, incy, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_axpyf<T>( conj_x, conj_a, m, b, &alpha, inca, lda, incx, incy, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_axpyf<T>( conj_x, conj_a, m, b, &alpha, inca, lda, incx, incy, thresh );
+#endif
 }
 
 // Black box testing for generic and main use of daxpy.

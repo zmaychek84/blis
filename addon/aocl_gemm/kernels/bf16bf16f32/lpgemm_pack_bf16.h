@@ -47,15 +47,27 @@ BLIS_INLINE dim_t get_packb_bf16bf16f32of32_min_NR()
 	return 16;
 }
 
-typedef void (*pack_s4bf16)(
+typedef void (*pack_f32bf16)
+  (
+       bfloat16*,
+       const float*,
+       const dim_t,
+       const dim_t,
+       const dim_t,
+       const dim_t,
+       dim_t*,
+       dim_t*
+  );
+
+typedef void (*pack_s4bf16)
+  (
     bfloat16 *,
     const int8_t *,
     const dim_t,
     const dim_t,
     dim_t *,
     dim_t *,
-    lpgemm_pre_op*,
-    dim_t
+    lpgemm_pre_op_attr
   );
 
 typedef void (*pack_bf16)
@@ -70,6 +82,27 @@ typedef void (*pack_bf16)
        dim_t*
      );
 
+typedef void (*unpack_bf16)
+     (
+       const bfloat16*,
+       bfloat16*,
+       const dim_t,
+       const dim_t,
+       const dim_t,
+       const dim_t
+     );
+
+typedef void (*unpack_bf16f32)
+     (
+       const bfloat16*,
+       float*,
+       const dim_t,
+       const dim_t,
+       const dim_t,
+       const dim_t
+     );
+
+
 typedef void (*pack_s4)
      (
        int8_t*,
@@ -80,8 +113,21 @@ typedef void (*pack_s4)
        const dim_t,
        dim_t*,
        dim_t*,
-       lpgemm_pre_op*
+       lpgemm_pre_op*,
+       AOCL_MATRIX_TYPE
      );
+
+void packb_mxp_nr64_f32obf16
+    (
+      bfloat16 *pack_b_buffer_bf16bf16f32of32,
+      const float *b,
+      const dim_t rs_b,
+      const dim_t cs_b,
+      const dim_t NC,
+      const dim_t KC,
+      dim_t *rs_p,
+      dim_t *cs_p
+    );
 
 void packb_nr64_bf16bf16f32of32
      (
@@ -105,7 +151,8 @@ void packb_nr64_bf16s4f32of32
        const dim_t   KC,
        dim_t*        rs_p,
        dim_t*        cs_p,
-      lpgemm_pre_op* pre_op
+      lpgemm_pre_op* pre_op,
+      AOCL_MATRIX_TYPE mtag
      );
 
 void packsclb_nr64_bf16s4f32of32
@@ -116,8 +163,7 @@ void packsclb_nr64_bf16s4f32of32
       const dim_t KC,
       dim_t *rs_p,
       dim_t *cs_p,
-      lpgemm_pre_op* b_pre_ops,
-      dim_t pre_op_off
+      lpgemm_pre_op_attr pre_ops_attr
     );
 
 void packa_mr16_bf16bf16f32of32
@@ -131,4 +177,36 @@ void packa_mr16_bf16bf16f32of32
        dim_t* rs_p,
        dim_t* cs_p
      );
+
+void unpackb_nr64_bf16bf16f32of32
+     (
+        const bfloat16* unpack_b_buffer_bf16bf16f32of32,
+        bfloat16*       b,
+        const dim_t     NC,
+        const dim_t     KC,
+        dim_t           rs_b,
+        dim_t           cs_b
+      );
+
+void unpackb_nr64_bf16_f32
+    (
+      const bfloat16* b,
+      float*       unpack_b_buffer,
+      const dim_t	  NC,
+      const dim_t     KC,
+      dim_t           rs_b,
+      dim_t           cs_b
+    );
+
+void cvt_bf16_f32(
+    float*	      cvt_buffer,
+    const bfloat16* a,
+    const dim_t     rs_a,
+    const dim_t     cs_a,
+    const dim_t     MC,
+    const dim_t     KC,
+    const dim_t      rs_p,
+    const dim_t      cs_p
+  );
+
 #endif //BLIS_GEMM_BF16_PACKB

@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -32,6 +32,10 @@
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
+
+// Including the header for tiny gemm kernel signatures
+#include "bli_gemm_tiny_avx2.h"
+
 // -- level-1m --
 // Removed - reference packm kernels are used
 
@@ -154,6 +158,16 @@ DOTXAXPYF_KER_PROT( dcomplex, z, dotxaxpyf_zen_int_8 )
 GEMV_KER_PROT( double,   d,  gemv_zen_ref_c )
 GEMV_KER_PROT( scomplex, c,  gemv_zen_int_4x4 )
 GEMV_KER_PROT( dcomplex, z,  gemv_zen_int_4x4 )
+
+// gemv (intrinsics)
+GEMV_KER_PROT( double,  d, gemv_t_zen_int_avx2 )
+GEMV_KER_PROT( double,  d, gemv_t_zen_int_mx7_avx2 )
+GEMV_KER_PROT( double,  d, gemv_t_zen_int_mx6_avx2 )
+GEMV_KER_PROT( double,  d, gemv_t_zen_int_mx5_avx2 )
+GEMV_KER_PROT( double,  d, gemv_t_zen_int_mx4_avx2 )
+GEMV_KER_PROT( double,  d, gemv_t_zen_int_mx3_avx2 )
+GEMV_KER_PROT( double,  d, gemv_t_zen_int_mx2_avx2 )
+GEMV_KER_PROT( double,  d, gemv_t_zen_int_mx1_avx2 )
 
 // her (intrinsics)
 HER_KER_PROT( dcomplex, z,  her_zen_int_var1 )
@@ -313,6 +327,22 @@ err_t bli_dgemm_tiny
         const double*    beta,
         double*    c, const inc_t rs_c0, const inc_t cs_c0
 );
+
+err_t bli_dgemm_tiny_6x8
+     (
+        conj_t              conja,
+        conj_t              conjb,
+        trans_t transa,
+        trans_t transb,
+        dim_t  m,
+        dim_t  n,
+        dim_t  k,
+        const double*    alpha,
+        const double*    a, const inc_t rs_a0, const inc_t cs_a0,
+        const double*    b, const inc_t rs_b0, const inc_t cs_b0,
+        const double*    beta,
+        double*    c, const inc_t rs_c0, const inc_t cs_c0
+     );
 
 err_t bli_dgemm_small
     (
@@ -498,4 +528,18 @@ void bli_dgemv_zen_ref
        double* restrict beta,
        double* restrict y, inc_t incy,
        cntx_t* restrict cntx
+     );
+
+void bli_dgemv_n_avx2
+     (
+       trans_t transa,
+       conj_t  conjx,
+       dim_t   m,
+       dim_t   n,
+       double* alpha,
+       double* a, inc_t rs_a, inc_t cs_a,
+       double* x, inc_t incx,
+       double* beta,
+       double* y, inc_t incy,
+       cntx_t* cntx
      );

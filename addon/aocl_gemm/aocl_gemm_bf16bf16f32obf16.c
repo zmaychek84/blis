@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -41,18 +41,63 @@
 #include "lpgemm_5loop_interface_apis.h"
 #include "lpgemm_config.h"
 #include "lpgemm_utils.h"
+#include "lpgemm_logger.h"
+
+static inline bool is_tiny_input_bf16obf16
+    (
+       dim_t m,
+       dim_t n,
+       dim_t k,
+       lpgemm_cntx_t* lcntx
+    )
+{
+	const dim_t NC = lcntx->blksz.NC;
+	const dim_t MC = lcntx->blksz.MC;
+	const dim_t KC = lcntx->blksz.KC;
+	const dim_t MR = lcntx->blksz.MR;
+	const dim_t NR = lcntx->blksz.NR;
+
+	dim_t mnk = m * n * k;
+	const dim_t mnk_magic_num = 36 * 128 * 256;
+	const dim_t m_thresh = 6 * MR;
+	const dim_t n_thresh = 6 * NR;
+	const dim_t k_thresh = 1024;
+
+	// Need to explicitly check for MC, NC boundaries for safety.
+	if ( ( m <= MC ) && ( n < NC ) && ( k < KC ) &&
+		 ( ( m <= m_thresh ) && ( n <= n_thresh ) && ( k <= k_thresh ) &&
+		   ( mnk < mnk_magic_num ) ) )
+	{
+		return TRUE;
+	}
+
+	return FALSE;
+}
 
 AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 {
+	LPGEMM_START_LOGGER();
+	LPGEMM_WRITE_LOGGER \
+	(
+	  "bf16bf16f32obf16", \
+	  order, transa, transb, \
+	  m, n, k, \
+	  ( ( float ) alpha ), \
+	  lda, mem_format_a, \
+	  ldb, mem_format_b, \
+	  ( ( float ) beta ), \
+	  ldc, post_op_unparsed \
+	);
+
 	trans_t blis_transa;
 	trans_t blis_transb;
 
 	// Check if avx512_vnni ISA is supported, lpgemm matmul only works with it.
-	if ( bli_cpuid_is_avx512bf16_supported() == FALSE )
+	if ( bli_cpuid_is_avx2fma3_supported() == FALSE )
 	{
-		bli_print_msg(" AVX512_BF16 ISA not supported by processor, "
+		bli_print_msg(" AVX2 ISA not supported by processor, "
 				"cannot perform bf16bf16f32 gemm.", __FILE__, __LINE__ );
-		return; // Error.
+		goto err_hndl;
 	}
 
 	/* Initialize BLIS. */
@@ -62,6 +107,7 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 	aocl_lpgemm_init_global_cntx();
 
 	// check for validity of params.
+	int err_no = 0;
 	AOCL_GEMM_CHECK
 	(
 	  "bf16bf16f32obf16",
@@ -69,19 +115,21 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 	  m, n, k,
 	  a, lda, mem_format_a,
 	  b, ldb, mem_format_b,
-	  c, ldc
+	  c, ldc,
+	  err_no
 	);
+	if ( err_no != 0 )
+	{
+		goto err_hndl;
+	}
 
 #ifdef LPGEMM_BF16_JIT
-	dim_t num_N_variants = ( LPGEMM_BF16_NR / NUM_F32_ELEMS_PER_ZMM ) + 1;
-	for( dim_t m = 0; m < LPGEMM_BF16_MR; m++ )
-		for( dim_t n = 0; n < num_N_variants; n++ )
-			if( lpgemm_get_jit_kernel(m, n ) == NULL )
-			{
-				bli_print_msg(" Could not generate bf16bf16f32obf16 "
-				" kernels using JIT.", __FILE__, __LINE__ );
-				return;
-			}
+	if( get_jit_kernels_generated() == FALSE )
+	{
+		bli_print_msg(" Could not generate bf16bf16f32obf16 "
+			" kernels using JIT.", __FILE__, __LINE__ );
+			return;
+	}
 #endif
 
 	/* Map BLAS chars to their corresponding BLIS enumerated type value. */
@@ -122,14 +170,14 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 	if( ( is_row_major == TRUE ) && ( mtag_a == REORDERED ) )
 	{
 		bli_print_msg(" Reordering of A matrix is not supported in row major case.", __FILE__, __LINE__ );
-		return;
+		goto err_hndl;
 	}
 	// Inputs swapped in column major, A becomes B from kernel point of view.
 	// Reorder is not supported for column major matrices.
 	else if ( ( is_column_major == TRUE ) && ( ( mtag_b == REORDERED ) || ( mtag_a == REORDERED ) ) )
 	{
 		bli_print_msg(" Reordering of column major matrices is not supported.", __FILE__, __LINE__ );
-		return;
+		goto err_hndl;
 	}
 
 	// From 5-loop function point of view,
@@ -169,7 +217,10 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 	  m, n
 	);
 
-	if( err != BLIS_SUCCESS ) return;
+	if( err != BLIS_SUCCESS )
+	{
+		goto err_hndl;
+	}
 
 	// Initialize a local runtime with global settings if necessary. Note
 	// that in the case that a runtime is passed in, we make a local copy.
@@ -178,7 +229,43 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 	bli_pba_rntm_set_pba( &rntm_g );
 
 	lpgemm_cntx_t* lcntx_g = lpgemm_get_global_cntx_obj( BF16BF16F32OF32 );
-
+#if (defined(BLIS_KERNELS_ZEN4) && (!defined(LPGEMM_BF16_JIT)))
+	arch_t arch_id =  bli_arch_query_id();
+	if( ( ( arch_id == BLIS_ARCH_ZEN4 ) || ( arch_id == BLIS_ARCH_ZEN5 ) ) &&
+		( is_single_thread( &rntm_g ) == TRUE) )
+	{
+		if( ( is_row_major == TRUE ) &&
+			( is_tiny_input_bf16obf16( m, n, k, lcntx_g ) == TRUE ) )
+		{
+			lpgemm_rowvar_tiny_bf16bf16f32of32
+			(
+				m, n, k,
+				a, rs_a, cs_a, mtag_a,
+				b, rs_b, cs_b, mtag_b,
+				( float* )c, rs_c, cs_c,
+				alpha, beta,
+				lcntx_g,
+				post_op_list, BF16
+			);
+			return;
+		}
+		else if( ( is_column_major == TRUE ) &&
+				 ( is_tiny_input_bf16obf16( n, m, k, lcntx_g ) == TRUE ) )
+		{
+			lpgemm_rowvar_tiny_bf16bf16f32of32
+			(
+				n, m, k,
+				b, rs_b, cs_b, mtag_b,
+				a, rs_a, cs_a, mtag_a,
+				( float* )c, rs_c, cs_c,
+				alpha, beta,
+				lcntx_g,
+				post_op_list, BF16
+			);
+			return;
+		}
+	}
+#endif
 #ifdef BLIS_ENABLE_OPENMP
 	// Swapping inputs to induce row major computation for column major inputs.
 	if ( is_column_major == TRUE )
@@ -236,4 +323,7 @@ AOCL_GEMM_MATMUL(bfloat16,bfloat16,bfloat16,float,bf16bf16f32obf16)
 		);
 	}
 #endif
+
+err_hndl:;
+	LPGEMM_STOP_LOGGER();
 }

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -85,7 +85,7 @@ LPGEMV(uint8_t,int8_t,int32_t,u8s8s32os32)
 
 	lpgemm_post_op_attr post_ops_attr;
 	post_ops_attr.c_stor_type = c_downscale;
-	if (c_downscale < S32) post_ops_attr.buf_downscale = c;
+	if (c_downscale < S32 || c_downscale == F32) post_ops_attr.buf_downscale = c;
 	else  post_ops_attr.buf_downscale = NULL;
 
 	siz_t mem_a_size_req = 0;
@@ -194,6 +194,8 @@ LPGEMV(uint8_t,int8_t,int32_t,u8s8s32os32)
 	}
 	else
 	{
+		dim_t gemm_MR = lcntx->blksz.MR;
+
 		// Compute the JC loop thread range for the current thread.
 		dim_t jc_start, jc_end;
 		thread_jc.n_way = ( thread_jc.n_way == 1 ) ?
@@ -226,6 +228,10 @@ LPGEMV(uint8_t,int8_t,int32_t,u8s8s32os32)
 			  a, rs_a, cs_a,
 			  1, k,
 			  &rs_a_use, &cs_a_use
+			);
+			get_packa_strides_mfringe_u8s8s32os32
+			(
+			  rs_a, cs_a, &rs_a_use, &cs_a_use, gemm_MR, 1
 			);
 
 			a_use = pack_a_buffer;
@@ -397,7 +403,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 
 	lpgemm_post_op_attr post_ops_attr;
 	post_ops_attr.c_stor_type = c_downscale;
-	if ( c_downscale < S32 )
+	if ( c_downscale < S32 || c_downscale == F32 )
 	{
 		post_ops_attr.buf_downscale = c;
 	}
@@ -442,7 +448,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 			c_use_jc = c + jc;
 		}
 		// Temp accumulaton buffer for C allocation.
-		else if ( c_downscale < S32 )
+		else if ( c_downscale < S32 || c_downscale == F32 )
 		{
 			// Buffer memory is only required if output needs to be
 			// persisted across iterations of the pc/KC loop.
@@ -587,7 +593,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 
 				// Only per thread C matrix is stored in temp buffer, so both
 				// per thread jc and ic start should be normalized to zero.
-				if ( c_downscale < S32 )
+				if ( c_downscale < S32 || c_downscale == F32 )
 				{
 					c_use_ic = c_use_jc + ( rs_c_use * ( ic - ic_start ) );
 				}
@@ -701,7 +707,7 @@ LPGEMM_5LOOP(uint8_t,int8_t,int32_t,u8s8s32o32)
 			bli_pba_release( rntm, &mem_a );
 		}
 	}
-	if ( c_downscale < S32 )
+	if ( c_downscale < S32 || c_downscale == F32 )
 	{
 		if ( bli_mem_is_alloc( &mem_scale_c ) )
 		{

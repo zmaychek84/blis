@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -46,6 +46,8 @@ class ztrsmGeneric :
                                                    dcomplex,
                                                    gtint_t,
                                                    gtint_t>> {};
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(strsmGeneric);
 
 TEST_P( ztrsmGeneric, API )
 {
@@ -94,7 +96,33 @@ TEST_P( ztrsmGeneric, API )
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_trsm<T>( storage, side, uploa, transa, diaga, m, n, alpha, lda_inc, ldb_inc, thresh );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_trsm<T>( storage, side, uploa, transa, diaga, m, n, alpha, lda_inc, ldb_inc, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_trsm<T>( storage, side, uploa, transa, diaga, m, n, alpha, lda_inc, ldb_inc, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_trsm<T>( storage, side, uploa, transa, diaga, m, n, alpha, lda_inc, ldb_inc, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_trsm<T>( storage, side, uploa, transa, diaga, m, n, alpha, lda_inc, ldb_inc, thresh );
+#endif
 }
 
 /**
@@ -137,8 +165,8 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values('u','l'),                                      // uplo  u:upper, l:lower
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n','u'),                                      // diaga , n=nonunit u=unit
-            ::testing::Range(gtint_t(1), gtint_t(5), 1),                     // m
-            ::testing::Range(gtint_t(1), gtint_t(5), 1),                     // n
+            ::testing::Range(gtint_t(1), gtint_t(6), 2),                     // m
+            ::testing::Range(gtint_t(1), gtint_t(6), 2),                     // n
             ::testing::Values(dcomplex{2.0,-3.4}),                           // alpha
             ::testing::Values(gtint_t(56)),                                  // increment to the leading dim of a
             ::testing::Values(gtint_t(33))                                   // increment to the leading dim of b
@@ -157,6 +185,52 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values('l','r'),                                      // side  l:left, r:right
             ::testing::Values('u','l'),                                      // uplo  u:upper, l:lower
             ::testing::Values('n', 'c', 't'),                                // transa
+            ::testing::Values('n','u'),                                      // diaga , n=nonunit u=unit
+            ::testing::Values(17, 500),                                      // m
+            ::testing::Values(48, 500),                                      // n
+            ::testing::Values(dcomplex{2.0,-3.4}),                           // alpha
+            ::testing::Values(gtint_t(54)),                                  // increment to the leading dim of a
+            ::testing::Values(gtint_t(37))                                   // increment to the leading dim of b
+        ),
+        ::trsmGenericPrint<dcomplex>()
+    );
+
+
+/**
+ * @brief Test ZTRSM small avx512 path all fringe cases
+ *        Kernel size for avx512 small path is 4x4 and 12x4, testing in range of
+ *        1 to 24 ensures all finge cases are being tested (1 to 12 for trsm and 12 to 24 for gemm subproblem).
+ */
+INSTANTIATE_TEST_SUITE_P(
+        Small_AVX512_fringe,
+        ztrsmGeneric,
+        ::testing::Combine(
+            ::testing::Values('c'),                                          // storage format
+            ::testing::Values('l','r'),                                      // side  l:left, r:right
+            ::testing::Values('u','l'),                                      // uplo  u:upper, l:lower
+            ::testing::Values('n', 't'),                                     // transa
+            ::testing::Values('n','u'),                                      // diaga , n=nonunit u=unit
+            ::testing::Range(gtint_t(1), gtint_t(25), 2),                    // m
+            ::testing::Range(gtint_t(1), gtint_t(25), 2),                    // n
+            ::testing::Values(dcomplex{2.0,-3.4}),                           // alpha
+            ::testing::Values(gtint_t(56)),                                  // increment to the leading dim of a
+            ::testing::Values(gtint_t(33))                                   // increment to the leading dim of b
+        ),
+        ::trsmGenericPrint<dcomplex>()
+    );
+
+/**
+ * @brief Test ZTRSM small avx512 path, Same test also covers small_zen5 kernels when run with
+ *        BLIS_ARCH_TYPE=zen5
+ */
+INSTANTIATE_TEST_SUITE_P(
+        Small_AVX512,
+        ztrsmGeneric,
+        ::testing::Combine(
+            ::testing::Values('c'),                                          // storage format
+            ::testing::Values('l','r'),                                      // side  l:left, r:right
+            ::testing::Values('u','l'),                                      // uplo  u:upper, l:lower
+            ::testing::Values('n', 't'),                                     // transa
             ::testing::Values('n','u'),                                      // diaga , n=nonunit u=unit
             ::testing::Values(17, 500),                                      // m
             ::testing::Values(48, 500),                                      // n

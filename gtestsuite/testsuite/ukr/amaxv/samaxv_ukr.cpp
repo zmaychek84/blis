@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2024 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -34,6 +34,7 @@
 
 #include <gtest/gtest.h>
 #include "test_amaxv_ukr.h"
+#include "common/blis_version_defs.h"
 
 class samaxvGeneric :
         public ::testing::TestWithParam<std::tuple<samaxv_ker_ft,   // Function pointer type for samaxv kernels
@@ -77,28 +78,37 @@ TEST_P( samaxvGeneric, UKR )
     The code structure for bli_samaxv_zen_int( ... ) is as follows :
 
     For unit strides :
-        Main loop    :  In blocks of 8 --> L8
-        Fringe loops :  Element-wise loop --> LScalar
+        Main loop    :  In blocks of 64   --> L64
+        Fringe loops :  In blocks of 32   --> L32
+                        In blocks of 16   --> L16
+                        In blocks of 8    --> L8
+                        Element wise loop --> LScalar
 
-    For non-unit strides : A single loop, to process element wise.
+    For non-unit strides, or when n < 8 : A single loop, to process element wise.
 */
 // Unit testing with unit strides, across all loops.
+#ifdef K_bli_samaxv_zen_int
 INSTANTIATE_TEST_SUITE_P(
         bli_samaxv_zen_int_unitStrides,
         samaxvGeneric,
         ::testing::Combine(
             ::testing::Values(bli_samaxv_zen_int),   // kernel address
-            ::testing::Values(gtint_t(8),            // for size n, L8
+            ::testing::Values(gtint_t(64),           // for size n, L64
+                              gtint_t(32),           // L32
+                              gtint_t(16),           // L16
+                              gtint_t(8),            // L8
                               gtint_t(7),            // LScalar
-                              gtint_t(40),           // 5*L8
-                              gtint_t(47)),          // 5*L8 + LScalar
+                              gtint_t(192),          // 3*L64
+                              gtint_t(255)),         // 3*L64 + L32 + L16 +  + L8 + 7(LScalar)
             ::testing::Values(gtint_t(1)),           // incx
             ::testing::Values(false, true)           // is_memory_test
         ),
         ::amaxvUKRPrint<samaxv_ker_ft>()
     );
+#endif
 
 // Unit testing with non-unit strides.
+#ifdef K_bli_samaxv_zen_int
 INSTANTIATE_TEST_SUITE_P(
         bli_samaxv_zen_int_nonUnitStrides,
         samaxvGeneric,
@@ -112,6 +122,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::amaxvUKRPrint<samaxv_ker_ft>()
     );
 #endif
+#endif
 
 #if defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
 /*
@@ -119,30 +130,37 @@ INSTANTIATE_TEST_SUITE_P(
     The code structure for bli_samaxv_zen_int_avx512( ... ) is as follows :
 
     For unit strides :
-        Main loop    :  In blocks of 80 --> L80
-        Fringe loops :  In blocks of 16 --> L16
+        Main loop    :  In blocks of 128 --> L128
+        Fringe loops :  In blocks of 64  --> L64
+                        In blocks of 32  --> L32
+                        In blocks of 16  --> L16
                         Element-wise loop --> LScalar
 
     For non-unit strides : A single loop, to process element wise.
 */
 // Unit testing with unit strides, across all loops.
+#ifdef K_bli_samaxv_zen_int_avx512
 INSTANTIATE_TEST_SUITE_P(
         bli_samaxv_zen_int_avx512_unitStrides,
         samaxvGeneric,
         ::testing::Combine(
             ::testing::Values(bli_samaxv_zen_int_avx512),   // kernel address
-            ::testing::Values(gtint_t(80),                  // for size n, L80
-                              gtint_t(48),                  // 3*L16
+            ::testing::Values(gtint_t(128),                 // for size n, L128
+                              gtint_t(64),                  // L64
+                              gtint_t(32),                  // L32
                               gtint_t(16),                  // L16
                               gtint_t(11),                  // 11(LScalar)
-                              gtint_t(317)),                // 3*L80 + 4*L16 + 13(LScalar)
+                              gtint_t(384),                 // 3*L128
+                              gtint_t(521)),                // 3*L128 + L64 + L32 + L16 + 15(LScalar)
             ::testing::Values(gtint_t(1)),                  // incx
             ::testing::Values(false, true)                  // is_memory_test
         ),
         ::amaxvUKRPrint<samaxv_ker_ft>()
     );
+#endif
 
 // Unit testing with non-unit strides.
+#ifdef K_bli_samaxv_zen_int_avx512
 INSTANTIATE_TEST_SUITE_P(
         bli_samaxv_zen_int_avx512_nonUnitStrides,
         samaxvGeneric,
@@ -155,4 +173,5 @@ INSTANTIATE_TEST_SUITE_P(
         ),
         ::amaxvUKRPrint<samaxv_ker_ft>()
     );
+#endif
 #endif

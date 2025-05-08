@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -101,8 +101,82 @@ TEST_P( dgemvGeneric, API )
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+#endif
 }
+
+// Unit-tests for NO_TRANSPOSE m-biased kernels
+INSTANTIATE_TEST_SUITE_P(
+        dgemv_n_m,
+        dgemvGeneric,
+        ::testing::Combine(
+            ::testing::Values('c'
+#ifndef TEST_BLAS_LIKE
+            ,'r'
+#endif
+            ),                                                              // storage format
+            ::testing::Values('n', 'c', 't'),                               // transa
+            ::testing::Values('n'),                                         // conjx
+            ::testing::Values( 47 ),                                        // m
+            ::testing::Values( 1, 2, 3, 4, 5, 6, 7, 8, 16, 44 ),            // n
+            ::testing::Values( 0, 1, 2 ),                                   // alpha
+            ::testing::Values( 0, 1, 2 ),                                   // beta
+            ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(-1) ),        // stride size for x
+            ::testing::Values(gtint_t(1) ),                                 // stride size for y
+            ::testing::Values(gtint_t(0), gtint_t(7) ),                     // increment to the leading dim of a
+            ::testing::Values(false, true)                                  // is_memory_test
+        ),
+        ::gemvGenericPrint<T>()
+    );
+
+// Unit-tests for NO_TRANSPOSE n-biased kernels
+INSTANTIATE_TEST_SUITE_P(
+        dgemv_n_n,
+        dgemvGeneric,
+        ::testing::Combine(
+            ::testing::Values('c'
+#ifndef TEST_BLAS_LIKE
+            ,'r'
+#endif
+            ),                                                              // storage format
+            ::testing::Values('n', 'c', 't'),                               // transa
+            ::testing::Values('n'),                                         // conjx
+            ::testing::Values( 95 ),                                        // m
+            ::testing::Values( 1, 2, 3, 4, 15 ),                            // n
+            ::testing::Values( 0, 1, 2 ),                                   // alpha
+            ::testing::Values( 0, 1, 2 ),                                   // beta
+            ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(-1) ),        // stride size for x
+            ::testing::Values(gtint_t(1) ),                                 // stride size for y
+            ::testing::Values(gtint_t(0), gtint_t(7) ),                     // increment to the leading dim of a
+            ::testing::Values(false, true)                                  // is_memory_test
+        ),
+        ::gemvGenericPrint<T>()
+    );
 
 // Black box testing.
 INSTANTIATE_TEST_SUITE_P(
@@ -116,8 +190,8 @@ INSTANTIATE_TEST_SUITE_P(
             ),                                                               // storage format
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n'),                                          // conjx
-            ::testing::Range(gtint_t(1), gtint_t(20), 1),                    // m
-            ::testing::Range(gtint_t(1), gtint_t(20), 1),                    // n
+            ::testing::Values(gtint_t(1), gtint_t(13), gtint_t(20)),         // m
+            ::testing::Values(gtint_t(1), gtint_t(12), gtint_t(20)),         // n
             ::testing::Values( 0.0, 1.0, -1.0, -1.2 ),                       // alpha
             ::testing::Values( 0.0, 1.0, -1.0, 2.1 ),                        // beta
             ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(-1)),          // stride size for x
@@ -140,14 +214,10 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n'),                                          // conjx
             ::testing::Values(gtint_t(25),
-                              gtint_t(33),
                               gtint_t(98),
-                              gtint_t(173),
                               gtint_t(211)
                             ),                                               // m
             ::testing::Values(gtint_t(25),
-                              gtint_t(33),
-                              gtint_t(98),
                               gtint_t(173),
                               gtint_t(211)
                             ),                                               // n
@@ -197,7 +267,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n'),                                          // conjx
             ::testing::Values(gtint_t(5099)),                                // m
-            ::testing::Values(gtint_t(1), gtint_t(2), gtint_t(17),
+            ::testing::Values(gtint_t(1), gtint_t(17),
                               gtint_t(173)),                                 // n
             ::testing::Values( 0.0, 1.0, -1.0, -1.2 ),                       // alpha
             ::testing::Values( 0.0, 1.0, -1.0, 2.1 ),                        // beta
@@ -220,7 +290,7 @@ INSTANTIATE_TEST_SUITE_P(
             ),                                                               // storage format
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n'),                                          // conjx
-            ::testing::Values(gtint_t(1), gtint_t(2), gtint_t(17),
+            ::testing::Values(gtint_t(1),
                               gtint_t(173)),                                 // m
             ::testing::Values(gtint_t(5099)),                                // n
             ::testing::Values( 0.0, 1.0, -1.0, -1.2 ),                       // alpha

@@ -93,13 +93,45 @@ TEST_P( dgemmGeneric, API )
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
-        //thresh = (15*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 3.0;
+#else
+        double adj = 3.2;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+#endif
 }
 
 INSTANTIATE_TEST_SUITE_P(

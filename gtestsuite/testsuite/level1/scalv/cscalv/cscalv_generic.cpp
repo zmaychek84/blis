@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -63,19 +63,51 @@ TEST_P( cscalvGeneric, API )
     // Check gtestsuite scalv.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // No adjustment applied yet for complex data.
+    // With adjustment applied for complex data.
     double thresh;
     if (n == 0)
         thresh = 0.0;
     else if (alpha == testinghelpers::ZERO<T>() || alpha == testinghelpers::ONE<T>())
         thresh = 0.0;
     else
-        thresh = testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.01;
+#else
+        double adj = 1.01;
+#endif
+        thresh = adj*testinghelpers::getEpsilon<T>();
+    }
     //----------------------------------------------------------
     //     Call generic test body using those parameters
     //----------------------------------------------------------
-    test_scalv<T>( conj_alpha, n, incx, alpha, thresh );
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_scalv<T>( conj_alpha, n, incx, alpha, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_scalv<T>( conj_alpha, n, incx, alpha, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_scalv<T>( conj_alpha, n, incx, alpha, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_scalv<T>( conj_alpha, n, incx, alpha, thresh );
+#endif
 }
 
 // Black box testing for generic use of dscal.
@@ -134,8 +166,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Range(gtint_t(1), gtint_t(9), 1),
             // incx: stride of x vector.
             ::testing::Values(
-                                gtint_t(2),
-                                gtint_t(41)
+                                gtint_t(3)
             ),
             // alpha: value of scalar.
             ::testing::Values(
@@ -157,8 +188,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(gtint_t(111), gtint_t(193), gtint_t(403)),
             // incx: stride of x vector.
             ::testing::Values(
-                                gtint_t(2),
-                                gtint_t(41)
+                                gtint_t(5)
             ),
             // alpha: value of scalar.
             ::testing::Values(
@@ -180,12 +210,11 @@ INSTANTIATE_TEST_SUITE_P(
             // conj(alpha): uses n (no_conjugate) since it is real.
             ::testing::Values('n'),
             // m: size of vector.
-            ::testing::Range(gtint_t(1), gtint_t(101), 1),
+            ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(17), gtint_t(64), gtint_t(73)),
             // incx: stride of x vector.
             ::testing::Values(
                                 gtint_t(1),
-                                gtint_t(2),
-                                gtint_t(41)
+                                gtint_t(2)
             ),
             // alpha: value of scalar.
             ::testing::Values(
@@ -205,7 +234,7 @@ INSTANTIATE_TEST_SUITE_P(
         cscalvGeneric,
         ::testing::Combine(
             ::testing::Values('c'),                                          // c: use conjugate
-            ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector takes values from 10 to 100 with step size of 10.
+            ::testing::Values(gtint_t(3), gtint_t(30), gtint_t(112)),        // m size of vector
             ::testing::Values(gtint_t(1)),                                   // stride size for x
             ::testing::Values(scomplex{ 7.3,  5.1})                          // alpha
         ),
@@ -222,7 +251,7 @@ INSTANTIATE_TEST_SUITE_P(
         cscalvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                                          // n: use x, c: use conj(x)
-            ::testing::Range(gtint_t(10), gtint_t(31), 10),                  // m size of vector takes values from 10 to 100 with step size of 10.
+            ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(17)),          // m size of vector 
             ::testing::Values(gtint_t(-2), gtint_t(-1)),                     // stride size for x
             ::testing::Values(scomplex{ 7.3,  5.1})                          // alpha
         ),

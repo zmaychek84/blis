@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2020 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2020 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -30,6 +30,7 @@
    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 */
 #ifdef WIN32
 #include <io.h>
@@ -37,6 +38,7 @@
 #include <unistd.h>
 #endif
 #include "blis.h"
+#include "blis_int_type.h"
 /*
 Benchmark application to process aocl logs generated
 by BLIS library for trsm.

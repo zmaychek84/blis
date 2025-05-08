@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -42,9 +42,11 @@ endif()
 # Set the C standard to C99.
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
+set(CMAKE_C_EXTENSIONS OFF)
 # Set the C++ standard to C++11.
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Enable IDE folders for targets.
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -1007,6 +1009,9 @@ if(NOT WIN32)
     endif()
 endif()
 
+# Macro to remove/replace absolute path within library
+list(APPEND BUILD_SYMFLAGS "-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
+
 # --- C Preprocessor flags ---
 # Enable clock_gettime() in time.h.
 set(CPPROCFLAGS -D_POSIX_C_SOURCE=200112L)
@@ -1196,6 +1201,14 @@ if(WIN32)
     string(APPEND LIBBLIS_SHARED -dll)
 endif()
 
+if(THREADING_MODEL STREQUAL "no")
+    set(PC_IN_FILE "blis.pc.in")
+    set(PC_OUT_FILE "blis.pc")
+else()
+    set(PC_IN_FILE "blis-mt.pc.in")
+    set(PC_OUT_FILE "blis-mt.pc")
+endif()
+
 # Set directories for installation of libraries and header files.
 set(LIB_DIR ${CMAKE_INSTALL_PREFIX}/lib)
 set(INCLUDE_DIR ${CMAKE_INSTALL_PREFIX}/include)
@@ -1208,8 +1221,8 @@ endif()
 string(JOIN " " LDFLAGS_STRING ${LDFLAGS_STRING})
 if(NOT WIN32)
     configure_file(
-        ${CMAKE_SOURCE_DIR}/build/cmake/aocl-blas.pc.in
-        ${CMAKE_BINARY_DIR}/aocl-blas.pc
+        ${CMAKE_SOURCE_DIR}/build/cmake/${PC_IN_FILE}
+        ${CMAKE_BINARY_DIR}/${PC_OUT_FILE}
         @ONLY
     )
 endif()
@@ -1265,7 +1278,7 @@ endif()
 
 if(NOT WIN32)
     # Install package-config file.
-    install(FILES ${CMAKE_BINARY_DIR}/aocl-blas.pc DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/pkgconfig)
+    install(FILES ${CMAKE_BINARY_DIR}/${PC_OUT_FILE} DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/pkgconfig)
 endif()
 
 # Set libblis to the shared or static libblis depending on the option setting.

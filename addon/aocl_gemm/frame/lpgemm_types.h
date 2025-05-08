@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -57,7 +57,8 @@ typedef enum
 	F32 = 7,
 	S64 = 8,
 	U64 = 9,
-	F64 = 10
+	F64 = 10,
+	NONE = 11 // when we want to use default case.
 } AOCL_STORAGE_TYPE;
 
 // Enum name template:A_mat_type ## B_mat_type ## Accumulate_type ## C_mat_type.
@@ -70,9 +71,10 @@ typedef enum
 	S8S8S32OS32 = 4,	 // int8_t - A, int8_t - B, int32_t - C
 	S8S8S16OS16 = 5,	 // int8_t - A, int8_t - B, int16_t - C
 	U8S4S32OS32 = 6,		 // Only used for reordering int4_t B matrix.
-	BF16S4F32OF32 = 7	 // Only used for reordering int4_t B matrix.
+	BF16S4F32OF32 = 7,	 // Only used for reordering int4_t B matrix.
+    F32OBF16 = 8 // Only used for reordering input float matrix to bf16 reorder
 } AOCL_OPERATION_TYPE;
-#define AOCL_OPERATION_TYPE_LEN 8
+#define AOCL_OPERATION_TYPE_LEN 9
 
 typedef enum
 {
@@ -108,7 +110,14 @@ typedef enum
 {
 	A_MATRIX = 0,
 	B_MATRIX = 1,
+	AWQ_B_MATRIX = 2,
 } AOCL_MATRIX_TYPE;
+
+typedef enum
+{
+	DEFAULT = 0,
+	STRIDE2,
+} AOCL_TID_DISTR_TYPE;
 
 typedef struct
 {
@@ -127,6 +136,7 @@ typedef struct
 	dim_t cs;
 
 	AOCL_MEMORY_TAG mtag;
+	AOCL_MATRIX_TYPE mat_type;
 
 	lpgemm_mem_t storage;
 } lpgemm_obj_t;
@@ -150,12 +160,22 @@ typedef struct
 
 typedef struct
 {
+	dim_t MT;
+	dim_t NT;
+	dim_t KT;
+} lpgemm_sup_thres_t;
+
+typedef struct
+{
 	lpgemm_block_size_t blksz;
 	void_fp kern_fun_ptr;
 	void_fp packa_fun_ptr;
+	void_fp packb_mxp_fun_ptr;
 	void_fp packb_fun_ptr;
+	void_fp unpackb_fun_ptr;
 	void_fp packsclb_fun_ptr;
 	lpgemm_pack_strides_t pack_s;
+	lpgemm_sup_thres_t sup_thres;
 } lpgemm_cntx_t;
 
 typedef struct

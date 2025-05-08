@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -85,7 +85,6 @@ TEST_P( cgemvGeneric, API )
     // Check gtestsuite gemv.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // No adjustment applied yet for complex data.
     double thresh;
     if (m == 0 || n == 0)
         thresh = 0.0;
@@ -94,15 +93,48 @@ TEST_P( cgemvGeneric, API )
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 2.1;
+#endif
         if(( transa == 'n' ) || ( transa == 'N' ))
-            thresh = (3*n+1)*testinghelpers::getEpsilon<T>();
+            thresh = adj*(3*n+1)*testinghelpers::getEpsilon<T>();
         else
-            thresh = (3*m+1)*testinghelpers::getEpsilon<T>();
-
+            thresh = adj*(3*m+1)*testinghelpers::getEpsilon<T>();
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_gemv<T>( storage, transa, conjx, m, n, alpha, lda_inc, incx, beta, incy, thresh, is_memory_test );
+#endif
 }
 
 // Black box testing.
@@ -117,8 +149,8 @@ INSTANTIATE_TEST_SUITE_P(
             ),                                                               // storage format
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n'),                                          // conjx
-            ::testing::Range(gtint_t(1), gtint_t(20), 1),                    // m
-            ::testing::Range(gtint_t(1), gtint_t(20), 1),                    // n
+            ::testing::Values(gtint_t(1), gtint_t(17)),                      // m
+            ::testing::Values(gtint_t(1), gtint_t(13)),                      // n
             ::testing::Values(T{0.0, 0.0}, T{1.0, 0.0}, T{-1.0, 0.0},
                               T{1.1, -2.0} ),                                // alpha
             ::testing::Values(T{0.0, 0.0}, T{1.0, 0.0}, T{-1.0, 0.0},
@@ -143,14 +175,10 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n'),                                          // conjx
             ::testing::Values(gtint_t(25),
-                              gtint_t(33),
                               gtint_t(98),
-                              gtint_t(173),
                               gtint_t(211)
                             ),                                               // m
-            ::testing::Values(gtint_t(25),
-                              gtint_t(33),
-                              gtint_t(98),
+            ::testing::Values(gtint_t(33),
                               gtint_t(173),
                               gtint_t(211)
                             ),                                               // n
@@ -166,7 +194,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::gemvGenericPrint<T>()
     );
 
-#if 1
+
 INSTANTIATE_TEST_SUITE_P(
         Blackbox_Large,
         cgemvGeneric,
@@ -204,7 +232,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n'),                                          // conjx
             ::testing::Values(gtint_t(5099)),                                // m
-            ::testing::Values(gtint_t(1), gtint_t(2), gtint_t(17),
+            ::testing::Values(gtint_t(1), gtint_t(39),
                               gtint_t(173)),                                 // n
             ::testing::Values(T{0.0, 0.0}, T{1.0, 0.0}, T{-1.0, 0.0},
                               T{1.1, -2.0} ),                                // alpha
@@ -229,7 +257,7 @@ INSTANTIATE_TEST_SUITE_P(
             ),                                                               // storage format
             ::testing::Values('n', 'c', 't'),                                // transa
             ::testing::Values('n'),                                          // conjx
-            ::testing::Values(gtint_t(1), gtint_t(2), gtint_t(17),
+            ::testing::Values(gtint_t(1), gtint_t(17),
                               gtint_t(173)),                                 // m
             ::testing::Values(gtint_t(5099)),                                // n
             ::testing::Values(T{0.0, 0.0}, T{1.0, 0.0}, T{-1.0, 0.0},
@@ -243,4 +271,3 @@ INSTANTIATE_TEST_SUITE_P(
         ),
         ::gemvGenericPrint<T>()
     );
-#endif

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -92,13 +92,45 @@ TEST_P( zgemmGeneric, API )
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (7*k+3)*testinghelpers::getEpsilon<T>();
-        //thresh = (15*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.2;
+#else
+        double adj = 2.5;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_gemm<T>( storage, transa, transb, m, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+#endif
 }
 
 /********************************************************************/
@@ -251,6 +283,31 @@ INSTANTIATE_TEST_SUITE_P(
         ::gemmGenericPrint<dcomplex>()
     );
 
+/* NOTE : The instantiator here defines sizes such that on zen4/zen5 machines,
+          the tiny path is taken. */
+INSTANTIATE_TEST_SUITE_P(
+        Tiny_Matrix_ST,
+        zgemmGeneric,
+        ::testing::Combine(
+            ::testing::Values('c'
+#ifndef TEST_BLAS_LIKE
+                             ,'r'
+#endif
+            ),                                                              // storage format
+            ::testing::Values('n', 'c', 't'),                               // transa
+            ::testing::Values('n', 'c', 't'),                               // transb
+            ::testing::Values(gtint_t(2), gtint_t(40), gtint_t(61)),  // m
+            ::testing::Values(gtint_t(2), gtint_t(3), gtint_t(7)),    // n
+            ::testing::Values(gtint_t(10), gtint_t(16), gtint_t(21)), // k
+            ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0}, dcomplex{0, 1.0}, dcomplex{-1.0, -2.0}), // alpha
+            ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0}, dcomplex{0, 1.0}, dcomplex{1.0, 2.0}),   // beta
+            ::testing::Values(gtint_t(0), gtint_t(1)),                      // increment to the leading dim of a
+            ::testing::Values(gtint_t(0), gtint_t(2)),                      // increment to the leading dim of b
+            ::testing::Values(gtint_t(0), gtint_t(3))                       // increment to the leading dim of c
+        ),
+        ::gemmGenericPrint<dcomplex>()
+    );
+
 INSTANTIATE_TEST_SUITE_P(
         SMALL_Matrix_ST,
         zgemmGeneric,
@@ -262,9 +319,9 @@ INSTANTIATE_TEST_SUITE_P(
             ),                                                              // storage format
             ::testing::Values('n', 'c', 't'),                               // transa
             ::testing::Values('n', 'c', 't'),                               // transb
-            ::testing::Values(gtint_t(2), gtint_t(3), gtint_t(7), gtint_t(8)), // m
-            ::testing::Values(gtint_t(2), gtint_t(3), gtint_t(7), gtint_t(8)), // n
-            ::testing::Values(gtint_t(2), gtint_t(4), gtint_t(10)),            // k
+            ::testing::Values(gtint_t(201), gtint_t(3), gtint_t(7), gtint_t(8)), // m
+            ::testing::Values(gtint_t(2), gtint_t(3), gtint_t(7), gtint_t(8)),   // n
+            ::testing::Values(gtint_t(2), gtint_t(4), gtint_t(10)),              // k
             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0}, dcomplex{0, 1.0}, dcomplex{-1.0, -2.0}), // alpha
             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0}, dcomplex{0, 1.0}, dcomplex{1.0, 2.0}),   // beta
             ::testing::Values(gtint_t(0), gtint_t(1)),                      // increment to the leading dim of a

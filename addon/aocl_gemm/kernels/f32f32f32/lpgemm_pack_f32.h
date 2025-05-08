@@ -31,8 +31,8 @@
    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-#ifndef BLIS_GEMM_F32_PACKA
-#define BLIS_GEMM_F32_PACKA
+#ifndef BLIS_GEMM_F32_PACKAB
+#define BLIS_GEMM_F32_PACKAB
 
 void packa_mr16_f32f32f32of32_col_major
     (
@@ -45,6 +45,67 @@ void packa_mr16_f32f32f32of32_col_major
       dim_t*          rs_p,
       dim_t*          cs_p
     );
-#endif
+
+void packa_mr6_f32f32f32of32_avx512
+     (
+       float*       pack_a_buf,
+       const float* a,
+       const dim_t  rs,
+       const dim_t  cs,
+       const dim_t  MC,
+       const dim_t  KC,
+       dim_t*       rs_a,
+       dim_t*       cs_a
+     );
+
+void packa_mr6_f32f32f32of32_avx2
+     (
+       float*       pack_a_buf,
+       const float* a,
+       const dim_t  rs,
+       const dim_t  cs,
+       const dim_t  MC,
+       const dim_t  KC,
+       dim_t*       rs_a,
+       dim_t*       cs_a
+     );
+
+typedef void (*lpgemm_pack_f32)
+     (
+       float*,
+       const float*,
+       const dim_t,
+       const dim_t,
+       const dim_t,
+       const dim_t,
+       dim_t*,
+       dim_t*
+     );
+
+void packb_nr64_f32f32f32of32
+     (
+       float*       pack_b_buffer,
+       const float* b,
+       const dim_t  rs_b,
+       const dim_t  cs_b,
+       const dim_t  NC,
+       const dim_t  KC,
+       dim_t*       rs_p,
+       dim_t*       cs_p
+     );
+
+void packb_nr16_f32f32f32of32
+     (
+       float*       pack_b_buffer,
+       const float* b,
+       const dim_t  rs_b,
+       const dim_t  cs_b,
+       const dim_t  NC,
+       const dim_t  KC,
+       dim_t*       rs_p,
+       dim_t*       cs_p
+     );
+
+#endif //BLIS_GEMM_F32_PACKAB
 
 

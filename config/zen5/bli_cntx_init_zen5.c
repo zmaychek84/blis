@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2024 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -40,13 +40,15 @@
  */
 
 /* Blocksizes for double(d) datetype are tuned for Turin, rest are copied from Genoa */
+// blcksizes for double datatype are dynamic and will be modified at runtime by
+// function bli_dynamic_blkszs_zen5
 #define BLI_CNTX_DEFAULT_BLKSZ_LIST_TURIN(blkszs) \
 	/*                                           s      d      c      z */  \
 	bli_blksz_init_easy( &blkszs[ BLIS_MR ],    32,     8,     3,    12 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_NR ],    12,    24,     8,     4 );  \
-	bli_blksz_init_easy( &blkszs[ BLIS_MC ],   512,   120,   144,    60 );  \
-	bli_blksz_init_easy( &blkszs[ BLIS_KC ],   480,   512,   256,   512 );  \
-	bli_blksz_init_easy( &blkszs[ BLIS_NC ],  6144,  2016,  4080,  2004 );  \
+	bli_blksz_init_easy( &blkszs[ BLIS_MC ],   512,    80,   144,    60 );  \
+	bli_blksz_init_easy( &blkszs[ BLIS_KC ],   480,   384,   256,   512 );  \
+	bli_blksz_init_easy( &blkszs[ BLIS_NC ],  6144,  4032,  4080,  2004 );  \
 	                                                                        \
 	bli_blksz_init_easy( &blkszs[ BLIS_AF ],     5,     5,    -1,    -1 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_DF ],     8,     8,    -1,    -1 );
@@ -56,9 +58,9 @@
 	/*                                           s      d      c      z */  \
 	bli_blksz_init_easy( &blkszs[ BLIS_MR ],    32,     8,     3,    12 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_NR ],    12,    24,     8,     4 );  \
-	bli_blksz_init_easy( &blkszs[ BLIS_MC ],   512,   120,   144,    60 );  \
-	bli_blksz_init_easy( &blkszs[ BLIS_KC ],   480,   512,   256,   512 );  \
-	bli_blksz_init_easy( &blkszs[ BLIS_NC ],  6144,  2016,  4080,  2004 );  \
+	bli_blksz_init_easy( &blkszs[ BLIS_MC ],   512,    88,   144,    60 );  \
+	bli_blksz_init_easy( &blkszs[ BLIS_KC ],   480,   384,   256,   512 );  \
+	bli_blksz_init_easy( &blkszs[ BLIS_NC ],  6144,  4032,  4080,  2004 );  \
 	                                                                        \
 	bli_blksz_init_easy( &blkszs[ BLIS_AF ],     5,     5,    -1,    -1 );  \
 	bli_blksz_init_easy( &blkszs[ BLIS_DF ],     8,     8,    -1,    -1 );
@@ -87,7 +89,7 @@ void bli_cntx_init_zen5( cntx_t* cntx )
 
 	  // Different  GEMM kernels are used for TRSM for zen4 architecture
 	  BLIS_GEMM_FOR_TRSM_UKR,       BLIS_FLOAT,    bli_sgemm_haswell_asm_6x16,  TRUE,
-	  BLIS_GEMM_FOR_TRSM_UKR,       BLIS_DOUBLE,   bli_dgemm_zen4_asm_8x24,     TRUE,
+	  BLIS_GEMM_FOR_TRSM_UKR,       BLIS_DOUBLE,   bli_dgemm_avx512_asm_8x24,   TRUE,
 	  BLIS_GEMM_FOR_TRSM_UKR,       BLIS_DCOMPLEX, bli_zgemm_zen4_asm_4x12,     TRUE,
 
 	  // gemmtrsm_l
@@ -160,7 +162,7 @@ void bli_cntx_init_zen5( cntx_t* cntx )
 
 	  // amaxv
 	  BLIS_AMAXV_KER,  BLIS_FLOAT,    bli_samaxv_zen_int_avx512,
-	  BLIS_AMAXV_KER,  BLIS_DOUBLE,   bli_damaxv_zen_int,
+	  BLIS_AMAXV_KER,  BLIS_DOUBLE,   bli_damaxv_zen_int_avx512,
 
 	  // axpbyv
 	  BLIS_AXPBYV_KER, BLIS_FLOAT,    bli_saxpbyv_zen_int10,
@@ -325,11 +327,11 @@ void bli_cntx_init_zen5( cntx_t* cntx )
 	  BLIS_CCC, BLIS_SCOMPLEX, bli_cgemmsup_rv_zen_asm_3x8n, TRUE,
 
 	  BLIS_RRR, BLIS_DCOMPLEX, bli_zgemmsup_cv_zen4_asm_12x4m, FALSE,
-	  BLIS_RRC, BLIS_DCOMPLEX, bli_zgemmsup_cv_zen4_asm_12x4m, FALSE,
+	  BLIS_RRC, BLIS_DCOMPLEX, bli_zgemmsup_cd_zen4_asm_12x4m, FALSE,
 	  BLIS_RCR, BLIS_DCOMPLEX, bli_zgemmsup_cv_zen4_asm_12x4m, FALSE,
 	  BLIS_RCC, BLIS_DCOMPLEX, bli_zgemmsup_cv_zen4_asm_12x4m, FALSE,
 	  BLIS_CRR, BLIS_DCOMPLEX, bli_zgemmsup_cv_zen4_asm_12x4m, FALSE,
-	  BLIS_CRC, BLIS_DCOMPLEX, bli_zgemmsup_cv_zen4_asm_12x4m, FALSE,
+	  BLIS_CRC, BLIS_DCOMPLEX, bli_zgemmsup_cd_zen4_asm_12x4m, FALSE,
 	  BLIS_CCR, BLIS_DCOMPLEX, bli_zgemmsup_cv_zen4_asm_12x4m, FALSE,
 	  BLIS_CCC, BLIS_DCOMPLEX, bli_zgemmsup_cv_zen4_asm_12x4m, FALSE,
 	  cntx

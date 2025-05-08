@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2019 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2019 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -713,11 +713,11 @@ void dgemm_blis_impl
             blis_transa,
             blis_transb,
             m0, n0, k0,
-            alpha,
-            a, rs_a, cs_a,
-            b, rs_b, cs_b,
-            beta,
-            c, rs_c, cs_c
+            (double*)alpha,
+            (double*)a, rs_a, cs_a,
+            (double*)b, rs_b, cs_b,
+            (double*)beta,
+            (double*)c, rs_c, cs_c
             );
 
     if(tiny_ret == BLIS_SUCCESS)
@@ -1244,10 +1244,93 @@ void zgemm_blis_impl
 
     bool is_parallel = bli_thread_get_is_parallel(); // Check if parallel zgemm is invoked.
 
+    // Tiny gemm dispatch
+    // NOTE : The tiny gemm interface is intended to be built for zen4/zen5 configurations
+    //        In case of fat-binary build, the optimizations will be used on zen4 and zen5
+    //        machines.
+#if defined(BLIS_FAMILY_ZEN4) || defined(BLIS_FAMILY_ZEN5) || defined(BLIS_FAMILY_AMDZEN)
+    err_t ret_status = bli_zgemm_tiny
+                       (
+                         blis_transa,
+                         blis_transb,
+                         m0, n0, k0,
+                         (dcomplex*)alpha,
+                         (dcomplex*)a, rs_a, cs_a,
+                         (dcomplex*)b, rs_b, cs_b,
+                         (dcomplex*)beta,
+                         (dcomplex*)c, rs_c, cs_c,
+                         is_parallel
+                       );
+
+    if( ret_status == BLIS_SUCCESS )
+    {
+        AOCL_DTL_LOG_GEMM_STATS(AOCL_DTL_LEVEL_TRACE_1, *MKSTR(z), *m, *n, *k);
+        AOCL_DTL_TRACE_EXIT(AOCL_DTL_LEVEL_TRACE_1);
+        bli_finalize_auto();
+        return;
+    }
+#endif
+
 #ifdef BLIS_ENABLE_SMALL_MATRIX
 
-    if (((!is_parallel) && (((m0*k0) <= 16384) || ((n0*k0) <= 16384))) ||
-        ((is_parallel) && (((m0 <= 32) || (n0 <= 32) || (k0 <= 32)) && ((m0 + n0 + k0) <= 100))))
+    /* Querying the acrhitecture ID at runtime to choose the code-path based on the micro-arch */
+    /* A runtime query is required in order to support the selection with fat-binary */
+    arch_t arch_id = bli_arch_query_id();
+
+    /* Boolean to track the entry to small path */
+    bool entry_to_small = false;
+    /* Setting the thresholds based on the input dimensions.
+       The computation is typecasted to double to support corner
+       cases, such as the dimensions being INT32_MAX or INT64_MAX */
+    double a_thresh = (double)m0 * (double)k0;
+    double b_thresh = (double)k0 * (double)n0;
+
+    /* The following switch statement evaluates the condition
+       to enter the "small" path for the supported ZEN architectures,
+       both in single-thread(ST) and multi-threaded(MT) mode. NOTE : The
+       current ZGEMM small path is based on the AVX2 ISA. The thresholds
+       are subject to further tuning post introducing an AVX512 code-path
+       for tiny/small sizes. */
+    switch( arch_id )
+    {
+    #if defined(BLIS_KERNELS_ZEN4)
+        case BLIS_ARCH_ZEN5:
+        {
+            /* Booleans and thresholds to calculate the entry to small path(ST and MT modes)*/
+            double c_thresh = (double)m0 * (double)n0;
+            double overall_thresh = (double)m0 * (double)n0 * (double)k0;
+            bool mat_based_thresh = (( a_thresh < 500 ) || ( b_thresh < 500 ) || ( c_thresh < 500 ));
+            bool entry_to_small_st = (( !is_parallel ) && mat_based_thresh && ( overall_thresh < 7500 ));
+            bool entry_to_small_mt = (( is_parallel ) && mat_based_thresh && ( overall_thresh < 5000 ));
+
+            entry_to_small = entry_to_small_st || entry_to_small_mt;
+            break;
+        }
+        case BLIS_ARCH_ZEN4:
+        {
+            /* Booleans and thresholds to calculate the entry to small path(ST and MT modes)*/
+            double c_thresh = (double)m0 * (double)n0;
+            double overall_thresh = (double)m0 * (double)n0 * (double)k0;
+            bool mat_based_thresh = (( a_thresh < 600 ) || ( b_thresh < 600 ) || ( c_thresh < 600 ));
+            bool entry_to_small_st = (( !is_parallel ) && mat_based_thresh && ( overall_thresh < 20000 ));
+            bool entry_to_small_mt = (( is_parallel ) && mat_based_thresh && ( overall_thresh < 12500 ));
+
+            entry_to_small = entry_to_small_st || entry_to_small_mt;
+            break;
+        }
+    #endif
+        case BLIS_ARCH_ZEN3:
+        case BLIS_ARCH_ZEN2:
+        case BLIS_ARCH_ZEN:
+            entry_to_small = ((!is_parallel) && ((a_thresh <= 16384) || (b_thresh <= 16384))) ||
+                             ((is_parallel) && (((m0 <= 32) || (n0 <= 32) || (k0 <= 32)) &&
+                              ((m0 + n0 + k0) <= 100)));
+            break;
+        default :
+            ;
+    }
+
+    if ( entry_to_small )
     {
         err_t status = BLIS_NOT_YET_IMPLEMENTED;
         if (bli_is_notrans(blis_transa))

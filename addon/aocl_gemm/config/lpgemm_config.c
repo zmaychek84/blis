@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -38,14 +38,13 @@
 #include "lpgemm_blksz_map.h"
 #include "lpgemm_kernels.h"
 #include "lpgemm_pack_bf16.h"
-#include "lpgemm_packb_s16.h"
-#include "lpgemm_packa_s16.h"
 #include "lpgemm_packa.h"
 #include "lpgemm_packb.h"
 #include "lpgemm_packa_s8.h"
 #include "lpgemm_packb_s8.h"
-#include "lpgemm_packb_s8s16.h"
 #include "lpgemm_pack_f32.h"
+#include "lpgemm_logger.h"
+#include "lpgemm_thread_utils.h"
 
 static lpgemm_cntx_t global_cntx_t_list[AOCL_OPERATION_TYPE_LEN] \
 			__attribute__((aligned(64))); //Only one op type supported now.
@@ -55,6 +54,17 @@ static lpgemm_eltwise_ops_cntx_t
 	global_eltwise_ops_cntx_t_list[AOCL_ELTWISE_OPS_OPERATION_TYPE_LEN] \
 			__attribute__((aligned(64))); //Post-ops only utils without gemm.
 
+static arch_t global_lpgemm_enable_arch = BLIS_ARCH_ERROR;
+
+#ifdef LPGEMM_BF16_JIT
+// This bool indicates whether JIT kernel generation has been successful.
+static bool jit_kernels_generated = FALSE;
+bool get_jit_kernels_generated()
+{
+	return jit_kernels_generated;
+}
+#endif
+
 // This array is to store function pointers to jit generated kernels.
 static void* global_jit_kernels[ LPGEMM_BF16_MR ]
                             [ ( LPGEMM_BF16_NR / NUM_F32_ELEMS_PER_ZMM ) + 1 ]
@@ -63,9 +73,51 @@ static void* global_jit_kernels[ LPGEMM_BF16_MR ]
 // Buffer size is chosen in order to accommodate the
 // worst-case scenario for MR=6 and NR=64.
 // The buffersize is chosen using bruteforce method.
-#define JIT_KERNEL_SIZE ( 10 * BLIS_PAGE_SIZE )
+#define JIT_KERNEL_SIZE ( 14 * BLIS_PAGE_SIZE )
+
+#ifdef DUMP_JIT_CODE
+//Funtion to Dump JIT generated kernel
+void dump_jit_code(const void *code, int code_size, const char *code_name, int m, int n) {
+    if (code) {
+        static int counter = 0;
+#define MAX_FNAME_LEN 256
+        char fname[MAX_FNAME_LEN + 1];
+        // TODO (Roma): support prefix for code / linux perf dumps
+        snprintf(fname, MAX_FNAME_LEN, "dnnl_dump_cpu_%s_%dx%d.%d.bin", code_name, m, n,
+                counter);
+        counter++;
+        FILE *fp = fopen(fname, "wb+");
+        // Failure to dump code is not fatal
+        if (fp) {
+            int unused = fwrite(code, code_size, 1, fp);
+            //UNUSED(unused);
+            fclose(fp);
+        }
+    }
+#undef MAX_FNAME_LEN
+}
+#endif
 
 static bli_pthread_once_t once_check_lpgemm_func_map_init = BLIS_PTHREAD_ONCE_INIT;
+
+static void _lpgemm_init_enable_arch()
+{
+	arch_t arch_id = bli_arch_query_id();
+	bool enbl_instr = bli_aocl_enable_instruction_query();
+
+	if ( ( enbl_instr == TRUE ) &&
+		 ( ( arch_id == BLIS_ARCH_ZEN3 ) ||
+		   ( arch_id == BLIS_ARCH_ZEN2 ) ||
+		   ( arch_id == BLIS_ARCH_ZEN ) ) )
+	{
+		global_lpgemm_enable_arch = BLIS_ARCH_ZEN3;
+	}
+}
+
+arch_t lpgemm_get_enabled_arch()
+{
+	return global_lpgemm_enable_arch;
+}
 
 static void _lpgemm_util_cntx_init_func_map()
 {
@@ -121,6 +173,8 @@ static void _lpgemm_cntx_init_func_map()
 #define KMACRO(ID,FUNC_PTR) global_cntx_t_list[ID].kern_fun_ptr = FUNC_PTR;
 #define PAMACRO(ID,FUNC_PTR) global_cntx_t_list[ID].packa_fun_ptr = FUNC_PTR;
 #define PBMACRO(ID,FUNC_PTR) global_cntx_t_list[ID].packb_fun_ptr = FUNC_PTR;
+#define PBMXPMACRO(ID, FUNC_PTR) global_cntx_t_list[ID].packb_mxp_fun_ptr = FUNC_PTR;
+#define UBMACRO(ID, FUNC_PTR) global_cntx_t_list[ID].unpackb_fun_ptr = FUNC_PTR;
 #define PBSMACRO(ID, FUNC_PTR) global_cntx_t_list[ID].packsclb_fun_ptr = FUNC_PTR;
 #define JITMACRO(ID, FUNC_PTR) global_cntx_t_list[ID].jit_kernel = FUNC_PTR;
 	//TODO: Default initialize with reference kernels so that kernel pointer
@@ -133,6 +187,7 @@ static void _lpgemm_cntx_init_func_map()
 	global_cntx_t_list[F32F32F32OF32].kern_fun_ptr = NULL;
 	global_cntx_t_list[BF16BF16F32OF32].kern_fun_ptr = NULL;
 	global_cntx_t_list[BF16S4F32OF32].kern_fun_ptr = NULL;
+	global_cntx_t_list[F32OBF16].kern_fun_ptr = NULL;
 
 	// Kernel dispatch object factory.
 	if ( bli_cpuid_is_avx512bf16_supported() == TRUE )
@@ -141,6 +196,8 @@ static void _lpgemm_cntx_init_func_map()
 		LPGEMM_KERN_FUNC_MAP_AVX512_VNNI_BF16
 		LPGEMM_PACKA_FUNC_MAP_AVX512_VNNI_BF16
 		LPGEMM_PACKB_FUNC_MAP_AVX512_VNNI_BF16
+		LPGEMM_PACKBMXP_FUNC_MAP_AVX512_VNNI_BF16
+		LPGEMM_UNPACKB_FUNC_MAP_AVX512_VNNI_BF16
 		LPGEMM_PACKSCLB_FUNC_MAP_AVX512_VNNI_BF16
 
 #ifdef LPGEMM_BF16_JIT
@@ -152,6 +209,7 @@ static void _lpgemm_cntx_init_func_map()
 
 			dim_t num_N_vars = ( LPGEMM_BF16_NR / NUM_F32_ELEMS_PER_ZMM ) + 1;
 
+			jit_kernels_generated = TRUE;
 			for ( dim_t m = 0; m < LPGEMM_BF16_MR; m++ )
 			{
 				for( dim_t n = 0; n < num_N_vars; n++ )
@@ -168,11 +226,28 @@ static void _lpgemm_cntx_init_func_map()
 						                global_jit_kernels[m][n],
 						                JIT_KERNEL_SIZE
 						              );
+					#ifdef DUMP_JIT_CODE
+						dump_jit_code(global_jit_kernels[m][n], JIT_KERNEL_SIZE,
+									"lpgemm", inputs.MR, inputs.NR);
+					#endif
+					}
+					else
+					{
+						jit_kernels_generated = FALSE;
 					}
 				}
 			}
+
 #endif
 #endif
+
+		// If arch is updated at runtime, it is expeceted to be honoured.
+		if ( global_lpgemm_enable_arch == BLIS_ARCH_ZEN3 )
+		{
+			LPGEMM_KERN_FUNC_UPD_MAP_AVX512_VNNI_BF16_TO_AVX2;
+			LPGEMM_PACKA_FUNC_UPD_MAP_AVX512_VNNI_BF16_TO_AVX2;
+			LPGEMM_PACKB_FUNC_UPD_MAP_AVX512_VNNI_BF16_TO_AVX2;
+		}
 	}
 	else if ( bli_cpuid_is_avx512vnni_supported() == TRUE )
 	{
@@ -180,7 +255,15 @@ static void _lpgemm_cntx_init_func_map()
 		LPGEMM_KERN_FUNC_MAP_AVX512_VNNI
 		LPGEMM_PACKA_FUNC_MAP_AVX512_VNNI
 		LPGEMM_PACKB_FUNC_MAP_AVX512_VNNI
+		LPGEMM_PACKBMXP_FUNC_MAP_AVX512_VNNI
 #endif
+
+		if ( global_lpgemm_enable_arch == BLIS_ARCH_ZEN3 )
+		{
+			LPGEMM_KERN_FUNC_UPD_MAP_AVX512_VNNI_TO_AVX2
+			LPGEMM_PACKA_FUNC_UPD_MAP_AVX512_VNNI_TO_AVX2;
+			LPGEMM_PACKB_FUNC_UPD_MAP_AVX512_VNNI_TO_AVX2;
+		}
 	}
 	else if ( bli_cpuid_is_avx2fma3_supported() == TRUE )
 	{
@@ -190,9 +273,10 @@ static void _lpgemm_cntx_init_func_map()
 		LPGEMM_PACKB_FUNC_MAP_AVX2
 #endif
 	}
+
 	// If built with a config not supporting zen3/zen4/amdzen, error out
 	// since reference kernels are not available.
-	if ( global_cntx_t_list[F32F32F32OF32].kern_fun_ptr == NULL )
+	if (global_cntx_t_list[F32F32F32OF32].kern_fun_ptr == NULL)
 	{
 		bli_print_msg( "AOCL_GEMM is not compiled using correct Zen config."
 				" Compile using zen3/zen4/amdzen config.",
@@ -201,6 +285,7 @@ static void _lpgemm_cntx_init_func_map()
 	}
 
 #undef PBMACRO
+#undef PBMXPMACRO
 #undef PAMACRO
 #undef KMACRO
 }
@@ -261,6 +346,11 @@ static void _lpgemm_cntx_init_blksz_map()
 	if ( bli_cpuid_is_avx512vnni_supported() == TRUE )
 	{
 		LPGEMM_BLKSZ_MAP_ZEN4
+
+		if ( global_lpgemm_enable_arch == BLIS_ARCH_ZEN3 )
+		{
+			LPGEMM_BLKSZ_UPD_MAP_ZEN4_TO_ZEN
+		}
 	}
 	else if ( bli_cpuid_is_avx2fma3_supported() == TRUE )
 	{
@@ -272,6 +362,45 @@ static void _lpgemm_cntx_init_blksz_map()
 	}
 
 #undef XMACRO
+}
+
+BLIS_INLINE void lpgemm_set_sup_thres_global_cntx
+     (
+       AOCL_OPERATION_TYPE op_type,
+       dim_t MT,
+       dim_t NT,
+       dim_t KT
+     )
+{
+	global_cntx_t_list[op_type].sup_thres.MT = MT;
+	global_cntx_t_list[op_type].sup_thres.NT = NT;
+	global_cntx_t_list[op_type].sup_thres.KT = KT;
+}
+
+static void _lpgemm_cntx_init_sup_thres_map()
+{
+#define STMACRO(ID,MT,NT,KT) \
+	lpgemm_set_sup_thres_global_cntx(ID, MT, NT, KT); \
+
+	if ( bli_cpuid_is_avx512vnni_supported() == TRUE )
+	{
+		LPGEMM_SUP_THRES_MAP_ZEN4
+
+		if ( global_lpgemm_enable_arch == BLIS_ARCH_ZEN3 )
+		{
+			LPGEMM_SUP_THRES_UPD_MAP_ZEN4_TO_ZEN
+		}
+	}
+	else if ( bli_cpuid_is_avx2fma3_supported() == TRUE )
+	{
+		LPGEMM_SUP_THRES_MAP_ZEN
+	}
+	else
+	{
+		LPGEMM_SUP_THRES_MAP_ZEN
+	}
+
+#undef STMACRO
 }
 
 BLIS_INLINE void lpgemm_set_block_sizes_global_eltwise_ops_cntx
@@ -315,14 +444,17 @@ static void _lpgemm_eltwise_ops_cntx_init_blksz_map()
 
 static void lpgemm_cntx_init_map()
 {
+	_lpgemm_init_enable_arch();
 	_lpgemm_cntx_init_func_map();
 	_lpgemm_cntx_init_blksz_map();
+	_lpgemm_cntx_init_sup_thres_map();
 	_lpgemm_eltwise_ops_cntx_init_blksz_map();
 	_lpgemm_eltwise_ops_cntx_init_func_map();
 	_lpgemm_util_cntx_init_func_map();
 }
 
-// Sets default block sizes for lpgemm. Currently only u8s8s32 supported.
+// Set default block sizes for lpgemm.
+// Detect thread topology for lpgemm.
 void aocl_lpgemm_init_global_cntx()
 {
 	bli_pthread_once
@@ -330,6 +462,8 @@ void aocl_lpgemm_init_global_cntx()
 	  &once_check_lpgemm_func_map_init,
 	  lpgemm_cntx_init_map
 	);
+
+	lpgemm_init_thread_attrs();
 }
 
 lpgemm_cntx_t* lpgemm_get_global_cntx_obj( AOCL_OPERATION_TYPE op )
@@ -371,6 +505,21 @@ dim_t lpgemm_get_block_size_NR_global_cntx( AOCL_OPERATION_TYPE op_type )
 dim_t lpgemm_get_block_size_MR_global_cntx( AOCL_OPERATION_TYPE op_type )
 {
 	return global_cntx_t_list[op_type].blksz.MR;
+}
+
+dim_t lpgemm_get_sup_thres_MT_global_cntx( AOCL_OPERATION_TYPE op_type )
+{
+	return global_cntx_t_list[op_type].sup_thres.MT;
+}
+
+dim_t lpgemm_get_sup_thres_NT_global_cntx( AOCL_OPERATION_TYPE op_type )
+{
+	return global_cntx_t_list[op_type].sup_thres.NT;
+}
+
+dim_t lpgemm_get_sup_thres_KT_global_cntx( AOCL_OPERATION_TYPE op_type )
+{
+	return global_cntx_t_list[op_type].sup_thres.KT;
 }
 
 void lpgemm_get_packa_strides( lpgemm_cntx_t* lcntx, dim_t* rs, dim_t* cs )

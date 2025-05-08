@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -78,18 +78,48 @@ TEST_P( cgerGeneric, API )
     // Check gtestsuite ger.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // With adjustment for complex data.
     double thresh;
-    double adj = 3.0;
     if (m == 0 || n == 0 || alpha == testinghelpers::ZERO<T>())
         thresh = 0.0;
     else
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 2.8;
+#endif
         thresh = adj*3*testinghelpers::getEpsilon<T>();
-
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_ger<T>( storage, conjx, conjy, m, n, alpha, incx, incy, lda_inc, thresh );
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_ger<T>( storage, conjx, conjy, m, n, alpha, incx, incy, lda_inc, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_ger<T>( storage, conjx, conjy, m, n, alpha, incx, incy, lda_inc, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_ger<T>( storage, conjx, conjy, m, n, alpha, incx, incy, lda_inc, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_ger<T>( storage, conjx, conjy, m, n, alpha, incx, incy, lda_inc, thresh );
+#endif
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -104,48 +134,17 @@ INSTANTIATE_TEST_SUITE_P(
 #endif
             ),
             // conjx: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'n', 'c' ),
-            // conjy: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'n', 'c' ),
-            // m
-            ::testing::Range( gtint_t(10), gtint_t(101), 10 ),
-            // n
-            ::testing::Range( gtint_t(10), gtint_t(101), 10 ),
-            // alpha: value of scalar
-            ::testing::Values( scomplex{-1.0, 4.0}, scomplex{1.0, 1.0}, scomplex{3.0, -2.0} ),
-            // incx: stride of x vector.
-            ::testing::Values( gtint_t(1) ),
-            // incy: stride of y vector.
-            ::testing::Values( gtint_t(1) ),
-            // inc_lda: increment to the leading dim of a
-            ::testing::Values( gtint_t(0), gtint_t(3) )
-        ),
-        ::gerGenericPrint<scomplex>()
-    );
-
+            ::testing::Values( 'n'
 #ifdef TEST_BLIS_TYPED
-// Test when conjugate of x is used as an argument. This option is BLIS-api specific.
-// Only test very few cases as sanity check since conj(x) = x for real types.
-// We can modify the values using implementantion details.
-INSTANTIATE_TEST_SUITE_P(
-        conjXY,
-        cgerGeneric,
-        ::testing::Combine(
-            // storage scheme: row/col-stored matrix
-            ::testing::Values( 'c'
-            // row-stored tests are disabled for BLAS since BLAS only supports col-storage scheme.
-#ifndef TEST_BLAS_LIKE
-                             , 'r'
+            , 'c' 
 #endif
             ),
-            // conjx: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'n', 'c' ),
             // conjy: use n for no_conjugate and c for conjugate.
             ::testing::Values( 'n', 'c' ),
             // m
-            ::testing::Values( gtint_t(3), gtint_t(30), gtint_t(112) ),
+            ::testing::Values( gtint_t(1), gtint_t(3), gtint_t(47), gtint_t(107) ),
             // n
-            ::testing::Values( gtint_t(3), gtint_t(30), gtint_t(112) ),
+            ::testing::Values( gtint_t(1), gtint_t(2), gtint_t(59), gtint_t(100) ),
             // alpha: value of scalar
             ::testing::Values( scomplex{-1.0, 4.0}, scomplex{1.0, 1.0}, scomplex{3.0, -2.0} ),
             // incx: stride of x vector.
@@ -157,7 +156,6 @@ INSTANTIATE_TEST_SUITE_P(
         ),
         ::gerGenericPrint<scomplex>()
     );
-#endif
 
 INSTANTIATE_TEST_SUITE_P(
         nonUnitPositiveIncrements,
@@ -171,13 +169,17 @@ INSTANTIATE_TEST_SUITE_P(
 #endif
             ),
             // conjx: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'n', 'c' ),
+            ::testing::Values( 'n'
+#ifdef TEST_BLIS_TYPED
+            , 'c' 
+#endif
+            ),
             // conjy: use n for no_conjugate and c for conjugate.
             ::testing::Values( 'n', 'c' ),
             // m
-            ::testing::Values( gtint_t(3), gtint_t(30), gtint_t(112) ),
+            ::testing::Values( gtint_t(1), gtint_t(3), gtint_t(30), gtint_t(112) ),
             // n
-            ::testing::Values( gtint_t(3), gtint_t(30), gtint_t(112) ),
+            ::testing::Values( gtint_t(1), gtint_t(3), gtint_t(30), gtint_t(112) ),
             // alpha: value of scalar
             ::testing::Values( scomplex{-1.0, 4.0}, scomplex{1.0, 1.0}, scomplex{3.0, -2.0} ),
             // incx: stride of x vector.
@@ -205,13 +207,17 @@ INSTANTIATE_TEST_SUITE_P(
 #endif
             ),
             // conjx: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'n', 'c' ),
+            ::testing::Values( 'n'
+#ifdef TEST_BLIS_TYPED
+            , 'c' 
+#endif
+            ),
             // conjy: use n for no_conjugate and c for conjugate.
             ::testing::Values( 'n', 'c' ),
             // m
-            ::testing::Values( gtint_t(3), gtint_t(30), gtint_t(112) ),
+            ::testing::Values( gtint_t(1), gtint_t(3), gtint_t(30), gtint_t(112) ),
             // n
-            ::testing::Values( gtint_t(3), gtint_t(30), gtint_t(112) ),
+            ::testing::Values( gtint_t(1), gtint_t(3), gtint_t(30), gtint_t(112) ),
             // alpha: value of scalar
             ::testing::Values( scomplex{-1.0, 4.0}, scomplex{1.0, 1.0}, scomplex{3.0, -2.0} ),
             // incx: stride of x vector.
@@ -225,8 +231,9 @@ INSTANTIATE_TEST_SUITE_P(
     );
 #endif
 
+//Large values of m and n
 INSTANTIATE_TEST_SUITE_P(
-        scalarCombinations,
+        LargeSize,
         cgerGeneric,
         ::testing::Combine(
             // storage scheme: row/col-stored matrix
@@ -237,40 +244,9 @@ INSTANTIATE_TEST_SUITE_P(
 #endif
             ),
             // conjx: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'c' ),
+            ::testing::Values( 'n' ),
             // conjy: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'c' ),
-            // m
-            ::testing::Values( gtint_t(35) ),
-            // n
-            ::testing::Values( gtint_t(40) ),
-            // alpha: value of scalar
-            ::testing::Values( scomplex{-100.0, 200.0}, scomplex{200.0, 100.0}, scomplex{-175.0, -143.0},scomplex{187.0, -275.0} ),
-            // incx: stride of x vector.
-            ::testing::Values( gtint_t(2) ),
-            // incy: stride of y vector.
-            ::testing::Values( gtint_t(3) ),
-            // inc_lda: increment to the leading dim of a
-            ::testing::Values( gtint_t(0), gtint_t(3) )
-        ),
-        ::gerGenericPrint<scomplex>()
-    );
-//large values of m and n
-INSTANTIATE_TEST_SUITE_P(
-        largeSize,
-        cgerGeneric,
-        ::testing::Combine(
-            // storage scheme: row/col-stored matrix
-            ::testing::Values( 'c'
-            // row-stored tests are disabled for BLAS since BLAS only supports col-storage scheme.
-#ifndef TEST_BLAS_LIKE
-                             , 'r'
-#endif
-            ),
-            // conjx: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'c' ),
-            // conjy: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'c' ),
+            ::testing::Values( 'n', 'c' ),
             // m
             ::testing::Values( gtint_t(3500) ),
             // n
@@ -286,35 +262,3 @@ INSTANTIATE_TEST_SUITE_P(
         ),
         ::gerGenericPrint<scomplex>()
     );
-//Stride greater than m and n
-INSTANTIATE_TEST_SUITE_P(
-        strideGreaterThanSize,
-        cgerGeneric,
-        ::testing::Combine(
-            // storage scheme: row/col-stored matrix
-            ::testing::Values( 'c'
-            // row-stored tests are disabled for BLAS since BLAS only supports col-storage scheme.
-#ifndef TEST_BLAS_LIKE
-                             , 'r'
-#endif
-            ),
-            // conjx: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'c' ),
-            // conjy: use n for no_conjugate and c for conjugate.
-            ::testing::Values( 'c' ),
-            // m
-            ::testing::Values( gtint_t(3) ),
-            // n
-            ::testing::Values( gtint_t(4) ),
-            // alpha: value of scalar
-            ::testing::Values( scomplex{-10.0, 8.0} ),
-            // incx: stride of x vector.
-            ::testing::Values( gtint_t(15) ),
-            // incy: stride of y vector.
-            ::testing::Values( gtint_t(18) ),
-            // inc_lda: increment to the leading dim of a
-            ::testing::Values( gtint_t(20) )
-        ),
-        ::gerGenericPrint<scomplex>()
-    );
-

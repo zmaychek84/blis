@@ -5,7 +5,7 @@
    libraries.
 
    Copyright (C) 2014, The University of Texas at Austin
-   Copyright (C) 2021 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2021 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -49,38 +49,17 @@ bli_pthread_mutex_t global_rntm_mutex = BLIS_PTHREAD_MUTEX_INITIALIZER;
 
 void bli_rntm_init_from_global( rntm_t* rntm )
 {
-	// Initializes supplied rntm from a combination of global and
-	// thread local data (global_rntm and tl_rntm respectively).
-
-	dim_t jc, pc, ic, jr, ir;
-
-	// We must ensure that global_rntm has been initialized
+	// We must ensure that global_rntm and tl_rntm have been initialized
 	bli_init_once();
 
-	// We must also ensure that tl_rntm has been updated.
-	bli_thread_update_tl();
+	// Initialize supplied rntm from tl_rntm.
+	*rntm = tl_rntm;
 
-	// Acquire the mutex protecting global_rntm.
-	bli_pthread_mutex_lock( &global_rntm_mutex );
-
-	// Initialize supplied rntm from global_rntm.
-	*rntm = global_rntm;
-
-	// Release the mutex protecting global_rntm.
-	bli_pthread_mutex_unlock( &global_rntm_mutex );
-
-	// Now update threading info in supplied rntm from tl_rntm
-	bli_rntm_set_auto_factor_only( tl_rntm.auto_factor, rntm );
-	bli_rntm_set_num_threads_only( tl_rntm.num_threads, rntm );
-
-	jc = bli_rntm_jc_ways( &tl_rntm );
-	pc = bli_rntm_pc_ways( &tl_rntm );
-	ic = bli_rntm_ic_ways( &tl_rntm );
-	jr = bli_rntm_jr_ways( &tl_rntm );
-	ir = bli_rntm_ir_ways( &tl_rntm );
-	bli_rntm_set_ways_only( jc, pc, ic, jr, ir, rntm );
-
-	bli_rntm_set_blis_mt_only( tl_rntm.blis_mt, rntm );
+#ifdef BLIS_ENABLE_MULTITHREADING
+	// Now update threading info to account for current OpenMP
+	// number of threads and active levels.
+	bli_thread_update_rntm_from_env( rntm );
+#endif
 
 #if 0
 	printf( "bli_rntm_init_from_global()\n" );
@@ -545,7 +524,6 @@ dim_t bli_rntm_calc_num_threads_in
 #endif
 
 
-#ifdef AOCL_DYNAMIC
 // Calculates the optimum number of threads using m, n, k dimensions.
 // This function modifies only the local copy of rntm with optimum threads.
 // tl_rntm will remain unchanged. As a result, num_threads set by
@@ -560,6 +538,9 @@ void bli_nthreads_optimum(
 				 )
 {
 #ifndef BLIS_ENABLE_MULTITHREADING
+	return;
+#endif
+#ifndef AOCL_DYNAMIC
 	return;
 #endif
 
@@ -1267,20 +1248,37 @@ void bli_nthreads_optimum(
 	}
 	else if( family == BLIS_TRSM && bli_obj_is_double(c) )
 	{
-	  dim_t m = bli_obj_length(c);
-	  dim_t n = bli_obj_width(c);
+		dim_t m = bli_obj_length(c);
+		dim_t n = bli_obj_width(c);
 
+		arch_t id = bli_arch_query_id();
+		if (id == BLIS_ARCH_ZEN5)
+		{
+			if ( (m < 58 && n < 138) || (m < 1020 && n < 12))
+				n_threads_ideal = 1;
+			else if ((m < 137) && (n < 137))
+				n_threads_ideal = 8;
+			else if ((m < 324))
+				n_threads_ideal = 32;
+			else if ((n < 1020) || (n < 4294 && m < 1360))
+				n_threads_ideal = 64;
+			else
+				n_threads_ideal = n_threads;
+		}
+		else
+		{
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
-		if ( (m <= 300) && (n <= 300) )
-			n_threads_ideal = 8;
-		else if ( (m <= 400) && (n <= 400) )
-			n_threads_ideal = 16;
-		  else if ( (m <= 900) && (n <= 900) )
-			n_threads_ideal = 32;
+			if ( (m <= 300) && (n <= 300) )
+				n_threads_ideal = 8;
+			else if ( (m <= 400) && (n <= 400) )
+				n_threads_ideal = 16;
+		  	else if ( (m <= 900) && (n <= 900) )
+				n_threads_ideal = 32;
 #else
-		if ( (m <= 512) && (n <= 512) )
-			n_threads_ideal = 4;
+			if ( (m <= 512) && (n <= 512) )
+				n_threads_ideal = 4;
 #endif
+		}
 	}
 	else if( family == BLIS_TRSM && bli_obj_is_dcomplex(c))
 	{
@@ -1495,6 +1493,7 @@ void bli_nthreads_optimum(
 	return;
 }
 
+#ifdef AOCL_DYNAMIC
 // Calculates the optimum number of threads along with the factorization
 // (ic, jc) using m, n, k dimensions. This function modifies only the local
 // copy of rntm with optimum threads. Since tl_rntm remains unchanged the
@@ -1613,11 +1612,40 @@ BLIS_INLINE void aocl_dscalv_dynamic
 	switch (arch_id)
 	{
 		case BLIS_ARCH_ZEN5:
-		case BLIS_ARCH_ZEN4:
-		case BLIS_ARCH_ZEN:
-		case BLIS_ARCH_ZEN2:
-		case BLIS_ARCH_ZEN3:
+			if ( n_elem <= 63894 )
+				*nt_ideal = 1;
+			else if ( n_elem <= 145165 )
+				*nt_ideal = 4;
+			else if ( n_elem <= 4487626 )
+				*nt_ideal = 8;
+			else if ( n_elem <= 5773817 )
+				*nt_ideal = 32;
+			else if ( n_elem <= 10000000 )
+				*nt_ideal = 64;
+			else
+				*nt_ideal = 96;
 
+			break;
+
+		case BLIS_ARCH_ZEN4:
+			if ( n_elem <= 27500 )
+				*nt_ideal = 1;
+			else if ( n_elem <= 100000 )
+				*nt_ideal = 2;
+			else if ( n_elem <= 145000 )
+				*nt_ideal = 4;
+			else if ( n_elem <= 4944375 )
+				*nt_ideal = 8;
+			else if( n_elem <= 10000000 )
+				*nt_ideal = 32;
+			else
+				*nt_ideal = 64;
+
+			break;
+
+		case BLIS_ARCH_ZEN3:
+		case BLIS_ARCH_ZEN2:
+		case BLIS_ARCH_ZEN:
 			if ( n_elem <= 30000)
 				*nt_ideal = 1;
 			else if (n_elem <= 100000)

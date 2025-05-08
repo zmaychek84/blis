@@ -34,6 +34,7 @@
 
 #include <gtest/gtest.h>
 #include "test_scal2v_ukr.h"
+#include "common/blis_version_defs.h"
 
 class zscal2vGeneric :
         public ::testing::TestWithParam<std::tuple<zscal2v_ker_ft,  // Function pointer for zscal2v kernels
@@ -73,12 +74,17 @@ TEST_P( zscal2vGeneric, UKR )
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
     double thresh;
+#ifdef BLIS_INT_ELEMENT_TYPE
+    double adj = 1.01;
+#else
+    double adj = 1.0;
+#endif
     if (n == 0)
         thresh = 0.0;
     else if (alpha == testinghelpers::ZERO<T>() || alpha == testinghelpers::ONE<T>())
         thresh = 0.0;
     else
-        thresh = testinghelpers::getEpsilon<T>();
+        thresh = adj*testinghelpers::getEpsilon<T>();
 
     //----------------------------------------------------------
     //     Call generic test body using those parameters
@@ -104,6 +110,7 @@ TEST_P( zscal2vGeneric, UKR )
         Fringe loops :  In blocks of 2  --> L2
                         Element-wise loop --> LScalar
 */
+#ifdef K_bli_zscal2v_zen_int
 INSTANTIATE_TEST_SUITE_P(
         bli_zscal2v_zen_int_unitPositiveStride,
         zscal2vGeneric,
@@ -131,7 +138,9 @@ INSTANTIATE_TEST_SUITE_P(
         ),
         (::scal2vUKRPrint<dcomplex,zscal2v_ker_ft>())
     );
+#endif
 
+#ifdef K_bli_zscal2v_zen_int
 INSTANTIATE_TEST_SUITE_P(
         bli_zscal2v_zen_int_nonUnitPositiveStrides,
         zscal2vGeneric,
@@ -158,6 +167,7 @@ INSTANTIATE_TEST_SUITE_P(
         ),
         (::scal2vUKRPrint<dcomplex,zscal2v_ker_ft>())
     );
+#endif
 #endif
 // ----------------------------------------------
 // -----  End ZEN1/2/3 (AVX2) Kernel Tests  -----

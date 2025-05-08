@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2024 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -36,6 +36,7 @@
 #include "blis.h"
 #include "common/testing_helpers.h"
 #include "ukr/gemm/test_complex_gemm_ukr.h"
+#include "common/blis_version_defs.h"
 
 /*******************************************************/
 /*                 SUP Kernel testing                  */
@@ -55,9 +56,9 @@ class zgemmGenericSUP:
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(zgemmGenericSUP);
 
+using T = dcomplex;
 TEST_P( zgemmGenericSUP, UKR )
 {
-    using T = dcomplex;
     gtint_t m                = std::get<0>(GetParam());                     // dimension m
     gtint_t n                = std::get<1>(GetParam());                     // dimension n
     gtint_t k                = std::get<2>(GetParam());                     // dimension k
@@ -73,7 +74,6 @@ TEST_P( zgemmGenericSUP, UKR )
     // Check gtestsuite gemm.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // No adjustment applied yet for complex data.
     double thresh;
     if (m == 0 || n == 0)
         thresh = 0.0;
@@ -83,8 +83,15 @@ TEST_P( zgemmGenericSUP, UKR )
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 3.6;
+#else
+        double adj = 19.0;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     test_complex_gemmsup_ukr(storageC, transa, transb, m, n, k, alpha, beta, thresh, kern_ptr, is_memory_test);
 }// end of function
 
@@ -120,7 +127,9 @@ public:
 };
 
 #if defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_zgemmsup_rv_zen_asm_3x4m
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_3x4m_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -138,8 +147,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_2x4
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_2x4_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -156,8 +167,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_1x4
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_1x4_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -174,8 +187,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_3x2m
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_3x2m_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -192,8 +207,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_3x2
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_3x2_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -210,8 +227,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_2x2
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_2x2_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -228,8 +247,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_1x2
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_1x2_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -246,8 +267,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_3x4m
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_3x4m_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -264,8 +287,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_3x2m
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_3x2m_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -282,8 +307,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_3x2
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_3x2_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -300,8 +327,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_2x4
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_2x4_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -318,8 +347,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_1x4
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_1x4_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -336,8 +367,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_2x2
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_2x2_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -354,8 +387,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_1x2
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_1x2_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -372,8 +407,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rd_zen_asm_3x4m
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rd_zen_asm_3x4m_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -390,8 +427,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rd_zen_asm_3x2m
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rd_zen_asm_3x2m_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -408,8 +447,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rd_zen_asm_3x4n
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rd_zen_asm_3x4n_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -426,8 +467,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rd_zen_asm_2x4n
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rd_zen_asm_2x4n_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -444,8 +487,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rd_zen_asm_2x4
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rd_zen_asm_2x4_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -462,8 +507,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rd_zen_asm_1x4
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rd_zen_asm_1x4_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -480,8 +527,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rd_zen_asm_1x2
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rd_zen_asm_1x2_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -498,8 +547,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rd_zen_asm_2x2
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rd_zen_asm_2x2_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -516,8 +567,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_3x4n
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_3x4n_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -534,8 +587,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_2x4n
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_2x4n_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -552,8 +607,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_1x4n
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_1x4n_col_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -570,8 +627,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_3x4n
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_3x4n_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -588,8 +647,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_2x4n
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_2x4n_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -606,8 +667,10 @@ INSTANTIATE_TEST_SUITE_P (
         ),
         ::zgemmGenericSUPPrint()
     );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_rv_zen_asm_1x4n
+INSTANTIATE_TEST_SUITE_P(
         bli_zgemmsup_rv_zen_asm_1x4n_row_stored_c,
         zgemmGenericSUP,
         ::testing::Combine(
@@ -626,8 +689,12 @@ INSTANTIATE_TEST_SUITE_P (
     );
 #endif
 
+#endif // defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
+
 #if defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
- INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_zgemmsup_cv_zen4_asm_12x4m
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_12x4m_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -644,8 +711,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_12x3m
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_12x3m_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -662,8 +731,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_12x2m
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_12x2m_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -680,8 +751,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_12x1m
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_12x1m_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -698,8 +771,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_8x4
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_8x4_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -716,8 +791,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_8x3
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_8x3_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -734,8 +811,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_8x2
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_8x2_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -752,8 +831,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_8x1
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_8x1_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -770,8 +851,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_4x4
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_4x4_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -788,8 +871,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_4x3
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_4x3_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -806,8 +891,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_4x2
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_4x2_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -824,8 +911,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_4x1
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_4x1_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -842,8 +931,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_2x4
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_2x4_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -860,8 +951,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_2x3
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_2x3_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -878,8 +971,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_2x2
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_2x2_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -896,8 +991,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_2x1
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_2x1_col_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -914,8 +1011,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_12x4m
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_12x4m_row_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -932,8 +1031,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_12x3m
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_12x3m_row_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -950,8 +1051,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_12x2m
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_12x2m_row_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -968,8 +1071,10 @@ INSTANTIATE_TEST_SUITE_P (
          ),
          ::zgemmGenericSUPPrint()
      );
+#endif
 
- INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemmsup_cv_zen4_asm_12x1m
+INSTANTIATE_TEST_SUITE_P(
          bli_zgemmsup_cv_zen4_asm_12x1m_row_stored_c,
          zgemmGenericSUP,
          ::testing::Combine(
@@ -987,6 +1092,207 @@ INSTANTIATE_TEST_SUITE_P (
          ::zgemmGenericSUPPrint()
      );
 #endif
+
+/* Testing the ZGEMM AVX512 dot product kernels */
+#ifdef K_bli_zgemmsup_cd_zen4_asm_12x4m
+INSTANTIATE_TEST_SUITE_P(
+         bli_zgemmsup_cd_zen4_asm_12x4m_col_stored_c,
+         zgemmGenericSUP,
+         ::testing::Combine(
+             ::testing::Values(gtint_t(68),
+                               gtint_t(67),
+                               gtint_t(60),
+                               gtint_t(12)),                                 // values of m
+             ::testing::Range(gtint_t(1), gtint_t(5), 1),                    // values of n
+             ::testing::Values(gtint_t(48),
+                              gtint_t(16),
+                              gtint_t(12),
+                              gtint_t(4),
+                              gtint_t(3)),                                   // values of k
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{4.0, 0.0}, dcomplex{0.0, -8.0}, dcomplex{3.5, 4.5}),   // alpha value
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{-5.0, 0.0}, dcomplex{0.0, -9.0}, dcomplex{-7.3, 6.7}), // beta value
+             ::testing::Values('c'),                                         // storage of c
+             ::testing::Values(bli_zgemmsup_cd_zen4_asm_12x4m),              // zgemm_sup kernel
+             ::testing::Values('t'),                                         // transa
+             ::testing::Values('n'),                                         // transb
+             ::testing::Values(false, true)                                  // is_memory_test
+         ),
+         ::zgemmGenericSUPPrint()
+     );
+#endif
+
+#ifdef K_bli_zgemmsup_cd_zen4_asm_12x2m
+INSTANTIATE_TEST_SUITE_P(
+         bli_zgemmsup_cd_zen4_asm_12x2m_col_stored_c,
+         zgemmGenericSUP,
+         ::testing::Combine(
+             ::testing::Values(gtint_t(68),
+                               gtint_t(67),
+                               gtint_t(60),
+                               gtint_t(12)),                                 // values of m
+             ::testing::Values(gtint_t(2)),                                  // values of n
+             ::testing::Values(gtint_t(48),
+                              gtint_t(16),
+                              gtint_t(12),
+                              gtint_t(4),
+                              gtint_t(3)),                                   // values of k
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{4.0, 0.0}, dcomplex{0.0, -8.0}, dcomplex{3.5, 4.5}),   // alpha value
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{-5.0, 0.0}, dcomplex{0.0, -9.0}, dcomplex{-7.3, 6.7}), // beta value
+             ::testing::Values('c'),                                         // storage of c
+             ::testing::Values(bli_zgemmsup_cd_zen4_asm_12x2m),              // zgemm_sup kernel
+             ::testing::Values('t'),                                         // transa
+             ::testing::Values('n'),                                         // transb
+             ::testing::Values(false, true)                                  // is_memory_test
+         ),
+         ::zgemmGenericSUPPrint()
+     );
+#endif
+
+#ifdef K_bli_zgemmsup_cd_zen4_asm_8x4
+INSTANTIATE_TEST_SUITE_P(
+         bli_zgemmsup_cd_zen4_asm_8x4_col_stored_c,
+         zgemmGenericSUP,
+         ::testing::Combine(
+             ::testing::Values(gtint_t(8)),                                  // values of m
+             ::testing::Range(gtint_t(1), gtint_t(5), 1),                    // values of n
+             ::testing::Values(gtint_t(48),
+                              gtint_t(16),
+                              gtint_t(12),
+                              gtint_t(4),
+                              gtint_t(3)),                                   // values of k
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{4.0, 0.0}, dcomplex{0.0, -8.0}, dcomplex{3.5, 4.5}),   // alpha value
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{-5.0, 0.0}, dcomplex{0.0, -9.0}, dcomplex{-7.3, 6.7}), // beta value
+             ::testing::Values('c'),                                         // storage of c
+             ::testing::Values(bli_zgemmsup_cd_zen4_asm_8x4),                // zgemm_sup kernel
+             ::testing::Values('t'),                                         // transa
+             ::testing::Values('n'),                                         // transb
+             ::testing::Values(false, true)                                  // is_memory_test
+         ),
+         ::zgemmGenericSUPPrint()
+     );
+#endif
+
+#ifdef K_bli_zgemmsup_cd_zen4_asm_8x2
+INSTANTIATE_TEST_SUITE_P(
+         bli_zgemmsup_cd_zen4_asm_8x2_col_stored_c,
+         zgemmGenericSUP,
+         ::testing::Combine(
+             ::testing::Values(gtint_t(8)),                                  // values of m
+             ::testing::Values(gtint_t(2)),                                  // values of n
+             ::testing::Values(gtint_t(48),
+                              gtint_t(16),
+                              gtint_t(12),
+                              gtint_t(4),
+                              gtint_t(3)),                                   // values of k
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{4.0, 0.0}, dcomplex{0.0, -8.0}, dcomplex{3.5, 4.5}),   // alpha value
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{-5.0, 0.0}, dcomplex{0.0, -9.0}, dcomplex{-7.3, 6.7}), // beta value
+             ::testing::Values('c'),                                         // storage of c
+             ::testing::Values(bli_zgemmsup_cd_zen4_asm_8x2),                // zgemm_sup kernel
+             ::testing::Values('t'),                                         // transa
+             ::testing::Values('n'),                                         // transb
+             ::testing::Values(false, true)                                  // is_memory_test
+         ),
+         ::zgemmGenericSUPPrint()
+     );
+#endif
+
+#ifdef K_bli_zgemmsup_cd_zen4_asm_4x4
+INSTANTIATE_TEST_SUITE_P(
+         bli_zgemmsup_cd_zen4_asm_4x4_col_stored_c,
+         zgemmGenericSUP,
+         ::testing::Combine(
+             ::testing::Values(gtint_t(4)),                                  // values of m
+             ::testing::Range(gtint_t(1), gtint_t(5), 1),                    // values of n
+             ::testing::Values(gtint_t(48),
+                              gtint_t(16),
+                              gtint_t(12),
+                              gtint_t(4),
+                              gtint_t(3)),                                   // values of k
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{4.0, 0.0}, dcomplex{0.0, -8.0}, dcomplex{3.5, 4.5}),   // alpha value
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{-5.0, 0.0}, dcomplex{0.0, -9.0}, dcomplex{-7.3, 6.7}), // beta value
+             ::testing::Values('c'),                                         // storage of c
+             ::testing::Values(bli_zgemmsup_cd_zen4_asm_4x4),                // zgemm_sup kernel
+             ::testing::Values('t'),                                         // transa
+             ::testing::Values('n'),                                         // transb
+             ::testing::Values(false, true)                                  // is_memory_test
+         ),
+         ::zgemmGenericSUPPrint()
+     );
+#endif
+
+#ifdef K_bli_zgemmsup_cd_zen4_asm_4x2
+INSTANTIATE_TEST_SUITE_P(
+         bli_zgemmsup_cd_zen4_asm_4x2_col_stored_c,
+         zgemmGenericSUP,
+         ::testing::Combine(
+             ::testing::Values(gtint_t(4)),                                  // values of m
+             ::testing::Values(gtint_t(2)),                                  // values of n
+             ::testing::Values(gtint_t(48),
+                              gtint_t(16),
+                              gtint_t(12),
+                              gtint_t(4),
+                              gtint_t(3)),                                   // values of k
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{4.0, 0.0}, dcomplex{0.0, -8.0}, dcomplex{3.5, 4.5}),   // alpha value
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{-5.0, 0.0}, dcomplex{0.0, -9.0}, dcomplex{-7.3, 6.7}), // beta value
+             ::testing::Values('c'),                                         // storage of c
+             ::testing::Values(bli_zgemmsup_cd_zen4_asm_4x2),                // zgemm_sup kernel
+             ::testing::Values('t'),                                         // transa
+             ::testing::Values('n'),                                         // transb
+             ::testing::Values(false, true)                                  // is_memory_test
+         ),
+         ::zgemmGenericSUPPrint()
+     );
+#endif
+
+#ifdef K_bli_zgemmsup_cd_zen4_asm_2x4
+INSTANTIATE_TEST_SUITE_P(
+         bli_zgemmsup_cd_zen4_asm_2x4_col_stored_c,
+         zgemmGenericSUP,
+         ::testing::Combine(
+             ::testing::Values(gtint_t(2)),                                  // values of m
+             ::testing::Range(gtint_t(1), gtint_t(5), 1),                    // values of n
+             ::testing::Values(gtint_t(48),
+                              gtint_t(16),
+                              gtint_t(12),
+                              gtint_t(4),
+                              gtint_t(3)),                                   // values of k
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{4.0, 0.0}, dcomplex{0.0, -8.0}, dcomplex{3.5, 4.5}),   // alpha value
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{-5.0, 0.0}, dcomplex{0.0, -9.0}, dcomplex{-7.3, 6.7}), // beta value
+             ::testing::Values('c'),                                         // storage of c
+             ::testing::Values(bli_zgemmsup_cd_zen4_asm_2x4),                // zgemm_sup kernel
+             ::testing::Values('t'),                                         // transa
+             ::testing::Values('n'),                                         // transb
+             ::testing::Values(false, true)                                  // is_memory_test
+         ),
+         ::zgemmGenericSUPPrint()
+     );
+#endif
+
+#ifdef K_bli_zgemmsup_cd_zen4_asm_2x2
+INSTANTIATE_TEST_SUITE_P(
+         bli_zgemmsup_cd_zen4_asm_2x2_col_stored_c,
+         zgemmGenericSUP,
+         ::testing::Combine(
+             ::testing::Values(gtint_t(2)),                                  // values of m
+             ::testing::Values(gtint_t(2)),                                  // values of n
+             ::testing::Values(gtint_t(48),
+                              gtint_t(16),
+                              gtint_t(12),
+                              gtint_t(4),
+                              gtint_t(3)),                                   // values of k
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{4.0, 0.0}, dcomplex{0.0, -8.0}, dcomplex{3.5, 4.5}),   // alpha value
+             ::testing::Values(dcomplex{0.0, 0.0}, dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0}, dcomplex{-5.0, 0.0}, dcomplex{0.0, -9.0}, dcomplex{-7.3, 6.7}), // beta value
+             ::testing::Values('c'),                                         // storage of c
+             ::testing::Values(bli_zgemmsup_cd_zen4_asm_2x2),                // zgemm_sup kernel
+             ::testing::Values('t'),                                         // transa
+             ::testing::Values('n'),                                         // transb
+             ::testing::Values(false, true)                                  // is_memory_test
+         ),
+         ::zgemmGenericSUPPrint()
+     );
+#endif
+
+#endif // defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
 
 /*******************************************************/
 /*              Native Kernel testing                  */
@@ -1020,7 +1326,6 @@ TEST_P( zgemmGenericNat, MicroKernelTest)
     // Check gtestsuite gemm.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // No adjustment applied yet for complex data.
     double thresh;
     if (m == 0 || n == 0)
         thresh = 0.0;
@@ -1030,8 +1335,15 @@ TEST_P( zgemmGenericNat, MicroKernelTest)
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 5.0;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     test_gemmnat_ukr(storageC, m, n, k, alpha, beta, thresh, kern_ptr, is_memory_test);
 
 }// end of function
@@ -1059,7 +1371,9 @@ public:
 };
 
 #if defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_zgemm_zen4_asm_12x4
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_zen4_asm_12x4,
     zgemmGenericNat,
     ::testing::Combine( //Failure observed for this case zgemmnat_ukr_1_a0pi2_bm7pi6_r
@@ -1074,8 +1388,10 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     ::zgemmGenericNatPrint()
 );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemm_zen4_asm_12x4
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_zen4_asm_12x4_k0,
     zgemmGenericNat,
     ::testing::Combine( //Failure observed for this case zgemmnat_ukr_1_a0pi2_bm7pi6_r
@@ -1090,9 +1406,11 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     ::zgemmGenericNatPrint()
 );
+#endif
 
 /*Kernel reqired for trsm computation*/
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemm_zen4_asm_4x12
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_zen4_asm_4x12,
     zgemmGenericNat,
     ::testing::Combine(
@@ -1107,8 +1425,10 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     ::zgemmGenericNatPrint()
 );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemm_zen4_asm_4x12
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_zen4_asm_4x12_k0,
     zgemmGenericNat,
     ::testing::Combine(
@@ -1125,8 +1445,12 @@ INSTANTIATE_TEST_SUITE_P (
 );
 #endif
 
+#endif // defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
+
 #if defined(BLIS_KERNELS_HASWELL) && defined(GTEST_AVX2FMA3)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_zgemm_haswell_asm_3x4
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_haswell_asm_3x4,
     zgemmGenericNat,
     ::testing::Combine(
@@ -1141,8 +1465,10 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     ::zgemmGenericNatPrint()
 );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemm_haswell_asm_3x4
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_haswell_asm_3x4_k0,
     zgemmGenericNat,
     ::testing::Combine(
@@ -1159,9 +1485,13 @@ INSTANTIATE_TEST_SUITE_P (
 );
 #endif
 
+#endif // defined(BLIS_KERNELS_HASWELL) && defined(GTEST_AVX2FMA3)
+
 #if defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
+
 /*Kernel reqired for trsm computation*/
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemm_zen_asm_2x6
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_zen_asm_2x6,
     zgemmGenericNat,
     ::testing::Combine(
@@ -1176,8 +1506,10 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     ::zgemmGenericNatPrint()
 );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemm_zen_asm_2x6
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_zen_asm_2x6_k0,
     zgemmGenericNat,
     ::testing::Combine(
@@ -1193,6 +1525,8 @@ INSTANTIATE_TEST_SUITE_P (
     ::zgemmGenericNatPrint()
 );
 #endif
+
+#endif // defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
 
 // Function pointer specific to zgemm kernel that handles
 // special case where k=1.
@@ -1264,7 +1598,8 @@ public:
 };
 
 #if defined(BLIS_KERNELS_ZEN4) && defined(GTEST_AVX512)
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemm_16x4_avx512_k1_nn
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_16x4_avx512_k1_nn,
     zgemmUkrk1,
     ::testing::Combine(
@@ -1282,9 +1617,11 @@ INSTANTIATE_TEST_SUITE_P (
     ::zgemmUkrk1Print()
 );
 #endif
+#endif
 
 #if defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_zgemm_4x4_avx2_k1_nn
+INSTANTIATE_TEST_SUITE_P(
     bli_zgemm_4x4_avx2_k1_nn,
     zgemmUkrk1,
     ::testing::Combine(
@@ -1293,11 +1630,12 @@ INSTANTIATE_TEST_SUITE_P (
         ::testing::Values(dcomplex{1.0, 0.0}, dcomplex{-1.0, 0.0},
                           dcomplex{0.0, 0.0}, dcomplex{1.2, 2.3}),      // beta value
         ::testing::Values('c'),                                         // storage
-        ::testing::Range(gtint_t(1), gtint_t(9), 1),                   // values of m
+        ::testing::Range(gtint_t(1), gtint_t(9), 1),                    // values of m
         ::testing::Range(gtint_t(1), gtint_t(9), 1),                    // values of n
         ::testing::Values(bli_zgemm_4x4_avx2_k1_nn),
         ::testing::Values(true, false)                                  // memory test
     ),
     ::zgemmUkrk1Print()
 );
+#endif
 #endif

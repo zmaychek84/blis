@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -37,21 +37,48 @@
 
 #include "lpgemm_types.h"
 
+void unpackb_nr64_s8_reference
+(
+  int8_t*       b,
+  int8_t*       unpack_b_buffer,
+  const dim_t	  NC,
+  const dim_t   KC,
+  dim_t         rs_b,
+  dim_t         cs_b
+);
+
+void unreorderb_nr64_s8s8s32os32_reference
+(
+  lpgemm_obj_t*  b,
+  lpgemm_obj_t*  b_reorder,
+  rntm_t*        rntm,
+  lpgemm_cntx_t* lcntx
+);
+
 void reorderb_nr64_s8s8s32o32
+(
+  lpgemm_obj_t*  b,
+  lpgemm_obj_t*  b_reorder,
+  rntm_t*        rntm,
+  lpgemm_cntx_t* lcntx
+);
+
+void reorderb_nr64_s8s8s32o32_sym_quant
      (
        lpgemm_obj_t*  b,
        lpgemm_obj_t*  b_reorder,
        rntm_t*        rntm,
-       lpgemm_cntx_t* lcntx
+       lpgemm_cntx_t* lcntx,
+       dim_t          group_size
      );
 
 void reordera_mr6_s8s8s32o32
-     (
-       lpgemm_obj_t*  a,
-       lpgemm_obj_t*  a_reorder,
-       rntm_t*        rntm,
-       lpgemm_cntx_t* lcntx
-     );
+(
+  lpgemm_obj_t*  a,
+  lpgemm_obj_t*  a_reorder,
+  rntm_t*        rntm,
+  lpgemm_cntx_t* lcntx
+);
 
 #endif //LPGEMM_REORDER_H_S8
 

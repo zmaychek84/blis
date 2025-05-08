@@ -37,6 +37,7 @@
 #include "level3/ref_gemm.h"
 #include "ukr/trsm/test_trsm_ukr.h"
 #include "level3/trsm/test_trsm.h"
+#include "common/blis_version_defs.h"
 
 class strsmGenericNat :
     public ::testing::TestWithParam<std::tuple< sgemmtrsm_ukr_ft,  // Function pointer type for strsm kernels
@@ -65,6 +66,7 @@ class strsmGenericSmall :
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(strsmGenericNat);
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(strsmGenericSmall);
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(strsmGeneric);
 
 TEST_P( strsmGenericNat, UKR )
 {
@@ -122,7 +124,9 @@ TEST_P( strsmGenericSmall, UKR )
 }
 
 #if defined(BLIS_KERNELS_HASWELL) && defined(GTEST_AVX2FMA3)
-INSTANTIATE_TEST_SUITE_P (
+
+#ifdef K_bli_sgemmtrsm_l_haswell_asm_6x16
+INSTANTIATE_TEST_SUITE_P(
     bli_sgemmtrsm_l_haswell_asm_6x16,
     strsmGenericNat,
     ::testing::Combine(
@@ -139,8 +143,10 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     (::trsmNatUKRPrint<float,sgemmtrsm_ukr_ft>())
 );
+#endif
 
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_sgemmtrsm_u_haswell_asm_6x16
+INSTANTIATE_TEST_SUITE_P(
     bli_sgemmtrsm_u_haswell_asm_6x16,
     strsmGenericNat,
     ::testing::Combine(
@@ -159,9 +165,12 @@ INSTANTIATE_TEST_SUITE_P (
 );
 #endif
 
+#endif // defined(BLIS_KERNELS_HASWELL) && defined(GTEST_AVX2FMA3)
+
 #if defined(BLIS_KERNELS_ZEN) && defined(GTEST_AVX2FMA3)
 #ifdef BLIS_ENABLE_SMALL_MATRIX_TRSM
-INSTANTIATE_TEST_SUITE_P (
+#ifdef K_bli_trsm_small
+INSTANTIATE_TEST_SUITE_P(
     bli_trsm_small,
     strsmGenericSmall,
     ::testing::Combine(
@@ -179,5 +188,6 @@ INSTANTIATE_TEST_SUITE_P (
     ),
     (::trsmSmallUKRPrint<float,trsm_small_ker_ft>())
 );
+#endif
 #endif
 #endif

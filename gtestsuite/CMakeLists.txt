@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -90,8 +90,22 @@ if(WIN32)
    set(OpenMP_libomp_LIBRARY "C:/Program Files/LLVM/lib/libomp.lib" CACHE STRING "openmp library path")
 endif()
 
+# Use OPENMP_NESTED to set whether to call BLIS function within OpenMP nested parallel region(s).
+# Value indicates number of OpenMP parallel regions in the gtest application, with 1 and 2
+# implemented, otherwise don't use any OpenMP parallel region in gtestsuite (default).
+set(OPENMP_NESTED "0" CACHE STRING "OpenMP parallelism in gtest program.")
+# Set the possible values of nested parallelism for cmake-gui
+set_property(CACHE OPENMP_NESTED PROPERTY STRINGS "0" "1" "2" "1diff")
+if( NOT ((OPENMP_NESTED STREQUAL "0") OR (OPENMP_NESTED STREQUAL "1") OR (OPENMP_NESTED STREQUAL "2") OR (OPENMP_NESTED STREQUAL "1diff")) )
+    message(FATAL_ERROR "OPENMP_NESTED option '${OPENMP_NESTED}' is not supported. Please use one of the following options \
+            during CMake invokation: 0, 1, 2, 1diff")
+endif()
+# Add OpenMP flag for compiling gtest programs
+if(NOT(OPENMP_NESTED STREQUAL "0"))
+    add_compile_options(-fopenmp)
+endif()
 # Set up OpenMP flags correctly if it's required.
-if( (ENABLE_THREADING STREQUAL "openmp") OR (MKL_ENABLE_THREADING STREQUAL "openmp") )
+if( (ENABLE_THREADING STREQUAL "openmp") OR (MKL_ENABLE_THREADING STREQUAL "openmp") OR (NOT(OPENMP_NESTED STREQUAL "0")))
     find_package(OpenMP)
     if(NOT OPENMP_FOUND)
         message (FATAL_ERROR "Openmp Not Found, please provide an OpenMP library using -DOpenMP_libomp_LIBRARY=path_to_omp_lib.")
@@ -152,10 +166,6 @@ option(TEST_UPPERCASE_ARGS "Test upper case character arguments" OFF)
 
 # Option to enable testing with thresholds set to zero.
 option(THRESHOLD_ZERO "Set thresholds to zero" OFF)
-
-# Can we test the value of info stored within BLIS and returned by a call to
-# bli_info_get_info_value (introduced at AMD BLAS 4.2).
-option(CAN_TEST_INFO_VALUE "Can test value of info" ON)
 
 # Use EXT_VAL to get the extreme value (NaN or Inf) used for testing data that shouldn't be read.
 set(EXT_VAL "Inf" CACHE STRING "Extreme value (NaN or Inf) used for testing data that shouldn't be read")
@@ -307,6 +317,68 @@ if(WIN32)
         set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
 endif()
+
+# This variable will need updating on each release since it's used to determined if
+# we are testing development branch or not.
+set(AOCL_BLAS_LATEST_VERSION 51)
+# Can we test the value of info stored within BLIS and returned by a call to
+# bli_info_get_info_value (introduced at AMD BLAS 4.2). This variables will be
+# updated below for earlier versions.
+set(CAN_TEST_INFO_VALUE ON)
+# The following part will be used to set up macros that relate to the version
+# of BLIS library being tested.
+if(ENABLE_THREADING STREQUAL "openmp")
+    try_run(RUNRESULT COMPILERESULT "${CMAKE_BINARY_DIR}/temp" SOURCES ${CMAKE_SOURCE_DIR}/cmake/get_version.cpp
+            COMPILE_DEFINITIONS -I${BLIS_PATH}/include/ -I${BLIS_PATH}/include/blis
+            LINK_LIBRARIES ${BLIS_LIBRARY} ${COMMON_LIBS} OpenMP::OpenMP_CXX ${ASAN_FLAGS} ${COVERAGE_FLAGS}
+            RUN_OUTPUT_VARIABLE TEST_BLIS_VERSION
+            COMPILE_OUTPUT_VARIABLE COMP_VAR_VERSION
+    )
+else()
+    try_run(RUNRESULT COMPILERESULT "${CMAKE_BINARY_DIR}/temp" SOURCES ${CMAKE_SOURCE_DIR}/cmake/get_version.cpp
+            COMPILE_DEFINITIONS -I${BLIS_PATH}/include/ -I${BLIS_PATH}/include/blis
+            LINK_LIBRARIES ${BLIS_LIBRARY} ${COMMON_LIBS} ${ASAN_FLAGS} ${COVERAGE_FLAGS}
+            RUN_OUTPUT_VARIABLE TEST_BLIS_VERSION
+            COMPILE_OUTPUT_VARIABLE COMP_VAR_VERSION
+    )
+endif()
+if(NOT COMPILERESULT)
+    message(FATAL_ERROR "Compiling get_version.cpp failed with the following error ${COMP_VAR_VERSION}.")
+else()
+    # Version strings that get returned have this form: AOCL-BLAS 5.0.1 Build 20241111
+    # We do not need anything after 5.0.1 for testing so we create a list and then keep
+    # only the first two elements.
+    string(FIND ${TEST_BLIS_VERSION} "error" FAILED_AT_RUNTIME)
+    if(NOT (${FAILED_AT_RUNTIME} STREQUAL "-1"))
+       message(FATAL_ERROR "Running get_version.cpp failed with the following error " ${TEST_BLIS_VERSION})
+    endif()
+    string(FIND ${TEST_BLIS_VERSION} "fault" FAILED_AT_RUNTIME)
+    if(NOT (${FAILED_AT_RUNTIME} STREQUAL "-1"))
+       message(FATAL_ERROR "Running get_version.cpp failed with the following error " ${TEST_BLIS_VERSION})
+    endif()
+    string(REPLACE " " ";" TEST_BLIS_VERSION ${TEST_BLIS_VERSION})
+    # After this TEST_BLIS_VERSION looks like 5.0.1
+    list(GET TEST_BLIS_VERSION 1 TEST_BLIS_VERSION)
+    # Make a list where we break down the versioning
+    string(REPLACE "." ";" TEST_BLIS_VERSION ${TEST_BLIS_VERSION})
+    # Store the patch version in a separate variable
+    list(GET TEST_BLIS_VERSION 2 BLIS_VERSION_PATCH)
+    # Update TEST_BLIS_VERSION to only use the major and minor version numbers
+    list(SUBLIST TEST_BLIS_VERSION 0 2 TEST_BLIS_VERSION)
+    # Join list into a string
+    list(JOIN TEST_BLIS_VERSION "" TEST_BLIS_VERSION)
+    if(${TEST_BLIS_VERSION} EQUAL ${AOCL_BLAS_LATEST_VERSION})
+        if(${BLIS_VERSION_PATCH} GREATER 0)
+            set(TEST_BLIS_VERSION DEV)
+        endif()
+    endif()
+    if(${TEST_BLIS_VERSION} LESS_EQUAL 41)
+        set(CAN_TEST_INFO_VALUE OFF)
+    endif()
+    string(PREPEND TEST_BLIS_VERSION AOCL_)
+    message(STATUS "Testing BLIS with version ${TEST_BLIS_VERSION}")
+endif()
+
 
 # The following part will be used to set up a list of defines that dictate
 # which kernel tests can be build and run on the current architecture.

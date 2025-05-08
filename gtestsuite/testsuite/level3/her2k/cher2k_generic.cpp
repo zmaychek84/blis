@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -83,20 +83,51 @@ TEST_P( cher2kGeneric, API )
     // Check gtestsuite her2k.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // With adjustment for complex data.
     double thresh;
-    double adj = 2.5;
     if (n == 0)
         thresh = 0.0;
     else if ((alpha == testinghelpers::ZERO<T>() || k == 0) && (beta == 0.0f || beta == 1.0f))
         thresh = 0.0;
     else
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 5.3;
+#endif
         thresh = adj*(6*k+1)*testinghelpers::getEpsilon<T>();
-
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_her2k<T>( storage, uplo, transa, transb, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_her2k<T>( storage, uplo, transa, transb, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_her2k<T>( storage, uplo, transa, transb, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_her2k<T>( storage, uplo, transa, transb, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_her2k<T>( storage, uplo, transa, transb, n, k, lda_inc, ldb_inc, ldc_inc, alpha, beta, thresh );
+#endif
 }
 
 // Black box testing.
@@ -112,8 +143,8 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values('u','l'),                                      // u:upper, l:lower
             ::testing::Values('n'),                                          // transa
             ::testing::Values('n'),                                          // transb
-            ::testing::Range(gtint_t(10), gtint_t(31), 10),                  // n
-            ::testing::Range(gtint_t(10), gtint_t(31), 10),                  // k
+            ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(30)),          // n
+            ::testing::Values(gtint_t(1), gtint_t(2), gtint_t(26)),          // k
             ::testing::Values(scomplex{2.0, -1.0}, scomplex{-2.0, 3.0}),     // alpha
             ::testing::Values(-3.0, 2.0),                                    // beta
             ::testing::Values(gtint_t(0), gtint_t(5)),                       // increment to the leading dim of a

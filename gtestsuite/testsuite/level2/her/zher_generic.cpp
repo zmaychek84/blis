@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -72,22 +72,49 @@ TEST_P( zherGeneric, API )
     // Check gtestsuite her.h or netlib source code for reminder of the
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
-    // With adjustment for complex data.
     double thresh;
-#ifdef BLIS_INT_ELEMENT_TYPE
-    double adj = 1.0;
-#else
-    double adj = 2.0;
-#endif
     if (n == 0 || alpha == 0.0)
         thresh = 0.0;
     else
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.0;
+#else
+        double adj = 2.0;
+#endif
         thresh = adj*3*testinghelpers::getEpsilon<T>();
-
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_her<T, double>( storage, uploa, conjx, n, alpha, incx, lda_inc, thresh );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_her<T, double>( storage, uploa, conjx, n, alpha, incx, lda_inc, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_her<T, double>( storage, uploa, conjx, n, alpha, incx, lda_inc, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_her<T, double>( storage, uploa, conjx, n, alpha, incx, lda_inc, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_her<T, double>( storage, uploa, conjx, n, alpha, incx, lda_inc, thresh );
+#endif
 }
 
 // Black box testing.

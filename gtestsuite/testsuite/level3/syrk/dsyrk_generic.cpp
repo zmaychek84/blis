@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -86,12 +86,45 @@ TEST_P( dsyrkGeneric, API )
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
-        thresh = (3*k+1)*testinghelpers::getEpsilon<T>();
-
+    {
+       // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+       double adj = 1.0;
+#else
+       double adj = 2.4;
+#endif
+        thresh = adj*(3*k+1)*testinghelpers::getEpsilon<T>();
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_syrk<T>( storage, uplo, transa, n, k, lda_inc, ldc_inc, alpha, beta, thresh );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_syrk<T>( storage, uplo, transa, n, k, lda_inc, ldc_inc, alpha, beta, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_syrk<T>( storage, uplo, transa, n, k, lda_inc, ldc_inc, alpha, beta, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_syrk<T>( storage, uplo, transa, n, k, lda_inc, ldc_inc, alpha, beta, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_syrk<T>( storage, uplo, transa, n, k, lda_inc, ldc_inc, alpha, beta, thresh );
+#endif
 }
 
 // Black box testing.

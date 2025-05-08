@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2023 - 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2023 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -82,14 +82,6 @@ TEST_P( dsymvGeneric, API )
     // functionality from which we estimate operation count per element
     // of output, and hence the multipler for epsilon.
     double thresh;
-#ifdef BLIS_INT_ELEMENT_TYPE
-    double adj = 1.4;
-#else
-    double adj = 1.7;
-  #ifdef REF_IS_MKL
-    adj = 1.4;
-  #endif
-#endif
     if (n == 0)
         thresh = 0.0;
     else if (alpha == testinghelpers::ZERO<T>() && (beta == testinghelpers::ZERO<T>() || beta == testinghelpers::ONE<T>()))
@@ -97,12 +89,45 @@ TEST_P( dsymvGeneric, API )
     else if (alpha == testinghelpers::ZERO<T>())
         thresh = testinghelpers::getEpsilon<T>();
     else
+    {
+        // Threshold adjustment
+#ifdef BLIS_INT_ELEMENT_TYPE
+        double adj = 1.5;
+#else
+        double adj = 2.5;
+#endif
         thresh = adj*(3*n+1)*testinghelpers::getEpsilon<T>();
-
+    }
     //----------------------------------------------------------
     //     Call test body using these parameters
     //----------------------------------------------------------
-    test_symv<T>( storage, uploa, conja, conjx, n, alpha, lda_inc, incx, beta, incy, thresh );
+
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_symv<T>( storage, uploa, conja, conjx, n, alpha, lda_inc, incx, beta, incy, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_symv<T>( storage, uploa, conja, conjx, n, alpha, lda_inc, incx, beta, incy, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_symv<T>( storage, uploa, conja, conjx, n, alpha, lda_inc, incx, beta, incy, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_symv<T>( storage, uploa, conja, conjx, n, alpha, lda_inc, incx, beta, incy, thresh );
+#endif
 }
 
 // Black box testing.

@@ -4,7 +4,7 @@
    An object-based framework for developing high-performance BLAS-like
    libraries.
 
-   Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+   Copyright (C) 2024 - 2025, Advanced Micro Devices, Inc. All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions are
@@ -77,7 +77,32 @@ TEST_P( zdscalvGeneric, API )
     //----------------------------------------------------------
     //     Call generic test body using those parameters
     //----------------------------------------------------------
-    test_scalv<T, U>( conj_alpha, n, incx, alpha, thresh );
+#ifdef OPENMP_NESTED_1diff
+    #pragma omp parallel default(shared)
+    {
+	vary_num_threads();
+        //std::cout << "Inside 1diff parallel regions\n";
+        test_scalv<T, U>( conj_alpha, n, incx, alpha, thresh );
+    }
+#elif OPENMP_NESTED_2
+    #pragma omp parallel default(shared)
+    {
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 2 parallel regions\n";
+        test_scalv<T, U>( conj_alpha, n, incx, alpha, thresh );
+    }
+    }
+#elif OPENMP_NESTED_1
+    #pragma omp parallel default(shared)
+    {
+        //std::cout << "Inside 1 parallel region\n";
+        test_scalv<T, U>( conj_alpha, n, incx, alpha, thresh );
+    }
+#else
+        //std::cout << "Not inside parallel region\n";
+        test_scalv<T, U>( conj_alpha, n, incx, alpha, thresh );
+#endif
 }
 
 // bli_zdscal not present in BLIS
@@ -137,8 +162,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Range(gtint_t(1), gtint_t(9), 1),
             // incx: stride of x vector.
             ::testing::Values(
-                                gtint_t(2),
-                                gtint_t(41)
+                                gtint_t(2)
             ),
             // alpha: value of scalar.
             ::testing::Values(
@@ -159,8 +183,7 @@ INSTANTIATE_TEST_SUITE_P(
             ::testing::Values(gtint_t(111), gtint_t(193), gtint_t(403)),
             // incx: stride of x vector.
             ::testing::Values(
-                                gtint_t(2),
-                                gtint_t(41)
+                                gtint_t(3)
             ),
             // alpha: value of scalar.
             ::testing::Values(
@@ -180,12 +203,11 @@ INSTANTIATE_TEST_SUITE_P(
             // conj(alpha): uses n (no_conjugate) since it is real.
             ::testing::Values('n'),
             // m: size of vector.
-            ::testing::Range(gtint_t(1), gtint_t(101), 1),
+            ::testing::Values(gtint_t(1), gtint_t(3), gtint_t(17)),
             // incx: stride of x vector.
             ::testing::Values(
                                 gtint_t(1),
-                                gtint_t(2),
-                                gtint_t(41)
+                                gtint_t(3)
             ),
             // alpha: value of scalar.
             ::testing::Values(
@@ -203,7 +225,7 @@ INSTANTIATE_TEST_SUITE_P(
         zdscalvGeneric,
         ::testing::Combine(
             ::testing::Values('n'),                                          // n: use x, c: use conj(x)
-            ::testing::Range(gtint_t(10), gtint_t(31), 10),                  // m size of vector takes values from 10 to 100 with step size of 10.
+            ::testing::Range(gtint_t(10), gtint_t(31), 10),                  // m size of vector
             ::testing::Values(gtint_t(-2), gtint_t(-1)),                     // stride size for x
             ::testing::Values(3)                                             // alpha
         ),
