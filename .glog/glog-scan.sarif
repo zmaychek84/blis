@@ -1,0 +1,2768 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Glog.AI",
+          "organization": "Glog.AI",
+          "fullName": "Glog, Making software more secure",
+          "version": "1.0.0",
+          "semanticVersion": "1.0.0",
+          "informationUri": "https://www.glog.ai",
+          "rules": [
+            {
+              "id": "glog-3f5ca35a-53ea-479d-8fdc-8c7ca4e607b3",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C++, which is often a source of buffer overflow vulnerabilities if not used carefully. The specific issue arises when the size of the data being copied exceeds the size of the destination buffer, leading to potential memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\nIn the provided code snippet:\n\n```cpp\nmemcpy(c, cref, m * n * ldc * sizeof(double));\n```\n\nThe parameters `m`, `n`, `ldc`, and the size of `double` are used to calculate the total number of bytes to copy. If the destination buffer `c` is not large enough to accommodate this size, it results in a buffer overflow.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Ensure that the destination buffer is large enough to hold the data being copied. This can be done by calculating the required size and comparing it with the actual size of the destination buffer.\n\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` which provide better safety guarantees and are less prone to misuse.\n\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n4. **Code Reviews**: Regular code reviews can help catch potential vulnerabilities early in the development process.\n\n### Source Code Fix Recommendation\n\nTo fix the vulnerability, ensure that the destination buffer `c` is properly sized before performing the `memcpy` operation. Here is an example of how you might modify the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assume c_size is the size of the destination buffer\nsize_t c_size = /* size of c buffer in bytes */;\n\n// Calculate the number of bytes to copy\nsize_t bytes_to_copy = m * n * ldc * sizeof(double);\n\n// Ensure we do not copy more than the destination buffer can hold\nsize_t safe_bytes_to_copy = std::min(c_size, bytes_to_copy);\n\nmemcpy(c, cref, safe_bytes_to_copy);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-8cc1e311-0a7f-48cc-96c5-fcacc3ee94ad",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C++. The function call `memcpy(a, a_buf.greenzone_1, m * k * lda * sizeof(double))` is potentially unsafe due to the lack of bounds checking. This can lead to buffer overflows if the destination buffer `a` is not large enough to accommodate the data being copied from `a_buf.greenzone_1`. Buffer overflows can result in undefined behavior, including data corruption, crashes, and security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Ensure that the destination buffer is large enough to hold the data being copied. This can be done by performing explicit size checks before calling `memcpy`.\n\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if overlapping memory regions are involved.\n\n3. **Static Analysis Tools**: Utilize static analysis tools to detect potential buffer overflows and other vulnerabilities in the code.\n\n4. **Code Reviews**: Regularly conduct code reviews to catch potential vulnerabilities early in the development process.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the size of the destination buffer `a` is checked before performing the copy operation. Here is a revised version of the code with added bounds checking:\n\n```cpp\n#include <cstring>  // For memcpy\n#include <algorithm> // For std::min\n\n// Assuming a_buf and a are properly defined and initialized\n// and that a_buf.greenzone_1 is a valid pointer\n\nsize_t buffer_size = /* size of the destination buffer a */;\nsize_t copy_size = m * k * lda * sizeof(double);\n\nif (copy_size <= buffer_size) {\n    memcpy(a, a_buf.greenzone_1, copy_size);\n} else {\n    // Handle error: buffer is not large enough\n    // This could involve logging an error, throwing an exception, etc.\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following standard library headers are required:\n\n- `<cstring>`: Provides the `memcpy` function.\n- `<algorithm>`: Provides utility functions like `std::min`.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-2b676638-16d4-4a69-a831-97dee0bbe05e",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C++. The `memcpy` function is used to copy a block of memory from one location to another. The specific issue arises when the size of the memory to be copied is not properly validated, which can lead to buffer overflows. This can result in undefined behavior, including data corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\nIn the provided code snippet:\n\n```cpp\nmemcpy(b, b_buf.greenzone_1, n * k * ldb * sizeof(double));\n```\n\nThe parameters `n`, `k`, and `ldb` are used to calculate the total number of bytes to copy. If these values are not properly validated, it can lead to copying more data than the destination buffer `b` can hold, resulting in a buffer overflow.\n\n### General Mitigation Advice\n\n1. **Validate Input Sizes**: Ensure that the size of the source and destination buffers are properly validated before performing the copy operation.\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if overlapping memory regions are possible.\n3. **Bounds Checking**: Implement bounds checking to ensure that the destination buffer is large enough to hold the data being copied.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities in the code.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the destination buffer `b` is large enough to accommodate the data being copied. Here is a revised version of the code with added checks:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assume b_size is the size of the destination buffer b\nsize_t b_size = /* size of b */;\n\n// Calculate the number of bytes to copy\nsize_t bytes_to_copy = n * k * ldb * sizeof(double);\n\n// Ensure that we do not copy more than the destination buffer can hold\nsize_t safe_bytes_to_copy = std::min(bytes_to_copy, b_size);\n\nmemcpy(b, b_buf.greenzone_1, safe_bytes_to_copy);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-e25bd876-6798-45d0-9b7d-1874b3f9ddc8",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability associated with the `memcpy` function in C++ arises from improper handling of memory operations, which can lead to buffer overflows, data corruption, or undefined behavior. Specifically, the issue occurs when the size of the data being copied exceeds the size of the destination buffer. In the given code snippet, `memcpy(c, cref, m*n*ldc*sizeof(double))`, the vulnerability may occur if the destination buffer `c` is not large enough to accommodate `m*n*ldc*sizeof(double)` bytes.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `std::copy` or `std::memmove` which provide better safety guarantees.\n3. **Boundary Checks**: Implement boundary checks before performing memory operations to prevent overflows.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows during development.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the destination buffer `c` is properly allocated and large enough to hold the data being copied. Here is a revised version of the code:\n\n```cpp\n#include <cstring>  // For memcpy\n#include <algorithm> // For std::copy\n\nvoid safeMemcpy(double* c, const double* cref, size_t m, size_t n, size_t ldc) {\n    // Calculate the required size\n    size_t requiredSize = m * n * ldc * sizeof(double);\n\n    // Ensure the destination buffer is large enough\n    if (c != nullptr && cref != nullptr) {\n        // Use std::copy for safer memory copying\n        std::copy(cref, cref + requiredSize / sizeof(double), c);\n    }\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following standard libraries are required:\n\n- `<cstring>`: Provides the `memcpy` function.\n- `<algorithm>`: Provides the `std::copy` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)\n- [CWE-787: Out-of-bounds Write](https://cwe.mitre.org/data/definitions/787.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-b6ff5b08-cc76-4af9-9319-8612c47dabf5",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nIn C++ programming, using weak or non-cryptographic random number generators, such as the `rand()` function, can lead to vulnerabilities, especially when randomness is critical for security purposes. The `rand()` function is not suitable for cryptographic purposes because it produces predictable sequences of numbers if the seed is known or can be guessed. This can lead to vulnerabilities in applications where randomness is used for generating keys, tokens, or any other security-related data.\n\n### General Mitigation Advice\n\nTo mitigate this vulnerability, use a cryptographically secure random number generator (CSPRNG) instead of `rand()`. In C++, the `<random>` library provides better alternatives, such as `std::random_device` and `std::mt19937`, which can be used to generate random numbers with better randomness properties.\n\n### Source Code Fix Recommendation\n\nReplace the use of `rand() %` with a more secure random number generation approach using the `<random>` library. Below is an example of how to replace `rand()` with a CSPRNG:\n\n```cpp\n#include <iostream>\n#include <random>\n\nint main() {\n    // Create a random device and a Mersenne Twister engine\n    std::random_device rd;\n    std::mt19937 gen(rd());\n\n    // Define the range for random numbers\n    std::uniform_int_distribution<> dis(0, 99); // Example range [0, 99]\n\n    // Generate a random number\n    int random_number = dis(gen);\n\n    std::cout << \"Secure random number: \" << random_number << std::endl;\n\n    return 0;\n}\n```\n\n### Library Dependencies\n\nTo execute the above code example, the following library is required:\n\n- `<random>`: This is part of the C++ Standard Library and does not require any additional dependencies beyond a standard C++ compiler that supports C++11 or later.\n\n### Relevant Links\n\n- [OWASP Cryptographic Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)\n- [CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)](https://cwe.mitre.org/data/definitions/338.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS148264"
+                ]
+              }
+            },
+            {
+              "id": "glog-e19a4c54-0604-4d19-9796-c415c51ae3be",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nIn C++ programming, using weak or non-cryptographic random number generators, such as the `rand()` function, can lead to vulnerabilities, especially in security-sensitive applications. The `rand()` function is not suitable for cryptographic purposes because it generates predictable sequences of numbers if the seed is known. This predictability can be exploited by attackers to compromise the security of the application.\n\n### General Mitigation Advice\n\nTo mitigate this vulnerability, use a cryptographically secure random number generator. In C++, the `<random>` library provides better alternatives, such as `std::random_device` and `std::mt19937`, which can be used to generate random numbers more securely.\n\n### Source Code Fix Recommendation\n\nReplace the use of `rand()` with a more secure random number generator from the `<random>` library. Here is an example of how to do this:\n\n```cpp\n#include <iostream>\n#include <random>\n\nint main() {\n    // Create a random device and a Mersenne Twister random number generator\n    std::random_device rd;\n    std::mt19937 gen(rd());\n\n    // Define a distribution range\n    std::uniform_int_distribution<> dis(1, 100);\n\n    // Generate a random number\n    int random_number = dis(gen);\n\n    std::cout << \"Secure random number: \" << random_number << std::endl;\n\n    return 0;\n}\n```\n\n### Library Dependencies\n\nTo execute the above code example properly, the following library is required:\n\n- `<random>`: This library provides facilities for generating random numbers.\n\n### OWASP Resources\n\n- [OWASP Cryptographic Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)](https://cwe.mitre.org/data/definitions/338.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS148264"
+                ]
+              }
+            },
+            {
+              "id": "glog-b4bd77b4-9367-426c-af6a-986cbe813939",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nIn C++ programming, using weak or non-cryptographic random number generators, such as the `rand()` function, can lead to vulnerabilities, especially when randomness is critical for security purposes. The `rand()` function is not suitable for cryptographic purposes because it produces predictable sequences of numbers if the seed is known or can be guessed. This can lead to vulnerabilities in applications where randomness is used for generating keys, tokens, or any other security-related data.\n\n### General Mitigation Advice\n\nTo mitigate this vulnerability, use a cryptographically secure random number generator (CSPRNG) instead of `rand()`. In C++, the `<random>` library provides better alternatives, such as `std::random_device` and `std::mt19937`, which can be used to generate random numbers with better randomness properties.\n\n### Source Code Fix Recommendation\n\nReplace the use of `rand() %` with a more secure random number generation approach using the `<random>` library. Below is an example of how to replace `rand()` with a CSPRNG:\n\n```cpp\n#include <iostream>\n#include <random>\n\nint main() {\n    // Create a random device and a Mersenne Twister engine\n    std::random_device rd;\n    std::mt19937 gen(rd());\n\n    // Define the range for random numbers\n    std::uniform_int_distribution<> dis(0, 99); // Example range [0, 99]\n\n    // Generate a random number\n    int random_number = dis(gen);\n\n    std::cout << \"Secure random number: \" << random_number << std::endl;\n\n    return 0;\n}\n```\n\n### Library Dependencies\n\nTo execute the above code example, the following library is required:\n\n- `<random>`: This is part of the C++ Standard Library and does not require any additional dependencies beyond a standard C++ compiler that supports C++11 or later.\n\n### Relevant Links\n\n- [OWASP Cryptographic Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)\n- [CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)](https://cwe.mitre.org/data/definitions/338.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS148264"
+                ]
+              }
+            },
+            {
+              "id": "glog-5b89b23a-69dd-4e29-b7c8-491aab7a0f1a",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nIn C++ programming, using weak or non-cryptographic random number generators, such as the `rand()` function, can lead to vulnerabilities, especially in security-sensitive applications. The `rand()` function is not suitable for cryptographic purposes because it generates predictable sequences of numbers if the seed is known. This predictability can be exploited by attackers to compromise the security of the application.\n\n### General Mitigation Advice\n\nTo mitigate this vulnerability, use a cryptographically secure random number generator. In C++, the `<random>` library provides better alternatives, such as `std::random_device` and `std::mt19937`, which can be used to generate random numbers more securely.\n\n### Source Code Fix Recommendation\n\nReplace the use of `rand()` with a more secure random number generator from the `<random>` library. Here is an example of how to do this:\n\n```cpp\n#include <iostream>\n#include <random>\n\nint main() {\n    // Create a random device and a Mersenne Twister random number generator\n    std::random_device rd;\n    std::mt19937 gen(rd());\n\n    // Define a distribution range\n    std::uniform_int_distribution<> dis(1, 100);\n\n    // Generate a random number\n    int random_number = dis(gen);\n\n    std::cout << \"Secure random number: \" << random_number << std::endl;\n\n    return 0;\n}\n```\n\n### Library Dependencies\n\nTo execute the above code example properly, the following library is required:\n\n- `<random>`: This library provides facilities for generating random numbers.\n\n### OWASP Resources\n\n- [OWASP Cryptographic Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)](https://cwe.mitre.org/data/definitions/338.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS148264"
+                ]
+              }
+            },
+            {
+              "id": "glog-4d8b318e-3a55-4bfa-9b64-fd037839339f",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nIn C++ programming, using `srand(time(NULL))` or a fixed value to seed randomness can lead to predictable random number sequences. This is a security vulnerability because attackers can predict the sequence of random numbers generated, which can be exploited in various ways, such as guessing session tokens, cryptographic keys, or other sensitive data that rely on randomness for security.\n\n### General Mitigation Advice\n\nTo mitigate this vulnerability, use a more secure source of randomness for seeding. On modern systems, you can use libraries that provide cryptographically secure random number generators. For example, C++11 and later versions offer the `<random>` library, which can be used to generate random numbers securely.\n\n### Source Code Fix Recommendation\n\nInstead of using `srand(time(NULL))`, use the `<random>` library to generate random numbers securely. Here is an example of how to do this:\n\n```cpp\n#include <iostream>\n#include <random>\n\nint main() {\n    // Create a random device and seed the random number generator\n    std::random_device rd;\n    std::mt19937 gen(rd());\n\n    // Define the range for random numbers\n    std::uniform_int_distribution<> dis(1, 100);\n\n    // Generate a random number\n    int random_number = dis(gen);\n\n    std::cout << \"Random number: \" << random_number << std::endl;\n\n    return 0;\n}\n```\n\n### Library Dependencies\n\nTo execute the above code properly, the following library dependencies are required:\n\n- `<iostream>`: For input and output stream operations.\n- `<random>`: For generating random numbers using modern C++ facilities.\n\n### OWASP Resources\n\n- [OWASP Cryptographic Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)\n- [OWASP Secure Coding Practices - Quick Reference Guide](https://owasp.org/www-pdf-archive/OWASP_SCP_Quick_Reference_Guide_v2.pdf)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)](https://cwe.mitre.org/data/definitions/338.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS149435"
+                ]
+              }
+            },
+            {
+              "id": "glog-bef3a570-d02f-4f32-8876-00e9265c0ca5",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Detected Issue with C Function (malloc)\" vulnerability in C++ typically arises from improper use of the `malloc` function, which can lead to buffer overflows, memory leaks, or other memory-related issues. In the specific case of `malloc(m * n * ldc * sizeof(double))`, the vulnerability may occur due to integer overflow when calculating the total size of memory to allocate. If `m`, `n`, or `ldc` are large enough, the multiplication can wrap around, resulting in a smaller allocation than intended, leading to potential buffer overflows when the allocated memory is accessed.\n\n### General Mitigation Advice\n\n1. **Input Validation**: Ensure that the values of `m`, `n`, and `ldc` are within a safe range to prevent integer overflow.\n2. **Use Safe Multiplication**: Implement checks to detect potential overflow before performing the multiplication.\n3. **Use Safer Alternatives**: Consider using higher-level abstractions or libraries that handle memory management more safely.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential vulnerabilities in the code.\n\n### Source Code Fix Recommendation\n\nTo mitigate the risk of integer overflow in the `malloc` call, you can add checks before performing the multiplication:\n\n```cpp\n#include <iostream>\n#include <limits>\n#include <cstdlib>\n\nbool safe_multiply(size_t a, size_t b, size_t& result) {\n    if (a == 0 || b == 0) {\n        result = 0;\n        return true;\n    }\n    if (a > std::numeric_limits<size_t>::max() / b) {\n        return false; // Overflow would occur\n    }\n    result = a * b;\n    return true;\n}\n\nint main() {\n    size_t m = 1000; // Example values\n    size_t n = 1000;\n    size_t ldc = 1000;\n    size_t size;\n\n    if (!safe_multiply(m, n, size) || !safe_multiply(size, ldc, size) || !safe_multiply(size, sizeof(double), size)) {\n        std::cerr << \"Integer overflow detected, cannot allocate memory safely.\" << std::endl;\n        return EXIT_FAILURE;\n    }\n\n    double* array = static_cast<double*>(malloc(size));\n    if (!array) {\n        std::cerr << \"Memory allocation failed.\" << std::endl;\n        return EXIT_FAILURE;\n    }\n\n    // Use the array...\n\n    free(array);\n    return EXIT_SUCCESS;\n}\n```\n\n### Library Dependencies\n\n- `<iostream>`: For input/output operations.\n- `<limits>`: To access numeric limits for data types.\n- `<cstdlib>`: For `malloc` and `free` functions.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-190: Integer Overflow or Wraparound](https://cwe.mitre.org/data/definitions/190.html)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS161085"
+                ]
+              }
+            },
+            {
+              "id": "glog-49de7d0f-d3c5-4319-9145-e944195a61e1",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Identified Issue with C Function: `memcpy`\" vulnerability in C++ arises when the `memcpy` function is used improperly, leading to potential buffer overflows or memory corruption. This typically occurs when the size of the source buffer (`buf_cref`) exceeds the size of the destination buffer (`buf_c`), or when the `sizec` parameter is incorrect. Such vulnerabilities can lead to undefined behavior, crashes, or security issues like data leaks or code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` which provide better safety guarantees.\n3. **Boundary Checks**: Always perform boundary checks before copying data.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n5. **Code Reviews**: Regularly review code to identify and fix unsafe memory operations.\n\n### Source Code Fix Recommendation\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_c, const char* buf_cref, size_t sizec, size_t buf_c_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_c_size);\n    memcpy(buf_c, buf_cref, copy_size);\n}\n```\n\n### Library Dependencies\n\n- `<cstring>`: Required for the `memcpy` function.\n- `<algorithm>`: Required for the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-507e7040-78a0-439d-abcc-600894b8c93f",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question arises from the use of the `memcpy` function in C++, which can lead to buffer overflow if not used carefully. The function `memcpy(buf_b, mat_b.greenzone_1, sizeb)` copies `sizeb` bytes from the source `mat_b.greenzone_1` to the destination `buf_b`. If `sizeb` exceeds the size of either the source or the destination buffer, it can result in undefined behavior, including memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the size of the data being copied does not exceed the size of the destination buffer.\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if overlapping memory areas are involved.\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n4. **Code Reviews**: Regularly conduct code reviews to catch potential vulnerabilities early.\n\n### Source Code Fix Recommendation\n\nTo mitigate the risk of buffer overflow, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // For memcpy\n#include <algorithm> // For std::min\n\n// Assuming buf_b and mat_b.greenzone_1 are properly defined and initialized\nsize_t buf_b_size = /* size of buf_b */;\nsize_t mat_b_greenzone_1_size = /* size of mat_b.greenzone_1 */;\nsize_t sizeb = /* size of data to copy */;\n\n// Ensure sizeb does not exceed the size of either buffer\nsize_t safe_size = std::min(sizeb, std::min(buf_b_size, mat_b_greenzone_1_size));\n\nmemcpy(buf_b, mat_b.greenzone_1, safe_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-86544f26-c50c-4a4b-a539-6bcdd0b59861",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question arises from the use of the `memcpy` function in C++, which can lead to buffer overflow if not used carefully. The function `memcpy(buf_a, mat_a.greenzone_1, sizea)` copies `sizea` bytes from the source `mat_a.greenzone_1` to the destination `buf_a`. If `sizea` exceeds the size of either the source or the destination buffer, it can result in undefined behavior, including memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the size of the data being copied does not exceed the size of the destination buffer.\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if overlapping memory areas are involved.\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n4. **Code Reviews**: Regularly conduct code reviews to catch potential vulnerabilities early.\n\n### Source Code Fix Recommendation\n\nTo mitigate the risk of buffer overflow, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assuming buf_a and mat_a.greenzone_1 are properly defined and initialized\nsize_t buf_a_size = /* size of buf_a */;\nsize_t greenzone_1_size = /* size of mat_a.greenzone_1 */;\nsize_t sizea = /* size of data to copy */;\n\n// Ensure sizea does not exceed the size of either buffer\nsize_t safe_size = std::min({sizea, buf_a_size, greenzone_1_size});\n\nmemcpy(buf_a, mat_a.greenzone_1, safe_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following libraries are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-258f02e5-2bc8-4b30-81ad-c5be9c6c790d",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Detected Issue with C Function (memcpy)\" vulnerability in C++ arises when the `memcpy` function is used improperly, potentially leading to buffer overflows. This occurs when the size of the data being copied exceeds the size of the destination buffer, which can result in memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Always ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` from the C++ Standard Library, which provide better safety guarantees.\n3. **Boundary Checks**: Implement boundary checks to ensure that the size of the data being copied does not exceed the size of the destination buffer.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows in your code.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability in the code snippet `memcpy(buf_cref, buf_c, sizec)`, ensure that the destination buffer `buf_cref` is large enough to accommodate `sizec` bytes. Here is a revised version of the code with boundary checks:\n\n```cpp\n#include <cstring>  // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_cref, const char* buf_c, size_t sizec, size_t buf_cref_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_cref_size);\n    memcpy(buf_cref, buf_c, copy_size);\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-5aea546d-30e2-4363-8433-58e36c410e7e",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C/C++ programming, which can lead to buffer overflow issues if not used carefully. The specific line of code:\n\n```cpp\nmemcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb);\n```\n\nindicates that data is being copied from `buf_b_ptrs.greenzone_1` to `buf_b` with a size of `sizeb`. If `sizeb` exceeds the allocated size of `buf_b`, this can result in a buffer overflow, potentially leading to undefined behavior, data corruption, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the destination buffer is large enough to hold the data being copied. This can be done by checking the size of the destination buffer against the size of the data being copied.\n\n2. **Use Safer Functions**: Consider using safer alternatives like `memmove` or `strncpy` that provide additional safety checks, or use functions from libraries that offer bounds-checked operations.\n\n3. **Static Analysis Tools**: Utilize static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n4. **Code Reviews**: Regularly perform code reviews to catch potential vulnerabilities early in the development process.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code with added checks:\n\n```cpp\n#include <cstring> // Required for memcpy\n\n// Assume buf_b_size is the size of buf_b\nsize_t buf_b_size = /* size of buf_b */;\n\nif (sizeb <= buf_b_size) {\n    memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb);\n} else {\n    // Handle error: sizeb is too large for buf_b\n    // This could involve logging an error, throwing an exception, etc.\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library is required:\n\n- `<cstring>`: This library is required for the `memcpy` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-6ab48ad8-60a7-4f75-8ba4-0118ab142762",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Identified Issue with C Function: `memcpy`\" vulnerability in C++ arises when the `memcpy` function is used improperly, leading to potential buffer overflows or memory corruption. This typically occurs when the size of the source buffer (`buf_cref`) exceeds the size of the destination buffer (`buf_c`), or when the `sizec` parameter is incorrect. Such vulnerabilities can lead to undefined behavior, crashes, or security issues like data leaks or code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` which provide better safety guarantees.\n3. **Boundary Checks**: Always perform boundary checks before copying data.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n5. **Code Reviews**: Regularly review code to identify and fix unsafe memory operations.\n\n### Source Code Fix Recommendation\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_c, const char* buf_cref, size_t sizec, size_t buf_c_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_c_size);\n    memcpy(buf_c, buf_cref, copy_size);\n}\n```\n\n### Library Dependencies\n\n- `<cstring>`: Required for the `memcpy` function.\n- `<algorithm>`: Required for the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-e8e703e9-d06c-4ff8-8fc2-4596d4762109",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Identified Issue with C Function: `memcpy`\" vulnerability in C++ arises when the `memcpy` function is used improperly, leading to potential buffer overflows or memory corruption. This typically occurs when the size of the source buffer (`buf_cref`) exceeds the size of the destination buffer (`buf_c`), or when the `sizec` parameter is incorrect. Such vulnerabilities can lead to undefined behavior, crashes, or security issues like data leaks or code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` which provide better safety guarantees.\n3. **Boundary Checks**: Always perform boundary checks before copying data.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n5. **Code Reviews**: Regularly review code to identify and fix unsafe memory operations.\n\n### Source Code Fix Recommendation\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_c, const char* buf_cref, size_t sizec, size_t buf_c_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_c_size);\n    memcpy(buf_c, buf_cref, copy_size);\n}\n```\n\n### Library Dependencies\n\n- `<cstring>`: Required for the `memcpy` function.\n- `<algorithm>`: Required for the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-ffae496b-888d-4cb8-8656-736d51505b83",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C/C++ programming, which can lead to buffer overflow issues if not used carefully. The specific line of code:\n\n```cpp\nmemcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb);\n```\n\nindicates that data is being copied from `buf_b_ptrs.greenzone_1` to `buf_b` with a size of `sizeb`. If `sizeb` exceeds the allocated size of `buf_b`, this can result in a buffer overflow, potentially leading to undefined behavior, data corruption, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the destination buffer is large enough to hold the data being copied. This can be done by checking the size of the destination buffer against the size of the data being copied.\n\n2. **Use Safer Functions**: Consider using safer alternatives like `memmove` or `strncpy` that provide additional safety checks, or use functions from libraries that offer bounds-checked operations.\n\n3. **Static Analysis Tools**: Utilize static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n4. **Code Reviews**: Regularly perform code reviews to catch potential vulnerabilities early in the development process.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code with added checks:\n\n```cpp\n#include <cstring> // Required for memcpy\n\n// Assume buf_b_size is the size of buf_b\nsize_t buf_b_size = /* size of buf_b */;\n\nif (sizeb <= buf_b_size) {\n    memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb);\n} else {\n    // Handle error: sizeb is too large for buf_b\n    // This could involve logging an error, throwing an exception, etc.\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library is required:\n\n- `<cstring>`: This library is required for the `memcpy` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-ed6c87ab-3b5c-4305-aa7b-de0e5441069e",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C/C++ programming, which can lead to buffer overflow issues if not used carefully. The specific line of code:\n\n```cpp\nmemcpy(buf_a, buf_a_ptrs.greenzone_1, sizea);\n```\n\nThis line copies `sizea` bytes from `buf_a_ptrs.greenzone_1` to `buf_a`. If `sizea` is larger than the size of `buf_a`, this can result in a buffer overflow, potentially leading to undefined behavior, data corruption, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the destination buffer is large enough to hold the data being copied. This can be done by checking the size of the destination buffer before performing the copy operation.\n\n2. **Use Safer Functions**: Consider using safer alternatives like `memmove` or `std::copy` (in C++) which provide better safety guarantees.\n\n3. **Input Validation**: Validate all inputs to ensure they are within expected ranges and sizes.\n\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the size of the destination buffer is checked before performing the copy operation. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assuming buf_a and buf_a_ptrs.greenzone_1 are properly defined and initialized\nsize_t buf_a_size = sizeof(buf_a); // Size of the destination buffer\nsize_t copy_size = std::min(sizea, buf_a_size); // Ensure we do not exceed the buffer size\n\nmemcpy(buf_a, buf_a_ptrs.greenzone_1, copy_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following libraries are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-d58c079c-3667-4ebb-9793-a6aac81e4c7a",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Detected Issue with C Function (memcpy)\" vulnerability in C++ arises when the `memcpy` function is used improperly, potentially leading to buffer overflows. This occurs when the size of the data being copied exceeds the size of the destination buffer, which can result in memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Always ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` from the C++ Standard Library, which provide better safety guarantees.\n3. **Boundary Checks**: Implement boundary checks to ensure that the size of the data being copied does not exceed the size of the destination buffer.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows in your code.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability in the code snippet `memcpy(buf_cref, buf_c, sizec)`, ensure that the destination buffer `buf_cref` is large enough to accommodate `sizec` bytes. Here is a revised version of the code with boundary checks:\n\n```cpp\n#include <cstring>  // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_cref, const char* buf_c, size_t sizec, size_t buf_cref_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_cref_size);\n    memcpy(buf_cref, buf_c, copy_size);\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-a81deb21-2f2a-4fa6-aec4-509fcd3d95ce",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability associated with the C function `memcpy` arises when the source and destination buffers overlap, or when the destination buffer is not large enough to hold the data being copied. This can lead to buffer overflows, data corruption, or undefined behavior, which are common security issues in C++ programming. The specific vulnerability sink in the code example is:\n\n```cpp\nmemcpy(x_cpy, x, size_x * sizeof(T));\n```\n\nIf `x_cpy` does not have enough allocated memory to accommodate `size_x * sizeof(T)` bytes, this can result in a buffer overflow, potentially leading to security vulnerabilities such as arbitrary code execution or application crashes.\n\n### General Mitigation Advice\n\n1. **Ensure Proper Buffer Size**: Always ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if the source and destination might overlap.\n3. **Boundary Checks**: Implement boundary checks to ensure that the size of the data being copied does not exceed the size of the destination buffer.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the destination buffer is properly sized and consider using `std::copy` for safer copying:\n\n```cpp\n#include <algorithm> // for std::copy\n#include <cstring>   // for std::memcpy\n\n// Assuming T is a type and size_x is the number of elements of type T\nvoid safeCopy(T* x_cpy, const T* x, size_t size_x) {\n    // Ensure x_cpy is allocated with at least size_x elements\n    std::copy(x, x + size_x, x_cpy);\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following standard library headers are required:\n\n- `<algorithm>`: Provides the `std::copy` function.\n- `<cstring>`: Provides the `std::memcpy` function, though it's not used in the safe example.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-b5a5a7e6-7556-440b-9609-8b35419a86b4",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability associated with the C function `memcpy` arises when there is a mismatch between the size of the source and destination buffers, leading to potential buffer overflows. This can result in undefined behavior, including data corruption, crashes, or security vulnerabilities such as arbitrary code execution. In the given code snippet:\n\n```cpp\nmemcpy(buf_c, ref_c, sizec);\n```\n\nThe function call copies `sizec` bytes from `ref_c` to `buf_c`. If `sizec` exceeds the size of `buf_c`, it can overwrite adjacent memory, leading to the aforementioned issues.\n\n### General Mitigation Advice\n\n1. **Buffer Size Validation**: Always ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `strncpy` that provide additional safety checks.\n3. **Static Analysis Tools**: Utilize static analysis tools to detect potential buffer overflows during development.\n4. **Boundary Checks**: Implement boundary checks before performing memory operations.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the size of the destination buffer is checked before performing the copy operation. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n\nvoid safe_memcpy(char* buf_c, const char* ref_c, size_t sizec, size_t buf_c_size) {\n    if (sizec <= buf_c_size) {\n        memcpy(buf_c, ref_c, sizec);\n    } else {\n        // Handle error: sizec exceeds buffer size\n        // Possible actions: log error, throw exception, etc.\n    }\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library is required:\n\n- `<cstring>`: This library is necessary for using the `memcpy` function.\n\n### Relevant OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-b0c150ac-300b-48d7-9642-8f48550b371a",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Detected Issue with C Function (memcpy)\" vulnerability in C++ arises when the `memcpy` function is used improperly, potentially leading to buffer overflows. This occurs when the size of the data being copied exceeds the size of the destination buffer, which can result in memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Always ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` from the C++ Standard Library, which provide better safety guarantees.\n3. **Boundary Checks**: Implement boundary checks to ensure that the size of the data being copied does not exceed the size of the destination buffer.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows in your code.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability in the code snippet `memcpy(buf_cref, buf_c, sizec)`, ensure that the destination buffer `buf_cref` is large enough to accommodate `sizec` bytes. Here is a revised version of the code with boundary checks:\n\n```cpp\n#include <cstring>  // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_cref, const char* buf_c, size_t sizec, size_t buf_cref_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_cref_size);\n    memcpy(buf_cref, buf_c, copy_size);\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-7655aa8c-6adc-47e5-b5ac-3808cf77257f",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C/C++ programming, which can lead to buffer overflow issues if not used carefully. The specific line of code:\n\n```cpp\nmemcpy(buf_a, buf_a_ptrs.greenzone_1, sizea);\n```\n\nThis line copies `sizea` bytes from `buf_a_ptrs.greenzone_1` to `buf_a`. If `sizea` is larger than the size of `buf_a`, this can result in a buffer overflow, potentially leading to undefined behavior, data corruption, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the destination buffer is large enough to hold the data being copied. This can be done by checking the size of the destination buffer before performing the copy operation.\n\n2. **Use Safer Functions**: Consider using safer alternatives like `memmove` or `std::copy` (in C++) which provide better safety guarantees.\n\n3. **Input Validation**: Validate all inputs to ensure they are within expected ranges and sizes.\n\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the size of the destination buffer is checked before performing the copy operation. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assuming buf_a and buf_a_ptrs.greenzone_1 are properly defined and initialized\nsize_t buf_a_size = sizeof(buf_a); // Size of the destination buffer\nsize_t copy_size = std::min(sizea, buf_a_size); // Ensure we do not exceed the buffer size\n\nmemcpy(buf_a, buf_a_ptrs.greenzone_1, copy_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following libraries are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-6f968a75-02b2-4eda-bd7e-3227b049cb22",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Identified Issue with C Function: `memcpy`\" vulnerability in C++ arises when the `memcpy` function is used improperly, leading to potential buffer overflows or memory corruption. This typically occurs when the size of the source buffer (`buf_cref`) exceeds the size of the destination buffer (`buf_c`), or when the `sizec` parameter is incorrect. Such vulnerabilities can lead to undefined behavior, crashes, or security issues like data leaks or code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` which provide better safety guarantees.\n3. **Boundary Checks**: Always perform boundary checks before copying data.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n5. **Code Reviews**: Regularly review code to identify and fix unsafe memory operations.\n\n### Source Code Fix Recommendation\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_c, const char* buf_cref, size_t sizec, size_t buf_c_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_c_size);\n    memcpy(buf_c, buf_cref, copy_size);\n}\n```\n\n### Library Dependencies\n\n- `<cstring>`: Required for the `memcpy` function.\n- `<algorithm>`: Required for the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-c8bd0b4b-a4b8-4612-a233-d9d2991b24ad",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question arises from the use of the `memcpy` function in C++, which can lead to buffer overflow if not used carefully. The function `memcpy(buf_b, mat_b.greenzone_1, sizeb)` copies `sizeb` bytes from the source `mat_b.greenzone_1` to the destination `buf_b`. If `sizeb` exceeds the size of either the source or the destination buffer, it can result in undefined behavior, including memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the size of the data being copied does not exceed the size of the destination buffer.\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if overlapping memory areas are involved.\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n4. **Code Reviews**: Regularly conduct code reviews to catch potential vulnerabilities early.\n\n### Source Code Fix Recommendation\n\nTo mitigate the risk of buffer overflow, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // For memcpy\n#include <algorithm> // For std::min\n\n// Assuming buf_b and mat_b.greenzone_1 are properly defined and initialized\nsize_t buf_b_size = /* size of buf_b */;\nsize_t mat_b_greenzone_1_size = /* size of mat_b.greenzone_1 */;\nsize_t sizeb = /* size of data to copy */;\n\n// Ensure sizeb does not exceed the size of either buffer\nsize_t safe_size = std::min(sizeb, std::min(buf_b_size, mat_b_greenzone_1_size));\n\nmemcpy(buf_b, mat_b.greenzone_1, safe_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-bbc3d9b6-bf26-4130-a45f-74001a65cebd",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question arises from the use of the `memcpy` function in C++, which can lead to buffer overflow if not used carefully. The function `memcpy(buf_a, mat_a.greenzone_1, sizea)` copies `sizea` bytes from the source `mat_a.greenzone_1` to the destination `buf_a`. If `sizea` exceeds the size of either the source or the destination buffer, it can result in undefined behavior, including memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the size of the data being copied does not exceed the size of the destination buffer.\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if overlapping memory areas are involved.\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n4. **Code Reviews**: Regularly conduct code reviews to catch potential vulnerabilities early.\n\n### Source Code Fix Recommendation\n\nTo mitigate the risk of buffer overflow, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assuming buf_a and mat_a.greenzone_1 are properly defined and initialized\nsize_t buf_a_size = /* size of buf_a */;\nsize_t greenzone_1_size = /* size of mat_a.greenzone_1 */;\nsize_t sizea = /* size of data to copy */;\n\n// Ensure sizea does not exceed the size of either buffer\nsize_t safe_size = std::min({sizea, buf_a_size, greenzone_1_size});\n\nmemcpy(buf_a, mat_a.greenzone_1, safe_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following libraries are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-e35698de-8130-483e-b4a8-6896c244d7c3",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question arises from the use of the `memcpy` function in C++, which can lead to buffer overflow if not used carefully. The function `memcpy(buf_b, mat_b.greenzone_1, sizeb)` copies `sizeb` bytes from the source `mat_b.greenzone_1` to the destination `buf_b`. If `sizeb` exceeds the size of either the source or the destination buffer, it can result in undefined behavior, including memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the size of the data being copied does not exceed the size of the destination buffer.\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if overlapping memory areas are involved.\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n4. **Code Reviews**: Regularly conduct code reviews to catch potential vulnerabilities early.\n\n### Source Code Fix Recommendation\n\nTo mitigate the risk of buffer overflow, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // For memcpy\n#include <algorithm> // For std::min\n\n// Assuming buf_b and mat_b.greenzone_1 are properly defined and initialized\nsize_t buf_b_size = /* size of buf_b */;\nsize_t mat_b_greenzone_1_size = /* size of mat_b.greenzone_1 */;\nsize_t sizeb = /* size of data to copy */;\n\n// Ensure sizeb does not exceed the size of either buffer\nsize_t safe_size = std::min(sizeb, std::min(buf_b_size, mat_b_greenzone_1_size));\n\nmemcpy(buf_b, mat_b.greenzone_1, safe_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-3f5944c6-947d-42e0-bb78-1b90f43c72c1",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question arises from the use of the `memcpy` function in C++, which can lead to buffer overflow if not used carefully. The function `memcpy(buf_a, mat_a.greenzone_1, sizea)` copies `sizea` bytes from the source `mat_a.greenzone_1` to the destination `buf_a`. If `sizea` exceeds the size of either the source or the destination buffer, it can result in undefined behavior, including memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the size of the data being copied does not exceed the size of the destination buffer.\n2. **Use Safer Alternatives**: Consider using safer alternatives like `std::copy` or `std::memmove` if overlapping memory areas are involved.\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n4. **Code Reviews**: Regularly conduct code reviews to catch potential vulnerabilities early.\n\n### Source Code Fix Recommendation\n\nTo mitigate the risk of buffer overflow, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assuming buf_a and mat_a.greenzone_1 are properly defined and initialized\nsize_t buf_a_size = /* size of buf_a */;\nsize_t greenzone_1_size = /* size of mat_a.greenzone_1 */;\nsize_t sizea = /* size of data to copy */;\n\n// Ensure sizea does not exceed the size of either buffer\nsize_t safe_size = std::min({sizea, buf_a_size, greenzone_1_size});\n\nmemcpy(buf_a, mat_a.greenzone_1, safe_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following libraries are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-a4b38951-9757-463e-9223-beaecedb5268",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Detected Issue with C Function (memcpy)\" vulnerability in C++ arises when the `memcpy` function is used improperly, potentially leading to buffer overflows. This occurs when the size of the data being copied exceeds the size of the destination buffer, which can result in memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Always ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` from the C++ Standard Library, which provide better safety guarantees.\n3. **Boundary Checks**: Implement boundary checks to ensure that the size of the data being copied does not exceed the size of the destination buffer.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows in your code.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability in the code snippet `memcpy(buf_cref, buf_c, sizec)`, ensure that the destination buffer `buf_cref` is large enough to accommodate `sizec` bytes. Here is a revised version of the code with boundary checks:\n\n```cpp\n#include <cstring>  // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_cref, const char* buf_c, size_t sizec, size_t buf_cref_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_cref_size);\n    memcpy(buf_cref, buf_c, copy_size);\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-fed0610e-c391-4766-a16a-6ac387d2c895",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Identified Issue with C Function: `memcpy`\" vulnerability in C++ arises when the `memcpy` function is used improperly, leading to potential buffer overflows or memory corruption. This typically occurs when the size of the source buffer (`buf_cref`) exceeds the size of the destination buffer (`buf_c`), or when the `sizec` parameter is incorrect. Such vulnerabilities can lead to undefined behavior, crashes, or security issues like data leaks or code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` which provide better safety guarantees.\n3. **Boundary Checks**: Always perform boundary checks before copying data.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows.\n5. **Code Reviews**: Regularly review code to identify and fix unsafe memory operations.\n\n### Source Code Fix Recommendation\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_c, const char* buf_cref, size_t sizec, size_t buf_c_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_c_size);\n    memcpy(buf_c, buf_cref, copy_size);\n}\n```\n\n### Library Dependencies\n\n- `<cstring>`: Required for the `memcpy` function.\n- `<algorithm>`: Required for the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-75493532-cf59-4414-944c-7dae14ab01a1",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C/C++ programming, which can lead to buffer overflow issues if not used carefully. The specific line of code:\n\n```cpp\nmemcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb);\n```\n\nindicates that data is being copied from `buf_b_ptrs.greenzone_1` to `buf_b` with a size of `sizeb`. If `sizeb` exceeds the allocated size of `buf_b`, this can result in a buffer overflow, potentially leading to undefined behavior, data corruption, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the destination buffer is large enough to hold the data being copied. This can be done by checking the size of the destination buffer against the size of the data being copied.\n\n2. **Use Safer Functions**: Consider using safer alternatives like `memmove` or `strncpy` that provide additional safety checks, or use functions from libraries that offer bounds-checked operations.\n\n3. **Static Analysis Tools**: Utilize static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n4. **Code Reviews**: Regularly perform code reviews to catch potential vulnerabilities early in the development process.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code with added checks:\n\n```cpp\n#include <cstring> // Required for memcpy\n\n// Assume buf_b_size is the size of buf_b\nsize_t buf_b_size = /* size of buf_b */;\n\nif (sizeb <= buf_b_size) {\n    memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb);\n} else {\n    // Handle error: sizeb is too large for buf_b\n    // This could involve logging an error, throwing an exception, etc.\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library is required:\n\n- `<cstring>`: This library is required for the `memcpy` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-87ee887e-858c-426b-a404-dcc848a4ae58",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C/C++ programming, which can lead to buffer overflow issues if not used carefully. The specific line of code:\n\n```cpp\nmemcpy(buf_a, buf_a_ptrs.greenzone_1, sizea);\n```\n\nThis line copies `sizea` bytes from `buf_a_ptrs.greenzone_1` to `buf_a`. If `sizea` is larger than the size of `buf_a`, this can result in a buffer overflow, potentially leading to undefined behavior, data corruption, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the destination buffer is large enough to hold the data being copied. This can be done by checking the size of the destination buffer before performing the copy operation.\n\n2. **Use Safer Functions**: Consider using safer alternatives like `memmove` or `std::copy` (in C++) which provide better safety guarantees.\n\n3. **Input Validation**: Validate all inputs to ensure they are within expected ranges and sizes.\n\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the size of the destination buffer is checked before performing the copy operation. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assuming buf_a and buf_a_ptrs.greenzone_1 are properly defined and initialized\nsize_t buf_a_size = sizeof(buf_a); // Size of the destination buffer\nsize_t copy_size = std::min(sizea, buf_a_size); // Ensure we do not exceed the buffer size\n\nmemcpy(buf_a, buf_a_ptrs.greenzone_1, copy_size);\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following libraries are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-eab0af9f-e10c-4dde-896c-afd66f992e73",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Detected Issue with C Function (memcpy)\" vulnerability in C++ arises when the `memcpy` function is used improperly, potentially leading to buffer overflows. This occurs when the size of the data being copied exceeds the size of the destination buffer, which can result in memory corruption, crashes, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Always ensure that the destination buffer is large enough to hold the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` from the C++ Standard Library, which provide better safety guarantees.\n3. **Boundary Checks**: Implement boundary checks to ensure that the size of the data being copied does not exceed the size of the destination buffer.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows in your code.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability in the code snippet `memcpy(buf_cref, buf_c, sizec)`, ensure that the destination buffer `buf_cref` is large enough to accommodate `sizec` bytes. Here is a revised version of the code with boundary checks:\n\n```cpp\n#include <cstring>  // Required for memcpy\n#include <algorithm> // Required for std::min\n\nvoid safe_memcpy(char* buf_cref, const char* buf_c, size_t sizec, size_t buf_cref_size) {\n    // Ensure that we do not copy more than the destination buffer can hold\n    size_t copy_size = std::min(sizec, buf_cref_size);\n    memcpy(buf_cref, buf_c, copy_size);\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### Relevant Resources\n\n- [OWASP Buffer Overflow](https://owasp.org/www-community/vulnerabilities/Buffer_Overflow)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-92b67f75-db31-4f87-926a-cd9a6ef93159",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability associated with the C function `memcpy` arises when the source and destination buffers overlap, or when the destination buffer is not large enough to hold the data being copied. This can lead to undefined behavior, including data corruption, crashes, or security vulnerabilities such as buffer overflows. In the specific case of `memcpy(y, y_ref, size_y)`, if `y` and `y_ref` overlap or if `size_y` exceeds the size of `y`, it can result in a detected issue.\n\n### General Mitigation Advice\n\n1. **Use Safer Functions**: Consider using safer alternatives like `memmove` if there is a possibility of overlapping buffers.\n2. **Boundary Checks**: Ensure that the destination buffer is large enough to accommodate the data being copied.\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities.\n4. **Code Reviews**: Regularly perform code reviews to catch potential issues early in the development process.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability in the specific code snippet `memcpy(y, y_ref, size_y)`, ensure that the destination buffer `y` is large enough and that there is no overlap with `y_ref`. If overlap is possible, use `memmove` instead of `memcpy`.\n\n```cpp\n#include <cstring> // Required for memcpy and memmove\n\nvoid safeCopy(char* y, const char* y_ref, size_t size_y, size_t buffer_size) {\n    if (y == nullptr || y_ref == nullptr) {\n        // Handle null pointers\n        return;\n    }\n\n    if (size_y > buffer_size) {\n        // Handle buffer overflow\n        return;\n    }\n\n    // Use memmove if there is a possibility of overlap\n    memmove(y, y_ref, size_y);\n}\n```\n\n### Library Dependencies\n\n- `<cstring>`: Required for `memcpy` and `memmove`.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-accdf494-ae8c-413c-bf50-a666e2e2ecce",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe \"Detected Issue with C Function (memcpy)\" vulnerability in C++ arises when the `memcpy` function is used improperly, potentially leading to buffer overflows, data corruption, or undefined behavior. This vulnerability typically occurs when the destination buffer is not large enough to hold the data being copied, or when the size of the data to be copied is incorrectly calculated.\n\n### General Mitigation Advice\n\n1. **Validate Buffer Sizes**: Ensure that the destination buffer is large enough to accommodate the data being copied.\n2. **Use Safer Alternatives**: Consider using safer functions like `memmove` or `std::copy` from the C++ Standard Library, which provide better safety guarantees.\n3. **Boundary Checks**: Implement boundary checks to ensure that the size of the data being copied does not exceed the size of the destination buffer.\n4. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities in your code.\n\n### Source Code Fix Recommendation\n\nTo fix the specific vulnerability in the code snippet `memcpy(y_ref, y, size_y)`, ensure that `y_ref` is large enough to hold `size_y` bytes. Here is a revised version using `std::copy`:\n\n```cpp\n#include <algorithm> // for std::copy\n#include <cstring>   // for std::memcpy\n\nvoid safeCopy(char* y_ref, const char* y, size_t size_y, size_t buffer_size) {\n    if (buffer_size >= size_y) {\n        std::copy(y, y + size_y, y_ref);\n    } else {\n        // Handle error: buffer is too small\n    }\n}\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following libraries are required:\n\n- `<algorithm>`: Provides the `std::copy` function.\n- `<cstring>`: Provides the `std::memcpy` function.\n\n### Relevant OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)\n- [CWE-787: Out-of-bounds Write](https://cwe.mitre.org/data/definitions/787.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-cc399146-1358-4a66-922f-7ace1f33ebd9",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability associated with the C function `memcpy` arises when the source and destination buffers overlap, or when the destination buffer is not large enough to hold the data being copied. This can lead to undefined behavior, including data corruption, crashes, or security vulnerabilities such as buffer overflows. In the specific case of `memcpy(y, y_ref, size_y)`, if `y` and `y_ref` overlap or if `size_y` exceeds the size of `y`, it can result in a detected issue.\n\n### General Mitigation Advice\n\n1. **Use Safer Functions**: Consider using safer alternatives like `memmove` if there is a possibility of overlapping buffers.\n2. **Boundary Checks**: Ensure that the destination buffer is large enough to accommodate the data being copied.\n3. **Static Analysis Tools**: Use static analysis tools to detect potential buffer overflows and other vulnerabilities.\n4. **Code Reviews**: Regularly perform code reviews to catch potential issues early in the development process.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability in the specific code snippet `memcpy(y, y_ref, size_y)`, ensure that the destination buffer `y` is large enough and that there is no overlap with `y_ref`. If overlap is possible, use `memmove` instead of `memcpy`.\n\n```cpp\n#include <cstring> // Required for memcpy and memmove\n\nvoid safeCopy(char* y, const char* y_ref, size_t size_y, size_t buffer_size) {\n    if (y == nullptr || y_ref == nullptr) {\n        // Handle null pointers\n        return;\n    }\n\n    if (size_y > buffer_size) {\n        // Handle buffer overflow\n        return;\n    }\n\n    // Use memmove if there is a possibility of overlap\n    memmove(y, y_ref, size_y);\n}\n```\n\n### Library Dependencies\n\n- `<cstring>`: Required for `memcpy` and `memmove`.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)\n- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            },
+            {
+              "id": "glog-b7ed4095-baea-4cd6-83f1-36bde7615ee7",
+              "help": {
+                "text": "",
+                "markdown": "### Description\n\nThe vulnerability in question involves the use of the `memcpy` function in C/C++ programming, which can lead to buffer overflow issues if not used carefully. The specific line of code:\n\n```cpp\nmemcpy(x, x_buffer.greenzone_1, size_x);\n```\n\nsuggests that data is being copied from `x_buffer.greenzone_1` to `x` without proper bounds checking. If `size_x` exceeds the size of the destination buffer `x`, it can result in a buffer overflow, potentially leading to undefined behavior, data corruption, or security vulnerabilities such as arbitrary code execution.\n\n### General Mitigation Advice\n\n1. **Bounds Checking**: Always ensure that the size of the data being copied does not exceed the size of the destination buffer.\n2. **Use Safer Functions**: Consider using safer alternatives like `memmove` or `std::copy` in C++ which provide better safety guarantees.\n3. **Static Analysis Tools**: Utilize static analysis tools to detect potential buffer overflows in your code.\n4. **Code Reviews**: Regularly conduct code reviews to catch potential vulnerabilities early in the development process.\n\n### Source Code Fix Recommendation\n\nTo mitigate the vulnerability, ensure that the size of the data being copied does not exceed the size of the destination buffer. Here is a revised version of the code:\n\n```cpp\n#include <cstring> // Required for memcpy\n#include <algorithm> // Required for std::min\n\n// Assuming x and x_buffer.greenzone_1 are properly defined and initialized\nsize_t size_x = /* size of the data to copy */;\nsize_t max_size_x = /* maximum size of x */;\n\nmemcpy(x, x_buffer.greenzone_1, std::min(size_x, max_size_x));\n```\n\n### Library Dependencies\n\nTo execute the code example properly, the following library dependencies are required:\n\n- `<cstring>`: For the `memcpy` function.\n- `<algorithm>`: For the `std::min` function.\n\n### OWASP Resources\n\n- [OWASP Top Ten](https://owasp.org/www-project-top-ten/)\n- [OWASP Secure Coding Practices](https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/)\n\n### Common Weakness Enumeration (CWE)\n\n- [CWE-120: Buffer Copy without Checking Size of Input ('Classic Buffer Overflow')](https://cwe.mitre.org/data/definitions/120.html)"
+              },
+              "properties": {
+                "tags": [
+                  "DS121708"
+                ]
+              }
+            }
+          ],
+          "language": "en-US",
+          "contents": [
+            "localizedData",
+            "nonLocalizedData"
+          ],
+          "isComprehensive": false
+        }
+      },
+      "language": "en-US",
+      "results": [
+        {
+          "ruleId": "glog-3f5ca35a-53ea-479d-8fdc-8c7ca4e607b3",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 830,
+                  "startColumn": 16,
+                  "endLine": 830,
+                  "endColumn": 60,
+                  "charOffset": 39245,
+                  "charLength": 44,
+                  "snippet": {
+                    "text": "memcpy(c, cref, m * n * ldc * sizeof(double)",
+                    "rendered": {
+                      "text": "memcpy(c, cref, m * n * ldc * sizeof(double)",
+                      "markdown": "`memcpy(c, cref, m * n * ldc * sizeof(double)`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 39245,
+                        "charLength": 44
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(c, <size of c>,  cref,  m * n * ldc * sizeof(double)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-2b676638-16d4-4a69-a831-97dee0bbe05e",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 829,
+                  "startColumn": 16,
+                  "endLine": 829,
+                  "endColumn": 73,
+                  "charOffset": 39169,
+                  "charLength": 57,
+                  "snippet": {
+                    "text": "memcpy(b, b_buf.greenzone_1, n * k * ldb * sizeof(double)",
+                    "rendered": {
+                      "text": "memcpy(b, b_buf.greenzone_1, n * k * ldb * sizeof(double)",
+                      "markdown": "`memcpy(b, b_buf.greenzone_1, n * k * ldb * sizeof(double)`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 39169,
+                        "charLength": 57
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(b, <size of b>,  b_buf.greenzone_1,  n * k * ldb * sizeof(double)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-e25bd876-6798-45d0-9b7d-1874b3f9ddc8",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 800,
+                  "startColumn": 8,
+                  "endLine": 800,
+                  "endColumn": 46,
+                  "charOffset": 38113,
+                  "charLength": 38,
+                  "snippet": {
+                    "text": "memcpy(c, cref, m*n*ldc*sizeof(double)",
+                    "rendered": {
+                      "text": "memcpy(c, cref, m*n*ldc*sizeof(double)",
+                      "markdown": "`memcpy(c, cref, m*n*ldc*sizeof(double)`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 38113,
+                        "charLength": 38
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(c, <size of c>,  cref,  m*n*ldc*sizeof(double)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-b6ff5b08-cc76-4af9-9319-8612c47dabf5",
+          "kind": "fail",
+          "level": "error",
+          "message": {
+            "text": "Do not use weak/non-cryptographic random number generators"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 798,
+                  "startColumn": 18,
+                  "endLine": 798,
+                  "endColumn": 26,
+                  "charOffset": 38010,
+                  "charLength": 8,
+                  "snippet": {
+                    "text": "rand() %",
+                    "rendered": {
+                      "text": "rand() %",
+                      "markdown": "`rand() %`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "Important",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "Cryptography.PRNG.Weak"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-e19a4c54-0604-4d19-9796-c415c51ae3be",
+          "kind": "fail",
+          "level": "error",
+          "message": {
+            "text": "Do not use weak/non-cryptographic random number generators"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 799,
+                  "startColumn": 21,
+                  "endLine": 799,
+                  "endColumn": 26,
+                  "charOffset": 38068,
+                  "charLength": 5,
+                  "snippet": {
+                    "text": "rand(",
+                    "rendered": {
+                      "text": "rand(",
+                      "markdown": "`rand(`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "Important",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "Cryptography.PRNG.Weak"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-b4bd77b4-9367-426c-af6a-986cbe813939",
+          "kind": "fail",
+          "level": "error",
+          "message": {
+            "text": "Do not use weak/non-cryptographic random number generators"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 799,
+                  "startColumn": 21,
+                  "endLine": 799,
+                  "endColumn": 29,
+                  "charOffset": 38068,
+                  "charLength": 8,
+                  "snippet": {
+                    "text": "rand() %",
+                    "rendered": {
+                      "text": "rand() %",
+                      "markdown": "`rand() %`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "Important",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "Cryptography.PRNG.Weak"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-5b89b23a-69dd-4e29-b7c8-491aab7a0f1a",
+          "kind": "fail",
+          "level": "error",
+          "message": {
+            "text": "Do not use weak/non-cryptographic random number generators"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 798,
+                  "startColumn": 18,
+                  "endLine": 798,
+                  "endColumn": 23,
+                  "charOffset": 38010,
+                  "charLength": 5,
+                  "snippet": {
+                    "text": "rand(",
+                    "rendered": {
+                      "text": "rand(",
+                      "markdown": "`rand(`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "Important",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "Cryptography.PRNG.Weak"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-4d8b318e-3a55-4bfa-9b64-fd037839339f",
+          "kind": "fail",
+          "level": "error",
+          "message": {
+            "text": "Do not seed randomness based on system time or a static value."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 783,
+                  "startColumn": 10,
+                  "endLine": 783,
+                  "endColumn": 21,
+                  "charOffset": 37275,
+                  "charLength": 11,
+                  "snippet": {
+                    "text": "srand(time(",
+                    "rendered": {
+                      "text": "srand(time(",
+                      "markdown": "`srand(time(`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "Critical",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "Cryptography.WeakRandomness"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-bef3a570-d02f-4f32-8876-00e9265c0ca5",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (malloc)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                },
+                "region": {
+                  "startLine": 795,
+                  "startColumn": 24,
+                  "endLine": 795,
+                  "endColumn": 59,
+                  "charOffset": 37853,
+                  "charLength": 35,
+                  "snippet": {
+                    "text": "malloc(m * n * ldc * sizeof(double)",
+                    "rendered": {
+                      "text": "malloc(m * n * ldc * sizeof(double)",
+                      "markdown": "`malloc(m * n * ldc * sizeof(double)`"
+                    }
+                  },
+                  "sourceLanguage": "cpp"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "If the value provided to malloc is the result of unsafe integer math, it can result in an exploitable condition. "
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/dgemm/dgemm_ukernel.cpp"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 37853,
+                        "charLength": 35
+                      },
+                      "insertedContent": {
+                        "text": "calloc(<number of elements>, <size of each element>)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-49de7d0f-d3c5-4319-9145-e944195a61e1",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 492,
+                  "startColumn": 12,
+                  "endLine": 492,
+                  "endColumn": 42,
+                  "charOffset": 19021,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_c, buf_cref, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_c, buf_cref, sizec)",
+                      "markdown": "`memcpy(buf_c, buf_cref, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 19021,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_c, <size of buf_c>,  buf_cref,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-507e7040-78a0-439d-abcc-600894b8c93f",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 488,
+                  "startColumn": 12,
+                  "endLine": 488,
+                  "endColumn": 51,
+                  "charOffset": 18842,
+                  "charLength": 39,
+                  "snippet": {
+                    "text": "memcpy(buf_b, mat_b.greenzone_1, sizeb)",
+                    "rendered": {
+                      "text": "memcpy(buf_b, mat_b.greenzone_1, sizeb)",
+                      "markdown": "`memcpy(buf_b, mat_b.greenzone_1, sizeb)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 18842,
+                        "charLength": 39
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_b, <size of buf_b>,  mat_b.greenzone_1,  sizeb)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-86544f26-c50c-4a4b-a539-6bcdd0b59861",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 487,
+                  "startColumn": 12,
+                  "endLine": 487,
+                  "endColumn": 51,
+                  "charOffset": 18789,
+                  "charLength": 39,
+                  "snippet": {
+                    "text": "memcpy(buf_a, mat_a.greenzone_1, sizea)",
+                    "rendered": {
+                      "text": "memcpy(buf_a, mat_a.greenzone_1, sizea)",
+                      "markdown": "`memcpy(buf_a, mat_a.greenzone_1, sizea)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 18789,
+                        "charLength": 39
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_a, <size of buf_a>,  mat_a.greenzone_1,  sizea)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-258f02e5-2bc8-4b30-81ad-c5be9c6c790d",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 452,
+                  "startColumn": 4,
+                  "endLine": 452,
+                  "endColumn": 34,
+                  "charOffset": 17798,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_cref, buf_c, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_cref, buf_c, sizec)",
+                      "markdown": "`memcpy(buf_cref, buf_c, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 17798,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_cref, <size of buf_cref>,  buf_c,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-5aea546d-30e2-4363-8433-58e36c410e7e",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 355,
+                  "startColumn": 12,
+                  "endLine": 355,
+                  "endColumn": 56,
+                  "charOffset": 13845,
+                  "charLength": 44,
+                  "snippet": {
+                    "text": "memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)",
+                    "rendered": {
+                      "text": "memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)",
+                      "markdown": "`memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 13845,
+                        "charLength": 44
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_b, <size of buf_b>,  buf_b_ptrs.greenzone_1,  sizeb)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-6ab48ad8-60a7-4f75-8ba4-0118ab142762",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 359,
+                  "startColumn": 12,
+                  "endLine": 359,
+                  "endColumn": 42,
+                  "charOffset": 14029,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_c, buf_cref, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_c, buf_cref, sizec)",
+                      "markdown": "`memcpy(buf_c, buf_cref, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 14029,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_c, <size of buf_c>,  buf_cref,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-e8e703e9-d06c-4ff8-8fc2-4596d4762109",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 195,
+                  "startColumn": 12,
+                  "endLine": 195,
+                  "endColumn": 42,
+                  "charOffset": 8149,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_c, buf_cref, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_c, buf_cref, sizec)",
+                      "markdown": "`memcpy(buf_c, buf_cref, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 8149,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_c, <size of buf_c>,  buf_cref,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-ffae496b-888d-4cb8-8656-736d51505b83",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 191,
+                  "startColumn": 12,
+                  "endLine": 191,
+                  "endColumn": 56,
+                  "charOffset": 7965,
+                  "charLength": 44,
+                  "snippet": {
+                    "text": "memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)",
+                    "rendered": {
+                      "text": "memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)",
+                      "markdown": "`memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 7965,
+                        "charLength": 44
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_b, <size of buf_b>,  buf_b_ptrs.greenzone_1,  sizeb)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-ed6c87ab-3b5c-4305-aa7b-de0e5441069e",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 190,
+                  "startColumn": 12,
+                  "endLine": 190,
+                  "endColumn": 56,
+                  "charOffset": 7907,
+                  "charLength": 44,
+                  "snippet": {
+                    "text": "memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)",
+                    "rendered": {
+                      "text": "memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)",
+                      "markdown": "`memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 7907,
+                        "charLength": 44
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_a, <size of buf_a>,  buf_a_ptrs.greenzone_1,  sizea)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-d58c079c-3667-4ebb-9793-a6aac81e4c7a",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 109,
+                  "startColumn": 4,
+                  "endLine": 109,
+                  "endColumn": 34,
+                  "charOffset": 6168,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_cref, buf_c, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_cref, buf_c, sizec)",
+                      "markdown": "`memcpy(buf_cref, buf_c, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 6168,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_cref, <size of buf_cref>,  buf_c,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-a81deb21-2f2a-4fa6-aec4-509fcd3d95ce",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/level1/scal2v/scal2v.h"
+                },
+                "region": {
+                  "startLine": 94,
+                  "startColumn": 8,
+                  "endLine": 94,
+                  "endColumn": 46,
+                  "charOffset": 3767,
+                  "charLength": 38,
+                  "snippet": {
+                    "text": "memcpy( x_cpy, x, size_x * sizeof( T )",
+                    "rendered": {
+                      "text": "memcpy( x_cpy, x, size_x * sizeof( T )",
+                      "markdown": "`memcpy( x_cpy, x, size_x * sizeof( T )`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/level1/scal2v/scal2v.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 3767,
+                        "charLength": 38
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s( x_cpy, <size of  x_cpy>,  x,  size_x * sizeof( T )"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-b5a5a7e6-7556-440b-9609-8b35419a86b4",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 533,
+                  "startColumn": 12,
+                  "endLine": 533,
+                  "endColumn": 39,
+                  "charOffset": 18677,
+                  "charLength": 27,
+                  "snippet": {
+                    "text": "memcpy(buf_c, ref_c, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_c, ref_c, sizec)",
+                      "markdown": "`memcpy(buf_c, ref_c, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 18677,
+                        "charLength": 27
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_c, <size of buf_c>,  ref_c,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-b0c150ac-300b-48d7-9642-8f48550b371a",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 323,
+                  "startColumn": 4,
+                  "endLine": 323,
+                  "endColumn": 34,
+                  "charOffset": 12903,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_cref, buf_c, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_cref, buf_c, sizec)",
+                      "markdown": "`memcpy(buf_cref, buf_c, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 12903,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_cref, <size of buf_cref>,  buf_c,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-7655aa8c-6adc-47e5-b5ac-3808cf77257f",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 354,
+                  "startColumn": 12,
+                  "endLine": 354,
+                  "endColumn": 56,
+                  "charOffset": 13787,
+                  "charLength": 44,
+                  "snippet": {
+                    "text": "memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)",
+                    "rendered": {
+                      "text": "memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)",
+                      "markdown": "`memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_complex_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 13787,
+                        "charLength": 44
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_a, <size of buf_a>,  buf_a_ptrs.greenzone_1,  sizea)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-6f968a75-02b2-4eda-bd7e-3227b049cb22",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 321,
+                  "startColumn": 12,
+                  "endLine": 321,
+                  "endColumn": 42,
+                  "charOffset": 12187,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_c, buf_cref, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_c, buf_cref, sizec)",
+                      "markdown": "`memcpy(buf_c, buf_cref, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 12187,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_c, <size of buf_c>,  buf_cref,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-c8bd0b4b-a4b8-4612-a233-d9d2991b24ad",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 529,
+                  "startColumn": 12,
+                  "endLine": 529,
+                  "endColumn": 51,
+                  "charOffset": 18498,
+                  "charLength": 39,
+                  "snippet": {
+                    "text": "memcpy(buf_b, mat_b.greenzone_1, sizeb)",
+                    "rendered": {
+                      "text": "memcpy(buf_b, mat_b.greenzone_1, sizeb)",
+                      "markdown": "`memcpy(buf_b, mat_b.greenzone_1, sizeb)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 18498,
+                        "charLength": 39
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_b, <size of buf_b>,  mat_b.greenzone_1,  sizeb)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-bbc3d9b6-bf26-4130-a45f-74001a65cebd",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 528,
+                  "startColumn": 12,
+                  "endLine": 528,
+                  "endColumn": 51,
+                  "charOffset": 18445,
+                  "charLength": 39,
+                  "snippet": {
+                    "text": "memcpy(buf_a, mat_a.greenzone_1, sizea)",
+                    "rendered": {
+                      "text": "memcpy(buf_a, mat_a.greenzone_1, sizea)",
+                      "markdown": "`memcpy(buf_a, mat_a.greenzone_1, sizea)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 18445,
+                        "charLength": 39
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_a, <size of buf_a>,  mat_a.greenzone_1,  sizea)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-e35698de-8130-483e-b4a8-6896c244d7c3",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 317,
+                  "startColumn": 12,
+                  "endLine": 317,
+                  "endColumn": 51,
+                  "charOffset": 12008,
+                  "charLength": 39,
+                  "snippet": {
+                    "text": "memcpy(buf_b, mat_b.greenzone_1, sizeb)",
+                    "rendered": {
+                      "text": "memcpy(buf_b, mat_b.greenzone_1, sizeb)",
+                      "markdown": "`memcpy(buf_b, mat_b.greenzone_1, sizeb)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 12008,
+                        "charLength": 39
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_b, <size of buf_b>,  mat_b.greenzone_1,  sizeb)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-3f5944c6-947d-42e0-bb78-1b90f43c72c1",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 316,
+                  "startColumn": 12,
+                  "endLine": 316,
+                  "endColumn": 51,
+                  "charOffset": 11955,
+                  "charLength": 39,
+                  "snippet": {
+                    "text": "memcpy(buf_a, mat_a.greenzone_1, sizea)",
+                    "rendered": {
+                      "text": "memcpy(buf_a, mat_a.greenzone_1, sizea)",
+                      "markdown": "`memcpy(buf_a, mat_a.greenzone_1, sizea)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 11955,
+                        "charLength": 39
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_a, <size of buf_a>,  mat_a.greenzone_1,  sizea)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-a4b38951-9757-463e-9223-beaecedb5268",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 281,
+                  "startColumn": 4,
+                  "endLine": 281,
+                  "endColumn": 34,
+                  "charOffset": 10966,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_cref, buf_c, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_cref, buf_c, sizec)",
+                      "markdown": "`memcpy(buf_cref, buf_c, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 10966,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_cref, <size of buf_cref>,  buf_c,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-fed0610e-c391-4766-a16a-6ac387d2c895",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 181,
+                  "startColumn": 12,
+                  "endLine": 181,
+                  "endColumn": 42,
+                  "charOffset": 6939,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_c, buf_cref, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_c, buf_cref, sizec)",
+                      "markdown": "`memcpy(buf_c, buf_cref, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 6939,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_c, <size of buf_c>,  buf_cref,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-75493532-cf59-4414-944c-7dae14ab01a1",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 177,
+                  "startColumn": 12,
+                  "endLine": 177,
+                  "endColumn": 56,
+                  "charOffset": 6755,
+                  "charLength": 44,
+                  "snippet": {
+                    "text": "memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)",
+                    "rendered": {
+                      "text": "memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)",
+                      "markdown": "`memcpy(buf_b, buf_b_ptrs.greenzone_1, sizeb)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 6755,
+                        "charLength": 44
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_b, <size of buf_b>,  buf_b_ptrs.greenzone_1,  sizeb)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-87ee887e-858c-426b-a404-dcc848a4ae58",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 176,
+                  "startColumn": 12,
+                  "endLine": 176,
+                  "endColumn": 56,
+                  "charOffset": 6697,
+                  "charLength": 44,
+                  "snippet": {
+                    "text": "memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)",
+                    "rendered": {
+                      "text": "memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)",
+                      "markdown": "`memcpy(buf_a, buf_a_ptrs.greenzone_1, sizea)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 6697,
+                        "charLength": 44
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_a, <size of buf_a>,  buf_a_ptrs.greenzone_1,  sizea)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-eab0af9f-e10c-4dde-896c-afd66f992e73",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                },
+                "region": {
+                  "startLine": 145,
+                  "startColumn": 4,
+                  "endLine": 145,
+                  "endColumn": 34,
+                  "charOffset": 5813,
+                  "charLength": 30,
+                  "snippet": {
+                    "text": "memcpy(buf_cref, buf_c, sizec)",
+                    "rendered": {
+                      "text": "memcpy(buf_cref, buf_c, sizec)",
+                      "markdown": "`memcpy(buf_cref, buf_c, sizec)`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/gemm/test_gemm_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 5813,
+                        "charLength": 30
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s(buf_cref, <size of buf_cref>,  buf_c,  sizec)"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-92b67f75-db31-4f87-926a-cd9a6ef93159",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/swapv/test_swapv_ukr.h"
+                },
+                "region": {
+                  "startLine": 93,
+                  "startColumn": 12,
+                  "endLine": 93,
+                  "endColumn": 38,
+                  "charOffset": 3738,
+                  "charLength": 26,
+                  "snippet": {
+                    "text": "memcpy( y, y_ref, size_y )",
+                    "rendered": {
+                      "text": "memcpy( y, y_ref, size_y )",
+                      "markdown": "`memcpy( y, y_ref, size_y )`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/swapv/test_swapv_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 3738,
+                        "charLength": 26
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s( y, <size of  y>,  y_ref,  size_y )"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-accdf494-ae8c-413c-bf50-a666e2e2ecce",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/swapv/test_swapv_ukr.h"
+                },
+                "region": {
+                  "startLine": 77,
+                  "startColumn": 4,
+                  "endLine": 77,
+                  "endColumn": 30,
+                  "charOffset": 3223,
+                  "charLength": 26,
+                  "snippet": {
+                    "text": "memcpy( y_ref, y, size_y )",
+                    "rendered": {
+                      "text": "memcpy( y_ref, y, size_y )",
+                      "markdown": "`memcpy( y_ref, y, size_y )`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/swapv/test_swapv_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 3223,
+                        "charLength": 26
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s( y_ref, <size of  y_ref>,  y,  size_y )"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-cc399146-1358-4a66-922f-7ace1f33ebd9",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/addv/test_addv_ukr.h"
+                },
+                "region": {
+                  "startLine": 100,
+                  "startColumn": 12,
+                  "endLine": 100,
+                  "endColumn": 38,
+                  "charOffset": 4118,
+                  "charLength": 26,
+                  "snippet": {
+                    "text": "memcpy( y, y_ref, size_y )",
+                    "rendered": {
+                      "text": "memcpy( y, y_ref, size_y )",
+                      "markdown": "`memcpy( y, y_ref, size_y )`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/addv/test_addv_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 4118,
+                        "charLength": 26
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s( y, <size of  y>,  y_ref,  size_y )"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        },
+        {
+          "ruleId": "glog-b7ed4095-baea-4cd6-83f1-36bde7615ee7",
+          "kind": "fail",
+          "level": "note",
+          "message": {
+            "text": "Problematic C function detected (memcpy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "gtestsuite/testsuite/ukr/addv/test_addv_ukr.h"
+                },
+                "region": {
+                  "startLine": 99,
+                  "startColumn": 12,
+                  "endLine": 99,
+                  "endColumn": 53,
+                  "charOffset": 4063,
+                  "charLength": 41,
+                  "snippet": {
+                    "text": "memcpy( x, x_buffer.greenzone_1, size_x )",
+                    "rendered": {
+                      "text": "memcpy( x, x_buffer.greenzone_1, size_x )",
+                      "markdown": "`memcpy( x, x_buffer.greenzone_1, size_x )`"
+                    }
+                  },
+                  "sourceLanguage": "c"
+                }
+              }
+            }
+          ],
+          "fixes": [
+            {
+              "description": {
+                "text": "There are a number of conditions in which memcpy can introduce a vulnerability (mismatched buffer sizes, null pointers, etc.). More secure alternitives perform additional validation of the source and destination buffer"
+              },
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "gtestsuite/testsuite/ukr/addv/test_addv_ukr.h"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "charOffset": 4063,
+                        "charLength": 41
+                      },
+                      "insertedContent": {
+                        "text": "memcpy_s( x, <size of  x>,  x_buffer.greenzone_1,  size_x )"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "properties": {
+            "DevSkimSeverity": "BestPractice",
+            "DevSkimConfidence": "High",
+            "tags": [
+              "API.DangerousAPI.ProblematicFunction"
+            ]
+          }
+        }
+      ],
+      "newlineSequences": [
+        "\r\n",
+        "\n"
+      ]
+    }
+  ]
+}
